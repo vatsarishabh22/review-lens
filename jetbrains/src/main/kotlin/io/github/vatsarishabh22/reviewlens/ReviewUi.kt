@@ -41,6 +41,8 @@ object ReviewColors {
     val del = JBColor(0xb0303b, 0xf08f8f)
     val mod = JBColor(0x6c9bd2, 0x6c9bd2)
     val ok = JBColor(0x3b9b46, 0x5fb865)
+    /** The "✓ Reviewed" pill behind [ok] text. */
+    val okSoft = JBColor(0xe3f3e5, 0x253a28)
     val star = JBColor(0xe5a50a, 0xf2c55c)
     val warn = JBColor(0xc27c0e, 0xe0a63a)
     val chip = JBColor(0xebecf0, 0x393b40)

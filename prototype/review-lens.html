@@ -116,6 +116,7 @@ button.mark:hover { background: var(--panel-2); }
 .pill { display: inline-flex; align-items: center; gap: 4px; padding: 0 6px; border-radius: 10px; font-size: 11px; font-weight: 500; line-height: 18px; }
 .pill.req { background: var(--accent-soft); color: var(--accent); }
 .pill.resume { background: var(--review); color: var(--review-fg); }
+.pill.done { background: color-mix(in srgb, var(--ok) 16%, transparent); color: var(--ok); }
 .pill.ci { color: var(--ok); }
 .detail { padding: 4px 14px 16px; display: grid; gap: 12px; }
 .detail h2 { font-size: 15px; line-height: 1.35; margin: 0; text-wrap: balance; }
@@ -242,6 +243,9 @@ button.mark:hover { background: var(--panel-2); }
 .verdicts label:hover { background: var(--hover); }
 .verdicts small { display: block; color: var(--muted); }
 .verdicts input { accent-color: var(--accent); margin-top: 3px; }
+.verdicts .sep { border-top: 1px solid var(--line); margin: 4px 0; }
+.submit-pop textarea:disabled { opacity: .45; }
+.submit-pop .keep { color: var(--warn); font-size: 12px; }
 
 /* status bar + toast */
 .statusbar { display: flex; align-items: center; gap: 14px; padding: 0 12px; background: var(--panel); border-top: 1px solid var(--line); color: var(--muted); font-size: 12px; }
@@ -251,6 +255,8 @@ button.mark:hover { background: var(--panel-2); }
 .toast b { font-weight: 600; }
 .toast .ic { color: var(--ok); grid-row: span 2; margin-top: 1px; }
 .toast .sub { color: var(--muted); font-size: 12px; }
+.toast .acts { grid-column: 2; display: flex; gap: 14px; margin-top: 4px; }
+.toast .acts button { background: none; border: 0; padding: 0; color: var(--accent); font: inherit; font-size: 12px; cursor: pointer; }
 @keyframes rise { from { transform: translateY(8px); opacity: 0; } }
 @media (prefers-reduced-motion: reduce) { *, *::before, *::after { animation: none !important; transition: none !important; } }
 </style>
@@ -373,7 +379,7 @@ const fresh = () => ({
   mode: "normal", tool: "project", panel: "list", pr: 147, scope: "all", picked: new Set(),
   dirty: document.getElementById("opt-dirty").checked, confirm: false, step: 0,
   filesView: "pr", open: OWN_FILE.path, tabs: [OWN_FILE.path], diff: false, caret: null, hunk: null,
-  viewed: {}, since: {}, comments: {}, draft: null, draftText: "", pop: null, toast: null, flash: false, resume: false, submitted: false,
+  viewed: {}, since: {}, comments: {}, draft: null, draftText: "", pop: null, toast: null, flash: false, resume: false, submitted: false, verdict: null,
 });
 let S = fresh();
 
@@ -392,6 +398,9 @@ function counts(f) {
 }
 const badge = p => S.viewed[p] ? (S.since[p] ? "since" : "check") : "star";
 const viewedCount = () => scopedFiles().filter(f => S.viewed[f.path] && !S.since[f.path]).length;
+const prViewed = () => FILES.filter(f => S.viewed[f.path] && !S.since[f.path]).length;
+const allViewed = () => prViewed() === FILES.length;
+const started = () => Object.keys(S.viewed).length > 0 || !!S.verdict;
 const pendingCount = () => Object.values(S.comments).flatMap(o => Object.values(o)).flat().filter(c => c.pending).length;
 // Rows of the full file as it is at the PR head, with change kinds limited to the scope.
 function rowsOf(f) {
@@ -494,12 +503,15 @@ function projectTree(highlight) {
 }
 function prList() {
   const item = pr => {
-    const resume = S.resume && pr.n === 147 && S.mode === "normal";
+    const mine = pr.n === 147 && S.mode === "normal";
+    const pill = !mine ? "" : started() && allViewed() ? `<span class="pill done">✓ Reviewed · ${S.verdict || `${FILES.length} of ${FILES.length}`}</span>`
+      : started() ? `<span class="pill resume">Resume · ${prViewed()} of ${FILES.length} viewed</span>`
+      : S.resume ? '<span class="pill resume">Resume · 4 of 9 viewed</span>' : "";
     const stats = pr.n === 147 ? `${FILES.length} files` : `${pr.files} files`;
     return `<div class="pr ${S.pr === pr.n && S.panel !== "list" ? "sel" : ""}" data-act="pick-pr" data-n="${pr.n}">${avatar(pr.who)}
       <div class="t">${esc(pr.title)}</div>
       <div class="m"><span>#${pr.n}</span><span>${person(pr.who).name}</span><span>${stats}</span>
-      ${resume ? '<span class="pill resume">Resume · 4 of 9 viewed</span>' : pr.requested ? '<span class="pill req">Review requested</span>' : ""}</div></div>`;
+      ${pill || (pr.requested ? '<span class="pill req">Review requested</span>' : "")}</div></div>`;
   };
   return `<div class="search">${I.search}<input id="pr-search" placeholder="Search pull requests" aria-label="Search pull requests"></div>
     <div class="section-label">Waiting on you</div>${PRS.filter(p => p.requested).map(item).join("")}
@@ -526,7 +538,7 @@ function prDetail() {
       <span class="fineprint">Review Lens parks them in a stash named after this review and puts them back when you exit. Nothing is committed.</span>
       <div class="btns"><button class="primary" data-act="start-go">Park and start review</button><button class="secondary" data-act="start-cancel">Cancel</button></div></div>`;
   } else {
-    action = `<div style="display:flex;gap:10px;align-items:center;flex-wrap:wrap"><button class="primary" data-act="start">${S.resume ? "Resume review" : "Start review"}</button>
+    action = `<div style="display:flex;gap:10px;align-items:center;flex-wrap:wrap"><button class="primary" data-act="start">${started() && allViewed() ? "Review again" : S.resume || started() ? "Resume review" : "Start review"}</button>
       <span class="fineprint">Opens the PR in this window, read-only.</span></div>`;
   }
   return `<div class="detail"><button class="secondary" data-act="back" style="justify-self:start">${I.back} All pull requests</button>
@@ -590,13 +602,16 @@ function submitPop() {
   const pend = pendingCount();
   return `<div class="pop submit-pop" style="right:70px;top:34px">
     <h3>Finish your review</h3>
-    <span class="fineprint">${pend ? `${pend} pending comment${pend > 1 ? "s" : ""} will be posted with it.` : "No inline comments yet."} ${viewedCount()} of ${scopedFiles().length} files viewed.</span>
+    <span class="fineprint"><span id="posting">${pend ? `${pend} pending comment${pend > 1 ? "s" : ""} will be posted with it.` : "No inline comments yet."}</span> ${viewedCount()} of ${scopedFiles().length} files viewed.</span>
     <textarea id="summary" placeholder="Leave a summary (optional)">Looks solid. One question on the key layout.</textarea>
-    <div class="verdicts">
+    <div class="verdicts" onchange="verdictChanged()">
       <label><input type="radio" name="v" checked> <span>Comment<small>Feedback without a verdict</small></span></label>
       <label><input type="radio" name="v"> <span>Approve<small>Ready to merge</small></span></label>
-      <label><input type="radio" name="v"> <span>Request changes<small>Must be addressed before merging</small></span></label></div>
-    <div style="display:flex;gap:8px;justify-content:flex-end"><button class="secondary" data-act="pop" data-pop="">Cancel</button><button class="primary" data-act="submit">Submit to GitHub</button></div></div>`;
+      <label><input type="radio" name="v"> <span>Request changes<small>Must be addressed before merging</small></span></label>
+      <div class="sep"></div>
+      <label><input type="radio" name="v"> <span>Mark as reviewed<small>Nothing is posted to GitHub</small></span></label></div>
+    <span class="keep" id="keep" hidden>${pend ? `Your ${pend} draft comment${pend > 1 ? "s" : ""} won't be posted; ${pend > 1 ? "they're" : "it's"} kept for next time.` : ""}</span>
+    <div style="display:flex;gap:8px;justify-content:flex-end"><button class="secondary" data-act="pop" data-pop="">Cancel</button><button class="primary" id="finish-go" data-act="submit">Submit to GitHub</button></div></div>`;
 }
 function editor() {
   if (S.mode === "review" && !file(S.open) && !OTHER_PATHS.includes(S.open)) return `<div class="editor"><div class="empty-editor"><div><p><b>Pick a file</b></p><p>or press ⌥N for the next unviewed one</p></div></div></div>`;
@@ -659,7 +674,16 @@ function statusbar() {
 }
 function toast() {
   if (!S.toast) return "";
-  return `<div class="toast" role="status"><span class="ic">${I.ok}</span><b>${esc(S.toast[0])}</b><span class="sub">${esc(S.toast[1])}</span></div>`;
+  const acts = (S.toast[2] || []).map(([label, act, pop]) => `<button data-act="${act}" ${pop ? `data-pop="${pop}"` : ""}>${label}</button>`).join("");
+  return `<div class="toast" role="status"><span class="ic">${I.ok}</span><b>${esc(S.toast[0])}</b><span class="sub">${esc(S.toast[1])}</span>${acts ? `<div class="acts">${acts}</div>` : ""}</div>`;
+}
+// Mark as reviewed posts nothing: the summary has nowhere to go, and the button stops promising GitHub
+function verdictChanged() {
+  const mark = document.querySelectorAll('.submit-pop input[name="v"]')[3].checked;
+  document.getElementById("summary").disabled = mark;
+  document.getElementById("finish-go").textContent = mark ? "Finish review" : "Submit to GitHub";
+  const keep = document.getElementById("keep"); keep.hidden = !mark || !keep.textContent;
+  document.getElementById("posting").hidden = mark && !keep.hidden; // the warning below says what happens to the drafts instead
 }
 function render() {
   const ed = document.getElementById("ed"), scroll = ed ? ed.scrollTop : 0;
@@ -672,7 +696,7 @@ let keepScroll = false;
 
 // ---------- behaviour ----------
 let toastTimer, flashTimer;
-function say(title, sub) { S.toast = [title, sub]; clearTimeout(toastTimer); toastTimer = setTimeout(() => { S.toast = null; render(); }, 4200); }
+function say(title, sub, acts) { S.toast = [title, sub, acts]; clearTimeout(toastTimer); toastTimer = setTimeout(() => { S.toast = null; render(); }, acts ? 9000 : 4200); }
 function openPath(p) { S.open = p; if (!S.tabs.includes(p)) S.tabs = [...S.tabs.slice(-3), p]; S.caret = null; S.hunk = null; S.draft = null; if (file(p) && file(p).status === "D") S.diff = true; }
 function nextUnviewed(dir = 1) {
   const files = scopedFiles(); if (!files.length) return;
@@ -686,6 +710,7 @@ function nextUnviewed(dir = 1) {
 function toggleViewed(p) {
   const was = S.viewed[p] && !S.since[p];
   if (was) delete S.viewed[p]; else { S.viewed[p] = true; delete S.since[p]; }
+  if (!was && allViewed()) { say(`All ${FILES.length} files viewed`, "Finish the review to post a verdict, or mark it reviewed without posting.", [["Finish review…", "pop", "submit"]]); return; }
   if (!was && p === S.open) nextUnviewed();
 }
 function startReview() {
@@ -695,7 +720,7 @@ function startReview() {
     if (S.step < total) { S.step++; render(); setTimeout(tick, 550); return; }
     S.mode = "review"; S.step = 0; S.tool = "review"; S.tabs = []; S.diff = false;
     // Returning reviewer: 6 files viewed earlier; the 2 new commits touched config.py and observability.py.
-    if (S.resume) {
+    if (S.resume && !started()) {
       ["requirements.txt", "src/app/modules/invoices/export/vocabulary.py", "src/app/modules/invoices/models.py", "src/app/platform/bucket/keys.py",
         "src/app/core/config.py", "src/app/modules/invoices/observability.py"].forEach(p => S.viewed[p] = true);
       S.since = { "src/app/core/config.py": true, "src/app/modules/invoices/observability.py": true };
@@ -706,14 +731,21 @@ function startReview() {
   };
   setTimeout(tick, 550);
 }
+// Finish ends the session like Exit (your branch and parked work come back) but lands on the PR list for the next review
+function finishReview(what) {
+  exitReview();
+  S.tool = "review"; S.panel = "list";
+  say("Finished #147", `${what} ${S.dirty ? "Your 3 parked changes are restored." : ""}`.trim());
+}
 function exitReview() {
   const pend = pendingCount();
-  S.mode = "normal"; S.tool = "project"; S.panel = "list"; S.tabs = [OWN_FILE.path]; S.open = OWN_FILE.path; S.pop = null; S.diff = false; S.caret = null; S.resume = Object.keys(S.viewed).length > 0 && !S.submitted;
-  say("Back on feat/my-work", (S.dirty ? "Your 3 parked changes are restored." : "Nothing to restore.") + (pend ? ` ${pend} draft comment${pend > 1 ? "s" : ""} kept for next time.` : ""));
+  S.mode = "normal"; S.tool = "project"; S.panel = "list"; S.tabs = [OWN_FILE.path]; S.open = OWN_FILE.path; S.pop = null; S.diff = false; S.caret = null; S.resume = started();
+  say("Back on feat/my-work", (allViewed() ? `All ${FILES.length} files reviewed. ` : "") + (S.dirty ? "Your 3 parked changes are restored." : "Nothing to restore.") + (pend ? ` ${pend} draft comment${pend > 1 ? "s" : ""} kept for next time.` : ""));
 }
 
 document.getElementById("ide").addEventListener("click", e => {
-  const t = e.target.closest("[data-act]"); if (!t) { if (S.pop) { S.pop = null; render(); } return; }
+  // a click outside an open popup closes it; inside (choices, the summary box) it must not
+  const t = e.target.closest("[data-act]"); if (!t) { if (S.pop && !e.target.closest(".pop")) { S.pop = null; render(); } return; }
   const a = t.dataset.act, p = t.dataset.path;
   if (a !== "pop" && !t.closest(".pop") && S.pop) S.pop = null;
   switch (a) {
@@ -745,9 +777,14 @@ document.getElementById("ide").addEventListener("click", e => {
     case "set-scope": { const i = t.dataset.i; if (i === "all") { S.scope = "all"; S.picked = new Set(); } else if (i === "since") { S.scope = "since"; S.picked = new Set([3, 4]); } else { S.scope = "pick"; S.picked = new Set([+i]); } S.pop = null; if (!scopedFiles().some(f => f.path === S.open)) nextUnviewed(); break; }
     case "submit": {
       const pend = pendingCount();
-      Object.values(S.comments).forEach(o => Object.values(o).flat().forEach(c => c.pending = false));
-      S.pop = null; S.submitted = true;
-      say("Review posted to GitHub", `PR #147 · ${pend ? `${pend} comment${pend > 1 ? "s" : ""} and a summary` : "summary only"}. You're still in review mode.`); break;
+      const picked = [...document.querySelectorAll('.submit-pop input[name="v"]')].findIndex(r => r.checked);
+      const mark = picked === 3;
+      if (!mark) {
+        Object.values(S.comments).forEach(o => Object.values(o).flat().forEach(c => c.pending = false));
+        S.verdict = ["commented", "approved", "changes requested"][picked] || "commented"; S.submitted = true;
+      }
+      finishReview(mark ? "Marked as reviewed. Nothing was posted to GitHub."
+        : `${S.verdict === "approved" ? "Approved" : S.verdict === "commented" ? "Commented" : "Requested changes"} on GitHub${pend ? ` with ${pend} comment${pend > 1 ? "s" : ""}` : ""}.`); break;
     }
     case "exit": exitReview(); break;
     case "branch-info": say("This window shows PR #147", "Read-only. Use Exit in the review bar to go back to feat/my-work."); break;

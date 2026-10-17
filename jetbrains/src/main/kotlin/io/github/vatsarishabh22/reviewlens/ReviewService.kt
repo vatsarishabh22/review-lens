@@ -1,6 +1,7 @@
 package io.github.vatsarishabh22.reviewlens
 
 import com.intellij.ide.projectView.ProjectView
+import com.intellij.notification.NotificationAction
 import com.intellij.notification.NotificationType
 import com.intellij.openapi.Disposable
 import com.intellij.openapi.application.ApplicationManager
@@ -108,6 +109,10 @@ class ReviewService(private val project: Project) : Disposable {
         // A PR tick is queued even when GitHub is unreachable now, so the next load sends it instead of erasing it.
         val unsent = if (current.target.prNumber == null) current.unsent else current.unsent.orEmpty() + (change.path to viewed)
         update { current.copy(reviewed = reviewed, unsent = unsent) }
+        // the last tick is the moment to finish: say so once, with the way to do it
+        if (viewed && current.target.prNumber != null && reviewedCount() == changes.size) notify(project, "All ${changes.size} files viewed",
+            "Finish the review to post a verdict, or mark it reviewed without posting.", NotificationType.INFORMATION,
+            NotificationAction.createSimpleExpiring("Finish review…") { showFinishReview(project, null) })
         val id = pullRequestId ?: return
         val root = git!!.root
         ApplicationManager.getApplication().executeOnPooledThread {

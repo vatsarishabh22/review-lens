@@ -10,6 +10,7 @@ import java.nio.file.Path
  * [seenHead] is the PR head the reviewer last started or re-scoped on: "Since your last review" starts there.
  * [unsent] holds ticks GitHub has not confirmed yet (path → viewed); they are re-sent first and win until confirmed.
  * [drafts] are the reviewer's inline comments, kept here (across exit) until Finish review posts them.
+ * [verdict] is the last verdict GitHub accepted from this reviewer (Mark as reviewed leaves it), for the PR list.
  */
 data class ReviewMeta(
     val target: ReviewTarget,
@@ -19,6 +20,7 @@ data class ReviewMeta(
     val seenHead: String? = null,
     val unsent: Map<String, Boolean>? = null,
     val drafts: List<Draft>? = null,
+    val verdict: Verdict? = null,
 ) {
     companion object {
         private val gson = GsonBuilder().setPrettyPrinting().create()
@@ -66,7 +68,13 @@ fun syncViewed(meta: ReviewMeta, github: Map<String, ViewedState>, changes: List
     return meta.copy(reviewed = mergeViewed(meta.reviewed, github, changes, queued), unsent = unsent.ifEmpty { null })
 }
 
-/** How far a started review got: files viewed (at their current version) out of the files in its scope. */
-data class ReviewProgress(val viewed: Int, val total: Int)
+/** How far a started review got: files viewed (at their current version) out of the files in its scope, and the last posted [verdict]. */
+data class ReviewProgress(val viewed: Int, val total: Int, val verdict: Verdict? = null) {
+    /** Every file viewed at its current version: new commits to a viewed file make it partial again. */
+    val done get() = total > 0 && viewed == total
+
+    /** The PR list's pill. */
+    val label get() = if (done) "✓ Reviewed · ${verdict?.done ?: "$viewed of $total"}" else "Resume · $viewed of $total viewed"
+}
 
 enum class Badge(val symbol: String) { TODO("⭐"), REVIEWED("✅"), CHANGED_SINCE("🔄") }

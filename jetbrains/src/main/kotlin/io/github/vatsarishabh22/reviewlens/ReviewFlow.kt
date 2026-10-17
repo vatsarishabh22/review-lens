@@ -70,19 +70,33 @@ fun beginReview(
     }
 }
 
-/** Posts the review to GitHub; on a refusal the comments stay drafts, so nothing typed is lost. */
-fun finishReview(project: Project, summary: String, verdict: Verdict) {
+/**
+ * Ends the review with [verdict] posted to GitHub as one review, or with nothing posted (null: Mark as reviewed), then
+ * exits and shows the PR list for the next one. On a refusal the comments stay drafts and the review stays open.
+ */
+fun finishReview(project: Project, summary: String, verdict: Verdict?) {
     val number = ReviewService.of(project).meta?.target?.prNumber ?: return
+    if (verdict == null) return endReview(project, "Finished #$number", "Marked as reviewed. Nothing was posted to GitHub.")
     background(project, "Posting your review", {
         runCatching { ReviewDrafts.of(project).submit(summary, verdict) }.getOrElse { throw IllegalStateException("${it.message}. Your comments are kept as drafts.", it) }
     }) { sent ->
-        val what = if (sent > 0) "$sent comment${if (sent > 1) "s" else ""}${if (summary.isNotBlank()) " and a summary" else ""}" else "summary only"
-        notify(project, "Review posted to GitHub", "PR #$number · $what. You're still in review mode.")
+        val with = if (sent > 0) " with $sent comment${if (sent > 1) "s" else ""}" else ""
+        endReview(project, "Finished #$number", "${verdict.posted} on GitHub$with.")
     }
 }
 
-/** Goes back to the reviewer's branch and restores their parked work. */
+/** Goes back to the reviewer's branch and restores their parked work; the review can be resumed later. */
 fun exitReview(project: Project) {
+    val service = ReviewService.of(project)
+    val total = service.changes.size
+    endReview(project, null, if (total > 0 && service.reviewedCount() == total) "All $total files reviewed." else "")
+}
+
+/**
+ * The one way a review ends: back to the original branch, parked work restored, `active.json` gone. [finished] titles
+ * a Finish review (which then lands on the PR list) instead of "Back on <branch>"; [said] leads the message.
+ */
+private fun endReview(project: Project, finished: String?, said: String) {
     val service = ReviewService.of(project)
     val git = service.git ?: return
     val branch = service.active?.originalRef ?: return
@@ -93,11 +107,15 @@ fun exitReview(project: Project) {
         // The "Reviewing…" balloons offer Exit, which no longer applies.
         NotificationsManager.getNotificationsManager().getNotificationsOfType(Notification::class.java, project)
             .filter { it.groupId == TITLE }.forEach(Notification::expire)
+        // the panel turns back to the PR list on its own once the review ends; a finish brings it forward
+        if (finished != null) ToolWindowManager.getInstance(project).getToolWindow(TOOL_WINDOW_ID)?.activate(null)
+        val title = finished ?: "Back on $branch"
+        val lead = if (said.isEmpty()) "" else "$said "
         when (restored) {
-            Restored.RESTORED -> notify(project, "Back on $branch", "Your parked changes are restored.$kept")
-            Restored.NOTHING_TO_RESTORE -> notify(project, "Back on $branch", "Nothing was parked, so nothing to restore.$kept")
-            Restored.KEPT_IN_STASH -> notify(project, "Back on $branch: your changes need a hand", "They didn't apply cleanly, so they are still safe in the stash \"review-lens: parked from $branch…\". Resolve the conflicts, or run git stash pop.", NotificationType.WARNING)
-            Restored.STASH_MISSING -> notify(project, "Back on $branch", "The parked stash was not found; it may have been popped by hand.", NotificationType.WARNING)
+            Restored.RESTORED -> notify(project, title, "${lead}Your parked changes are restored.$kept")
+            Restored.NOTHING_TO_RESTORE -> notify(project, title, "${lead}Nothing was parked, so nothing to restore.$kept")
+            Restored.KEPT_IN_STASH -> notify(project, "$title: your changes need a hand", "${lead}Your parked changes didn't apply cleanly, so they are still safe in the stash \"review-lens: parked from $branch…\". Resolve the conflicts, or run git stash pop.", NotificationType.WARNING)
+            Restored.STASH_MISSING -> notify(project, title, "${lead}The parked stash was not found; it may have been popped by hand.", NotificationType.WARNING)
         }
     }
 }

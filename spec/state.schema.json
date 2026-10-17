@@ -164,6 +164,19 @@
               }
             }
           }
+        },
+        "verdict": {
+          "type": [
+            "string",
+            "null"
+          ],
+          "description": "the last verdict GitHub accepted from this reviewer; Mark as reviewed leaves it",
+          "enum": [
+            "COMMENT",
+            "APPROVE",
+            "REQUEST_CHANGES",
+            null
+          ]
         }
       }
     }

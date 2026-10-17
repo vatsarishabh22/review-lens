@@ -44,7 +44,7 @@ class PrDetailView(private val project: Project, private val onBack: () -> Unit)
     private var listed: ListedTarget? = null
     private var session: ReviewSession? = null
     private var loaded: LoadedTarget? = null
-    private var resuming = false
+    private var progress: ReviewProgress? = null
     private var picked: Set<Int> = emptySet()
     /** "Since your last review" for a returning reviewer (null when nothing is new), and whether it is the chosen scope. */
     private var since: Pair<ScopeRange, String>? = null
@@ -56,9 +56,9 @@ class PrDetailView(private val project: Project, private val onBack: () -> Unit)
         add(JBScrollPane(content).apply { border = null; horizontalScrollBarPolicy = JBScrollPane.HORIZONTAL_SCROLLBAR_NEVER })
     }
 
-    /** Shows [target] and starts fetching it; [resuming] when the reviewer has started this PR before. */
-    fun open(git: GitClient, target: ListedTarget, resuming: Boolean) {
-        listed = target; this.resuming = resuming; loaded = null; picked = emptySet(); since = null; sinceChosen = false; fetchFailed = false
+    /** Shows [target] and starts fetching it; [progress] when the reviewer has started this PR before. */
+    fun open(git: GitClient, target: ListedTarget, progress: ReviewProgress?) {
+        listed = target; this.progress = progress; loaded = null; picked = emptySet(); since = null; sinceChosen = false; fetchFailed = false
         session = ReviewSession(git)
         build()
         val session = session!!
@@ -119,7 +119,7 @@ class PrDetailView(private val project: Project, private val onBack: () -> Unit)
 
     private fun showStart() {
         val ready = loaded != null && loaded!!.commits.isNotEmpty()
-        val start = primaryButton(if (resuming) "Resume review" else "Start review").apply {
+        val start = primaryButton(when { progress?.done == true -> "Review again"; progress != null -> "Resume review"; else -> "Start review" }).apply {
             isEnabled = ready
             addActionListener { checkWorkThenStart() }
         }
@@ -132,7 +132,7 @@ class PrDetailView(private val project: Project, private val onBack: () -> Unit)
             else -> null to "Opens the PR in this window, read-only."
         }
         if (!ready) start.toolTipText = hint ?: status?.text
-        val retry = ActionLink("Try again") { open(session!!.git, listed!!, resuming) }.takeIf { fetchFailed }
+        val retry = ActionLink("Try again") { open(session!!.git, listed!!, progress) }.takeIf { fetchFailed }
         setAction(stack(
             row(*listOfNotNull<JComponent>(start, status).toTypedArray(), gap = 10), vgap(8),
             row(*listOfNotNull<JComponent>(hint?.let(::mutedLabel), retry).toTypedArray(), gap = 6),

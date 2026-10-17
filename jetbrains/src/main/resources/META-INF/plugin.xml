@@ -27,6 +27,9 @@
         <ul>
           <li>Ready for upcoming IDE versions: no longer uses an API JetBrains has scheduled for removal, and no longer
           builds against deprecated or experimental platform APIs it never needed.</li>
+          <li>File / Diff switching responds to every click, and always highlights the view you are on.</li>
+          <li>Finish review can mark a PR reviewed without posting, and every finish returns you to the pull request
+          list, ready for the next one.</li>
           <li>A fuller plugin page: features, requirements and links to the user guide.</li>
         </ul>
         <h3>0.1.1</h3>

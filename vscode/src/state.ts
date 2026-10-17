@@ -14,6 +14,7 @@ export interface ReviewMeta {
   seenHead?: string | null;
   unsent?: Record<string, boolean> | null;
   drafts?: Draft[] | null;
+  verdict?: "COMMENT" | "APPROVE" | "REQUEST_CHANGES" | null;
 }
 
 type Json = Record<string, any>;
@@ -30,7 +31,7 @@ export function parseActive(o: Json): ActiveReview {
 }
 
 export function parseMeta(o: Json): ReviewMeta {
-  const meta = pick<ReviewMeta>(o, ["scopeLabel", "reviewed", "seenHead", "unsent"]);
+  const meta = pick<ReviewMeta>(o, ["scopeLabel", "reviewed", "seenHead", "unsent", "verdict"]);
   meta.target = target(o.target);
   meta.range = pick(o.range, ["from", "to"]);
   if ("drafts" in o) meta.drafts = o.drafts && o.drafts.map((d: Json) => pick<Draft>(d, ["path", "line", "blob", "body", "posted"]));

@@ -7,7 +7,7 @@ checkout. The approved UX is `prototype/review-lens.html`.
 ```mermaid
 flowchart LR
     L[List] --> F[Fetch] --> S["Start<br/>active.json, park, checkout"] --> R["Read · Viewed · Comment"]
-    R --> FI["Finish<br/>one GitHub review"] --> R
+    R --> FI["Finish<br/>one GitHub review, or mark reviewed"] --> E
     R --> E["Exit<br/>checkout, restore, delete active.json"]
 ```
 
@@ -22,10 +22,13 @@ flowchart LR
 | Read | Full files at `range.to`, changed lines marked against `range.from`. PR files are read-only. Blame on the caret line only when a commit in the scope last changed it. | `git diff --raw -z --no-abbrev -M <from> <to>` · `git diff --numstat -z -M <from> <to>` · `git show <rev>:<path>` · `git blame --porcelain <to> -- <path>` · `git rev-list <from>..<to>` |
 | Viewed | Tick a file: `reviewed[path] = <its blob at range.to>`. A later change to the file un-ticks it (🔄). See [Viewed sync](#viewed-sync). | GraphQL `markFileAsViewed` / `unmarkFileAsViewed`, read with `pullRequest.files.viewerViewedState` |
 | Comment | Drafts are kept in `drafts`, each pinned to the file version (`blob`) it was written on | |
-| Finish | One review: summary, verdict, and the pending drafts **written on the file versions this scope shows** (`!posted && blob == the file's blob at range.to`). The others wait for their scope. Sent drafts get `posted: true`. If GitHub refuses, nothing is marked sent. | `gh api repos/{owner}/{repo}/pulls/<n>/reviews --method POST --input <payload>` |
+| Finish | One review: summary, verdict, and the pending drafts **written on the file versions this scope shows** (`!posted && blob == the file's blob at range.to`). The others wait for their scope. Sent drafts get `posted: true` and `verdict` = the event. If GitHub refuses, nothing is marked sent and the review stays open. Or **Mark as reviewed**: nothing is posted, drafts stay pending, `verdict` unchanged. Every finish then does Exit, and the editor shows the PR list. | `gh api repos/{owner}/{repo}/pulls/<n>/reviews --method POST --input <payload>` |
 | Exit | Back to `originalRef`, pop the stash by its message (`--index` first, plain pop as fallback; a conflict keeps the stash), delete `active.json`. `<key>.json` stays for next time. | `git checkout <originalRef>` · `git stash list --format=%gd%x09%gs` · `git stash pop --index stash@{n}` |
 
 Badges: ⭐ not viewed · ✅ viewed at the current version · 🔄 changed since viewed.
+
+In the list, a PR started before shows "✓ Reviewed · approved / commented / changes requested" (from `verdict`, or
+"N of N" without one) when every file of its saved scope is viewed at its current version, else "Resume · x of N viewed".
 
 ### Viewed sync
 
@@ -49,7 +52,7 @@ Everything lives in `.git/review-lens/`, outside the working tree, as JSON. The 
 | File | Lifetime | Holds |
 |---|---|---|
 | `active.json` | From Start to Exit | The review in progress: target, head, `review/<key>` branch, the ref to go back to, the stash message (or `null`) |
-| `<key>.json` | Kept across reviews | One PR's scope (`range`, `scopeLabel`), ticks (`reviewed`, `unsent`), `seenHead` for "since your last review", and `drafts` |
+| `<key>.json` | Kept across reviews | One PR's scope (`range`, `scopeLabel`), ticks (`reviewed`, `unsent`), `seenHead` for "since your last review", `drafts`, and `verdict`: the last event GitHub accepted (`COMMENT`, `APPROVE`, `REQUEST_CHANGES`), absent until one is posted |
 
 `<key>` is `pr-<number>` for a PR, or `branch-<name>` for a branch, with anything outside `[A-Za-z0-9._-]` replaced
 by `_`. The prefixes keep a branch named `active` or `pr-7` from overwriting another file.
