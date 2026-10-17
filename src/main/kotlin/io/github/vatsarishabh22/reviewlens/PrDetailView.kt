@@ -97,7 +97,7 @@ class PrDetailView(private val project: Project, private val onBack: () -> Unit)
         }
         content.add(row(Pill(target.target.head.removePrefix("${GitClient.REMOTE}/"), ReviewColors.chip, JBUI.CurrentTheme.Label.foreground(), mono = true),
             mutedLabel("into"), Pill(base, ReviewColors.chip, JBUI.CurrentTheme.Label.foreground(), mono = true), gap = 6))
-        description(pr?.body)?.let { content.gap(10); content.add(wrappingText(it)) }
+        pr?.body?.let(::markdownHtml)?.let { content.gap(10); content.add(PrDescription(it)) }
         if (pr != null) {
             content.gap(10)
             content.add(row(mutedLabel(files(pr.changedFiles)),
@@ -202,7 +202,7 @@ class PrDetailView(private val project: Project, private val onBack: () -> Unit)
         val box = JPanel().apply {
             layout = BoxLayout(this, BoxLayout.Y_AXIS)
             border = RoundedLineBorder(ReviewColors.line, JBUI.scale(8))
-            background = JBUI.CurrentTheme.ToolWindow.background()
+            background = ReviewColors.surface
             alignmentX = LEFT_ALIGNMENT
         }
         val base = listed!!.target.base.removePrefix("${GitClient.REMOTE}/")
@@ -244,13 +244,6 @@ class PrDetailView(private val project: Project, private val onBack: () -> Unit)
 
     private fun setAction(component: JComponent) {
         actionSlot.removeAll(); actionSlot.add(component); actionSlot.revalidate(); actionSlot.repaint()
-    }
-
-    /** The PR body as plain text: HTML comments (PR templates) dropped, blank runs collapsed, capped. */
-    private fun description(body: String?): String? {
-        val text = body.orEmpty().replace(Regex("<!--.*?-->", RegexOption.DOT_MATCHES_ALL), "")
-            .replace("\r", "").replace(Regex("\n{3,}"), "\n\n").trim()
-        return text.ifEmpty { null }?.let { if (it.length > 600) it.take(600).trimEnd() + "…" else it }
     }
 
     private fun ago(epochMillis: Long) = DateFormatUtil.formatBetweenDates(epochMillis, System.currentTimeMillis())
