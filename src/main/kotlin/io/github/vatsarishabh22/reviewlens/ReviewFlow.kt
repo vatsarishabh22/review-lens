@@ -70,19 +70,18 @@ fun beginReview(
     }
 }
 
-/** Goes back to the reviewer's branch and restores their parked work. */
 /** Posts the review to GitHub; on a refusal the comments stay drafts, so nothing typed is lost. */
 fun finishReview(project: Project, summary: String, verdict: Verdict) {
-    val service = ReviewService.of(project)
-    val number = service.meta?.target?.prNumber ?: return
+    val number = ReviewService.of(project).meta?.target?.prNumber ?: return
     background(project, "Posting your review", {
-        runCatching { service.submitReview(summary, verdict) }.getOrElse { throw IllegalStateException("${it.message}. Your comments are kept as drafts.", it) }
+        runCatching { ReviewDrafts.of(project).submit(summary, verdict) }.getOrElse { throw IllegalStateException("${it.message}. Your comments are kept as drafts.", it) }
     }) { sent ->
         val what = if (sent > 0) "$sent comment${if (sent > 1) "s" else ""}${if (summary.isNotBlank()) " and a summary" else ""}" else "summary only"
         notify(project, "Review posted to GitHub", "PR #$number · $what. You're still in review mode.")
     }
 }
 
+/** Goes back to the reviewer's branch and restores their parked work. */
 fun exitReview(project: Project) {
     val service = ReviewService.of(project)
     val git = service.git ?: return

@@ -2,26 +2,14 @@ package io.github.vatsarishabh22.reviewlens
 
 import com.intellij.icons.AllIcons
 import com.intellij.ide.ui.laf.darcula.ui.DarculaButtonUI
-import com.intellij.openapi.ui.popup.JBPopup
 import com.intellij.openapi.util.Disposer
-import com.intellij.ui.ColorUtil
 import com.intellij.openapi.util.Key
-import com.intellij.ui.DocumentAdapter
-import javax.swing.event.DocumentEvent
-import com.intellij.ui.components.JBScrollPane
-import com.intellij.ui.components.JBTextArea
-import java.awt.Dimension
-import java.awt.FlowLayout
-import javax.swing.ButtonGroup
-import javax.swing.JRadioButton
-import com.intellij.openapi.editor.colors.EditorColorsManager
 import com.intellij.openapi.fileEditor.FileEditor
 import com.intellij.openapi.project.DumbAware
 import com.intellij.openapi.project.Project
 import com.intellij.openapi.ui.popup.JBPopupFactory
 import com.intellij.openapi.vfs.VirtualFile
 import com.intellij.ui.EditorNotificationProvider
-import com.intellij.ui.JBColor
 import com.intellij.ui.SimpleColoredComponent
 import com.intellij.ui.SimpleListCellRenderer
 import com.intellij.ui.SimpleTextAttributes
@@ -70,16 +58,16 @@ class ReviewBanner : EditorNotificationProvider, DumbAware {
             service.nextUnreviewed(change?.path)?.let { openChange(project, it) }
                 ?: notify(project, "Every file is viewed", if (meta.target.prNumber != null) "Finish the review when you're ready." else "Exit the review when you're done.")
         }.apply { toolTipText = "Next unviewed file (⌥N)" }
-        val pending = service.pendingDrafts().size
+        val pending = ReviewDrafts.of(project).pending().size
         val finish = JButton("Finish review", if (pending > 0) CountIcon(pending) else null).apply {
             putClientProperty(DarculaButtonUI.DEFAULT_STYLE_KEY, true)
             isOpaque = false; isFocusable = false
             horizontalTextPosition = SwingConstants.LEFT
-            addActionListener { finishPopup(project, this) }
+            addActionListener { showFinishReview(project, this) }
         }.takeIf { meta.target.prNumber != null } // a branch has nowhere to post a review
         val exit = flat("Exit", AllIcons.Actions.Exit) { exitReview(project) }.apply { toolTipText = "Back to ${service.active?.originalRef}" }
         return JPanel(BorderLayout()).apply {
-            background = if (service.flashing) FLASH else ReviewColors.review
+            background = if (service.flashing) ReviewColors.flash else ReviewColors.review
             border = JBUI.Borders.compound(JBUI.Borders.customLineBottom(ReviewColors.reviewLine), JBUI.Borders.empty(3, 12, 3, 8))
             add(row(what, scope, gap = 6), BorderLayout.WEST)
             add(lock.apply { border = JBUI.Borders.emptyLeft(6) }) // centre: a long flash message truncates, never overlaps Prev
@@ -97,7 +85,7 @@ class ReviewBanner : EditorNotificationProvider, DumbAware {
             if (change == null) append("   not changed in this scope", SimpleTextAttributes.GRAYED_SMALL_ATTRIBUTES)
         }
         val bar = JPanel(BorderLayout()).apply {
-            background = EditorColorsManager.getInstance().globalScheme.defaultBackground
+            background = ReviewColors.surface
             border = JBUI.Borders.compound(JBUI.Borders.customLineBottom(ReviewColors.line), JBUI.Borders.empty(2, 12, 2, 8))
             add(crumb)
         }
@@ -115,12 +103,11 @@ class ReviewBanner : EditorNotificationProvider, DumbAware {
             cursor = Cursor.getPredefinedCursor(Cursor.HAND_CURSOR)
             addActionListener { service.toggleReviewed(change) }
         }
-        val defaultForeground = toggle.foreground
         fun show() {
             val viewed = service.badge(change) == Badge.REVIEWED
             toggle.icon = if (viewed) BadgeIcon(Badge.REVIEWED) else BOX
             toggle.toolTipText = if (viewed) "Viewed — click to unmark (⌥R)" else "Mark viewed (⌥R)"
-            toggle.foreground = if (viewed) ReviewColors.ok else defaultForeground
+            toggle.foreground = if (viewed) ReviewColors.ok else ReviewColors.buttonText
         }
         show()
         // The platform rebuilds this bar ~220 ms after a change (measured); the button repaints at once instead,
@@ -169,60 +156,6 @@ class ReviewBanner : EditorNotificationProvider, DumbAware {
         }
     }
 
-    /** Finish review: summary, verdict, then everything goes to GitHub as one review. */
-    private fun finishPopup(project: Project, anchor: JComponent) {
-        val service = ReviewService.of(project)
-        val pending = service.pendingDrafts().size
-        val summary = JBTextArea(service.summaryDraft, 4, 0).apply {
-            lineWrap = true; wrapStyleWord = true; font = JBFont.label(); emptyText.text = "Leave a summary (optional)"
-        }
-        val group = ButtonGroup()
-        val muted = ColorUtil.toHex(ReviewColors.muted)
-        val verdicts = Verdict.entries.associateWith { v ->
-            JRadioButton("<html>${v.label}<br><font color='#$muted'>${v.hint}</font></html>", v == Verdict.COMMENT).apply {
-                isOpaque = false; group.add(this)
-                isEnabled = v == Verdict.COMMENT || !service.ownPullRequest
-                if (!isEnabled) toolTipText = submitBlocker(v, "", 0, ownPullRequest = true) // why it is greyed, on hover
-            }
-        }
-        lateinit var popup: JBPopup
-        val verdict = { verdicts.entries.first { it.value.isSelected }.key }
-        val cancel = JButton("Cancel").apply { addActionListener { popup.cancel() }; cursor = Cursor.getPredefinedCursor(Cursor.HAND_CURSOR) }
-        val submit = JButton("Submit to GitHub").apply {
-            putClientProperty(DarculaButtonUI.DEFAULT_STYLE_KEY, true)
-            cursor = Cursor.getPredefinedCursor(Cursor.HAND_CURSOR)
-            addActionListener { popup.cancel(); finishReview(project, summary.text.trim(), verdict()) }
-        }
-        val update = {
-            val blocker = submitBlocker(verdict(), summary.text, pending, service.ownPullRequest)
-            submit.isEnabled = blocker == null
-            submit.toolTipText = blocker // a greyed-out Submit says why on hover
-        }
-        summary.document.addDocumentListener(object : DocumentAdapter() {
-            override fun textChanged(e: DocumentEvent) { service.summaryDraft = summary.text; update() }
-        })
-        verdicts.values.forEach { it.addActionListener { update() } }
-        update()
-        // drafts written on another scope's version of a file go out only from that scope: say so, never skip them silently
-        val waiting = service.meta?.drafts.orEmpty().count { !it.posted } - pending
-        val comments = (if (pending > 0) "$pending pending comment${if (pending > 1) "s" else ""} will be posted with it." else "No inline comments yet.") +
-            (if (waiting > 0) " $waiting more ${if (waiting == 1) "waits for the scope it was" else "wait for the scopes they were"} written in." else "")
-        val content = stack(
-            JBLabel("Finish your review").apply { font = JBFont.label().asBold() }, vgap(4),
-            wrappingText("$comments ${service.reviewedCount()} of ${service.changes.size} files viewed.", JBFont.small()).apply {
-                foreground = ReviewColors.muted; setSize(JBUI.scale(356), Short.MAX_VALUE.toInt())
-            }, vgap(10),
-            JBScrollPane(summary), vgap(8),
-            *verdicts.values.flatMap { listOf(it, vgap(2)) }.toTypedArray(), vgap(8),
-            JPanel(FlowLayout(FlowLayout.RIGHT, JBUI.scale(8), 0)).apply { isOpaque = false; add(cancel); add(submit) },
-        ).apply { border = JBUI.Borders.empty(12); preferredSize = Dimension(JBUI.scale(380), preferredSize.height) }
-        popup = JBPopupFactory.getInstance().createComponentPopupBuilder(content, summary)
-            .setRequestFocus(true).setFocusable(true).setCancelOnClickOutside(true)
-            .setCancelOnWindowDeactivation(false) // switching to another app and back keeps it open
-            .createPopup()
-        popup.showUnderneathOf(anchor)
-    }
-
     /** A borderless button in the review bar's colour. */
     private fun flat(text: String, icon: Icon, iconRight: Boolean = false, onClick: (JComponent) -> Unit): JButton = JButton(text, icon).apply {
         isContentAreaFilled = false; isBorderPainted = false; isOpaque = false; isFocusable = false
@@ -235,7 +168,6 @@ class ReviewBanner : EditorNotificationProvider, DumbAware {
 
     private companion object {
         val LIVE_VIEWED = Key.create<com.intellij.openapi.Disposable>("review-lens.liveViewed")
-        val FLASH = JBColor(Color(0xf8d79a), Color(0x6b5320))
 
         /** The pending-comment count on Finish review: a translucent white pill, as in the prototype. */
         class CountIcon(private val count: Int) : Icon {
