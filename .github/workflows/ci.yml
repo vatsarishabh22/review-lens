@@ -26,11 +26,27 @@ jobs:
           name: review-lens-plugin
           path: build/distributions/*.zip
 
-  verify:
-    name: Verify plugin
+  ides:
+    name: List IDEs to verify
     runs-on: ubuntu-latest
+    outputs:
+      ides: ${{ steps.list.outputs.ides }}
     steps:
-      # five unpacked IDEs overflow the runner's disk; drop preinstalled SDKs we never use
+      - uses: actions/checkout@v4
+      # gradle.properties is the one list; each entry becomes a verify job
+      - id: list
+        run: echo "ides=$(grep '^verifyIdes=' gradle.properties | cut -d= -f2 | jq -Rc 'split(",")')" >> "$GITHUB_OUTPUT"
+
+  verify:
+    name: Verify ${{ matrix.ide }}
+    needs: ides
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        ide: ${{ fromJSON(needs.ides.outputs.ides) }}
+    steps:
+      # an unpacked IDE plus the plugins it needs can overflow the runner's disk; drop preinstalled SDKs we never use
       - run: sudo rm -rf /usr/share/dotnet /usr/local/lib/android /opt/ghc
       - uses: actions/checkout@v4
       - uses: actions/setup-java@v4
@@ -38,5 +54,14 @@ jobs:
           distribution: temurin
           java-version: 25
       - uses: gradle/actions/setup-gradle@v4
-      # JetBrains' Plugin Verifier against IntelliJ IDEA, PyCharm, WebStorm and GoLand (build.gradle.kts)
-      - run: ./gradlew verifyPlugin
+      # JetBrains' Plugin Verifier against this one IDE
+      - run: ./gradlew verifyPlugin -PverifyIdes=${{ matrix.ide }}
+
+  # the one check main's protection requires, whatever the IDE list holds
+  verified:
+    name: Verify plugin
+    needs: verify
+    if: always()
+    runs-on: ubuntu-latest
+    steps:
+      - run: test "${{ needs.verify.result }}" = success
