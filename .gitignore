@@ -7,3 +7,4 @@ build/
 # PyCharm sets up a Python env when this folder is opened; this is a Kotlin project
 .venv/
 /pyproject.toml
+CLAUDE.local.md
