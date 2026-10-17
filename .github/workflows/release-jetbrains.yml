@@ -35,8 +35,14 @@ jobs:
       - name: GitHub Release
         env:
           GH_TOKEN: ${{ github.token }}
-        run: gh release create "$VERSION" build/distributions/*.zip --title "Review Lens for JetBrains ${VERSION#jetbrains-v}" --generate-notes ${PREVIOUS:+--notes-start-tag "$PREVIOUS"}
-      # Marketplace: skipped until the PUBLISH_TOKEN and signing secrets are added to the repo
+        # re-runnable: when a later step (the Marketplace publish) failed, Re-run finds the release and refreshes its file
+        run: |
+          if gh release view "$VERSION" >/dev/null 2>&1; then
+            gh release upload "$VERSION" build/distributions/*.zip --clobber
+          else
+            gh release create "$VERSION" build/distributions/*.zip --title "Review Lens for JetBrains ${VERSION#jetbrains-v}" --generate-notes ${PREVIOUS:+--notes-start-tag "$PREVIOUS"}
+          fi
+      # Marketplace: skipped while the PUBLISH_TOKEN secret is missing; the build is signed when the signing secrets exist
       - name: Publish to JetBrains Marketplace
         env:
           PUBLISH_TOKEN: ${{ secrets.PUBLISH_TOKEN }}

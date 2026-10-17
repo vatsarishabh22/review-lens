@@ -39,7 +39,13 @@ jobs:
       - name: GitHub Release
         env:
           GH_TOKEN: ${{ github.token }}
-        run: gh release create "$VERSION" ./*.vsix --title "Review Lens for VS Code ${VERSION#vscode-v}" --generate-notes ${PREVIOUS:+--notes-start-tag "$PREVIOUS"} --latest=false
+        # re-runnable: when a later step (the Marketplace publish) failed, Re-run finds the release and refreshes its file
+        run: |
+          if gh release view "$VERSION" >/dev/null 2>&1; then
+            gh release upload "$VERSION" ./*.vsix --clobber
+          else
+            gh release create "$VERSION" ./*.vsix --title "Review Lens for VS Code ${VERSION#vscode-v}" --generate-notes ${PREVIOUS:+--notes-start-tag "$PREVIOUS"} --latest=false
+          fi
       # Marketplaces: each step is skipped until its token is added to the repo secrets
       - name: Publish to the VS Code Marketplace
         if: env.HAS_VSCE_TOKEN == 'true'

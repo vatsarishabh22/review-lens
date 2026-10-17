@@ -58,6 +58,8 @@ Each editor releases on its own, from a tag named after its folder. The version 
 | VS Code | `vscode-v0.2.0` | Tests and packages, then attaches the `.vsix` to a GitHub Release, then publishes to the VS Code Marketplace and Open VSX | `VSCE_PAT`, `OVSX_PAT` |
 
 Each publishing step is skipped until its secret exists, so a tag always produces at least the GitHub Release.
+If a publish fails (a marketplace outage, an expired token, a version still in review), fix the cause and click
+**Re-run failed jobs**. The release step finds the existing GitHub Release and only refreshes its file.
 
 ```bash
 git tag vscode-v0.1.0 && git push origin vscode-v0.1.0
