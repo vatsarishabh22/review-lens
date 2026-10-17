@@ -1,3 +1,4 @@
+import org.jetbrains.intellij.platform.gradle.IntelliJPlatformType
 import org.jetbrains.kotlin.gradle.dsl.JvmTarget
 import org.jetbrains.kotlin.gradle.tasks.KotlinCompile
 
@@ -7,7 +8,8 @@ plugins {
 }
 
 group = "io.github.vatsarishabh22"
-version = "0.1.0"
+// One version for the build; a release passes its tag (-PpluginVersion=1.2.0)
+version = providers.gradleProperty("pluginVersion").get()
 
 repositories {
     mavenCentral()
@@ -19,8 +21,11 @@ repositories {
 
 dependencies {
     intellijPlatform {
-        local(providers.gradleProperty("platformPath"))
+        // The installed PyCharm when there is one (no download); CI downloads the same version instead
+        val installed = providers.gradleProperty("platformPath").orNull?.takeIf { file(it).exists() }
+        if (installed != null) local(installed) else pycharm(providers.gradleProperty("platformVersion").get())
         bundledModule("intellij.platform.vcs.impl") // SimpleLocalLineStatusTracker for the review gutter
+        pluginVerifier()
     }
     testImplementation("junit:junit:4.13.2")
 }
@@ -38,6 +43,21 @@ tasks.withType<KotlinCompile> {
 intellijPlatform {
     buildSearchableOptions = false
     pluginConfiguration { ideaVersion { sinceBuild = "261" } }
+    // JetBrains' compatibility check, against the IDEs the README promises
+    pluginVerification {
+        ides {
+            listOf(IntelliJPlatformType.IntellijIdea, IntelliJPlatformType.PyCharm, IntelliJPlatformType.WebStorm, IntelliJPlatformType.GoLand)
+                .forEach { create(it, "2026.1.5") }
+            create(IntelliJPlatformType.IntellijIdea, "2026.2.3")
+        }
+    }
+    // Marketplace release: read from CI secrets, unused until the Marketplace account exists
+    signing {
+        certificateChain = providers.environmentVariable("CERTIFICATE_CHAIN")
+        privateKey = providers.environmentVariable("PRIVATE_KEY")
+        password = providers.environmentVariable("PRIVATE_KEY_PASSWORD")
+    }
+    publishing { token = providers.environmentVariable("PUBLISH_TOKEN") }
 }
 
 // Dev only: a sandbox with JetBrains' Robot Server on :8082, so UI can be screenshotted and driven while building.
