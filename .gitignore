@@ -1,0 +1,6 @@
+.gradle/
+build/
+.idea/
+.kotlin/
+# IDE sandboxes created by runIde / runIdeForUiTests (hundreds of MB)
+.intellijPlatform/

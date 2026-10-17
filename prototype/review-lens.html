@@ -1,0 +1,777 @@
+<meta charset="utf-8">
+<title>Review Lens Prototype</title>
+<meta name="claude:viewport-fit-sides" content="cover">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600&family=JetBrains+Mono:wght@400;500&display=swap">
+<style>
+/* Layout: a PyCharm (New UI) window, same-window review mode. Page chrome above it is a thin scenario bar. */
+:root {
+  --page: #f2f3f5; --page-fg: #3b3f45;
+  --win: #ffffff; --panel: #f7f8fa; --panel-2: #ebecf0; --line: #dfe1e5; --fg: #1e1f22; --muted: #6c707e;
+  --accent: #3574f0; --accent-soft: #e6eeff; --sel: #d5e1ff; --hover: #eef0f3;
+  --review: #fff6e5; --review-line: #f2d9a6; --review-fg: #6b4e00;
+  --add: #5fb865; --add-bg: #e9f5e6; --mod: #6c9bd2; --mod-bg: #e7eef9; --del: #a8adbd; --del-bg: #fbe9e9; --del-fg: #b0303b;
+  --star: #e5a50a; --ok: #3b9b46; --warn: #c27c0e;
+  --kw: #0033b3; --str: #067d17; --com: #8c8c8c; --num: #1750eb; --dec: #9e880d; --fn: #00627a; --self: #94558d;
+  --shadow: 0 6px 24px rgba(20, 24, 36, .14);
+  --ui: "Inter", system-ui, -apple-system, "Segoe UI", sans-serif;
+  --mono: "JetBrains Mono", ui-monospace, "SF Mono", Menlo, monospace;
+}
+@media (prefers-color-scheme: dark) { :root:not([data-theme="light"]) {
+  --page: #141517; --page-fg: #b4b8bf;
+  --win: #1e1f22; --panel: #2b2d30; --panel-2: #393b40; --line: #393b40; --fg: #dfe1e5; --muted: #868a91;
+  --accent: #3574f0; --accent-soft: #25324d; --sel: #2e436e; --hover: #34363b;
+  --review: #3a3220; --review-line: #5c4b22; --review-fg: #f0d28c;
+  --add: #549159; --add-bg: #253a28; --mod: #375fad; --mod-bg: #22304a; --del: #6f737a; --del-bg: #402629; --del-fg: #f08f8f;
+  --star: #f2c55c; --ok: #5fb865; --warn: #e0a63a;
+  --kw: #cf8e6d; --str: #6aab73; --com: #7a7e85; --num: #2aacb8; --dec: #b3ae60; --fn: #56a8f5; --self: #94558d;
+  --shadow: 0 8px 28px rgba(0, 0, 0, .5); color-scheme: dark;
+} }
+:root[data-theme="dark"] {
+  --page: #141517; --page-fg: #b4b8bf;
+  --win: #1e1f22; --panel: #2b2d30; --panel-2: #393b40; --line: #393b40; --fg: #dfe1e5; --muted: #868a91;
+  --accent: #3574f0; --accent-soft: #25324d; --sel: #2e436e; --hover: #34363b;
+  --review: #3a3220; --review-line: #5c4b22; --review-fg: #f0d28c;
+  --add: #549159; --add-bg: #253a28; --mod: #375fad; --mod-bg: #22304a; --del: #6f737a; --del-bg: #402629; --del-fg: #f08f8f;
+  --star: #f2c55c; --ok: #5fb865; --warn: #e0a63a;
+  --kw: #cf8e6d; --str: #6aab73; --com: #7a7e85; --num: #2aacb8; --dec: #b3ae60; --fn: #56a8f5; --self: #94558d;
+  --shadow: 0 8px 28px rgba(0, 0, 0, .5); color-scheme: dark;
+}
+* { box-sizing: border-box; }
+body { background: var(--page); color: var(--page-fg); font: 13px/1.45 var(--ui); padding-left: max(16px, env(safe-area-inset-left, 0px)); padding-right: max(16px, env(safe-area-inset-right, 0px)); padding-block: 16px 32px; }
+button { font: inherit; color: inherit; background: none; border: 0; cursor: pointer; padding: 0; }
+button:focus-visible, [tabindex]:focus-visible, input:focus-visible, textarea:focus-visible { outline: 2px solid var(--accent); outline-offset: 1px; }
+svg { flex: none; }
+
+/* scenario bar (outside the IDE) */
+.scenario { max-width: 1320px; margin: 0 auto 12px; display: flex; flex-wrap: wrap; gap: 8px 20px; align-items: center; }
+.scenario h1 { font-size: 15px; font-weight: 600; margin: 0; color: var(--fg); }
+.scenario .hint { flex: 1 1 320px; min-width: 0; color: var(--page-fg); }
+.scenario .controls { display: flex; flex-wrap: wrap; gap: 8px; }
+.chip-btn { border: 1px solid var(--line); background: var(--win); color: var(--fg); border-radius: 6px; padding: 4px 10px; display: inline-flex; gap: 6px; align-items: center; }
+.chip-btn:hover { background: var(--hover); }
+.chip-btn input { margin: 0; }
+kbd { font: 11px var(--mono); border: 1px solid var(--line); border-bottom-width: 2px; border-radius: 4px; padding: 0 4px; background: var(--win); color: var(--fg); }
+
+/* IDE frame */
+.frame-scroll { max-width: 1320px; margin: 0 auto; overflow-x: auto; border-radius: 10px; box-shadow: var(--shadow); }
+.ide { min-width: 1080px; height: 760px; background: var(--win); color: var(--fg); display: grid; grid-template-rows: 40px 1fr 26px; border: 1px solid var(--line); border-radius: 10px; overflow: hidden; position: relative; }
+.titlebar { display: flex; align-items: center; gap: 14px; padding: 0 12px; background: var(--panel); border-bottom: 1px solid var(--line); }
+.lights { display: flex; gap: 8px; }
+.lights i { width: 12px; height: 12px; border-radius: 50%; background: #ff5f57; display: block; }
+.lights i:nth-child(2) { background: #febc2e; } .lights i:nth-child(3) { background: #28c840; }
+.widget { display: inline-flex; align-items: center; gap: 6px; padding: 4px 8px; border-radius: 6px; font-weight: 500; }
+.widget:hover { background: var(--hover); }
+.widget .badge-sq { width: 18px; height: 18px; border-radius: 4px; background: #4a8b5c; color: #fff; display: grid; place-items: center; font-size: 10px; font-weight: 600; }
+.widget.branch.in-review { background: var(--review); color: var(--review-fg); }
+.titlebar .spacer { flex: 1; }
+.titlebar .muted { color: var(--muted); font-weight: 400; }
+
+.body { display: grid; grid-template-columns: 40px 330px 1fr; min-height: 0; }
+.stripe { background: var(--panel); border-right: 1px solid var(--line); display: flex; flex-direction: column; align-items: center; gap: 4px; padding-top: 8px; }
+.stripe button { width: 30px; height: 30px; border-radius: 6px; display: grid; place-items: center; color: var(--muted); position: relative; }
+.stripe button:hover { background: var(--hover); color: var(--fg); }
+.stripe button.on { background: var(--sel); color: var(--fg); }
+.stripe .dot { position: absolute; top: 4px; right: 4px; width: 7px; height: 7px; border-radius: 50%; background: var(--accent); }
+.stripe .tip { position: absolute; left: 36px; white-space: nowrap; background: var(--fg); color: var(--win); font-size: 12px; padding: 3px 8px; border-radius: 4px; opacity: 0; pointer-events: none; z-index: 5; }
+.stripe button:hover .tip { opacity: 1; }
+
+.tool { background: var(--panel); border-right: 1px solid var(--line); display: flex; flex-direction: column; min-height: 0; min-width: 0; }
+.tool-head { height: 36px; flex: none; display: flex; align-items: center; gap: 8px; padding: 0 10px 0 12px; font-weight: 600; }
+.tool-head .grow { flex: 1; }
+.tool-body { flex: 1; overflow: auto; min-height: 0; }
+.icon-btn { width: 24px; height: 24px; border-radius: 5px; display: grid; place-items: center; color: var(--muted); }
+.icon-btn:hover { background: var(--hover); color: var(--fg); }
+
+/* trees */
+.row { display: flex; align-items: center; gap: 6px; height: 24px; padding-right: 10px; white-space: nowrap; cursor: default; position: relative; }
+.row:hover { background: var(--hover); }
+.row.sel { background: var(--sel); }
+.row .name { overflow: hidden; text-overflow: ellipsis; min-width: 0; }
+.row .after { margin-left: auto; display: flex; gap: 8px; align-items: center; color: var(--muted); font-size: 12px; }
+.row.dir { color: var(--muted); }
+.row.dimmed .name { color: var(--muted); }
+.row.strike .name { text-decoration: line-through; color: var(--muted); }
+.st { font: 600 11px var(--mono); width: 12px; text-align: center; }
+.st-A { color: var(--add); } .st-M { color: var(--mod); } .st-D { color: var(--del-fg); }
+.counts { font: 11px var(--mono); }
+.counts .p { color: var(--add); } .counts .m { color: var(--del-fg); }
+.mark { width: 16px; height: 16px; display: grid; place-items: center; border-radius: 4px; }
+.mark.check { color: var(--ok); }
+.mark.star { color: var(--star); }
+.mark.since { color: var(--warn); }
+button.mark:hover { background: var(--panel-2); }
+.n-star { display: inline-flex; gap: 2px; align-items: center; color: var(--star); font: 600 11px var(--ui); }
+
+/* PR list + detail */
+.search { margin: 0 10px 8px; display: flex; align-items: center; gap: 6px; border: 1px solid var(--line); border-radius: 6px; padding: 4px 8px; background: var(--win); color: var(--muted); }
+.search input { border: 0; outline: 0; background: transparent; color: var(--fg); font: inherit; flex: 1; min-width: 0; }
+.section-label { padding: 10px 12px 4px; font-size: 11px; letter-spacing: .04em; text-transform: uppercase; color: var(--muted); font-weight: 600; }
+.pr { display: grid; grid-template-columns: 26px 1fr; gap: 2px 10px; padding: 8px 12px; cursor: pointer; border-left: 2px solid transparent; }
+.pr:hover { background: var(--hover); }
+.pr.sel { background: var(--sel); border-left-color: var(--accent); }
+.avatar { width: 24px; height: 24px; border-radius: 50%; display: grid; place-items: center; font-size: 10px; font-weight: 600; color: #fff; grid-row: span 2; }
+.pr .t { font-weight: 500; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; min-width: 0; }
+.pr .m { color: var(--muted); font-size: 12px; display: flex; gap: 8px; flex-wrap: wrap; align-items: center; }
+.pill { display: inline-flex; align-items: center; gap: 4px; padding: 0 6px; border-radius: 10px; font-size: 11px; font-weight: 500; line-height: 18px; }
+.pill.req { background: var(--accent-soft); color: var(--accent); }
+.pill.resume { background: var(--review); color: var(--review-fg); }
+.pill.ci { color: var(--ok); }
+.detail { padding: 4px 14px 16px; display: grid; gap: 12px; }
+.detail h2 { font-size: 15px; line-height: 1.35; margin: 0; text-wrap: balance; }
+.detail .meta { color: var(--muted); font-size: 12px; display: flex; flex-wrap: wrap; gap: 6px; align-items: center; }
+.branch-chip { font: 11px var(--mono); background: var(--panel-2); border-radius: 4px; padding: 1px 5px; color: var(--fg); }
+.desc { color: var(--fg); }
+.statline { display: flex; flex-wrap: wrap; gap: 4px 14px; font-size: 12px; color: var(--muted); }
+.scope { border: 1px solid var(--line); border-radius: 8px; background: var(--win); }
+.scope label { display: flex; gap: 8px; align-items: flex-start; padding: 6px 10px; cursor: pointer; }
+.scope label:hover { background: var(--hover); }
+.scope label + label { border-top: 1px solid var(--line); }
+.scope .sha { font: 11px var(--mono); color: var(--muted); }
+.scope .who { font-size: 11px; color: var(--muted); }
+.scope input { margin-top: 3px; accent-color: var(--accent); }
+.primary { background: var(--accent); color: #fff; border-radius: 6px; padding: 7px 14px; font-weight: 600; }
+.primary:hover { filter: brightness(1.08); }
+.secondary { border: 1px solid var(--line); border-radius: 6px; padding: 6px 12px; background: var(--win); }
+.secondary:hover { background: var(--hover); }
+.fineprint { font-size: 12px; color: var(--muted); }
+.card { border: 1px solid var(--review-line); background: var(--review); color: var(--fg); border-radius: 8px; padding: 10px 12px; display: grid; gap: 8px; }
+.card ul { margin: 0; padding-left: 18px; font: 12px var(--mono); }
+.card .btns { display: flex; gap: 8px; flex-wrap: wrap; }
+.steps { display: grid; gap: 6px; }
+.step { display: flex; gap: 8px; align-items: center; color: var(--muted); }
+.step.done { color: var(--fg); }
+.step.now { color: var(--fg); font-weight: 500; }
+.spin { width: 14px; height: 14px; border: 2px solid var(--line); border-top-color: var(--accent); border-radius: 50%; animation: spin .8s linear infinite; }
+@keyframes spin { to { transform: rotate(360deg); } }
+
+/* review panel header */
+.rv-head { padding: 2px 12px 10px; display: grid; gap: 8px; border-bottom: 1px solid var(--line); }
+.rv-title { font-weight: 600; line-height: 1.35; }
+.rv-title .num { color: var(--muted); font-weight: 500; }
+.progress { height: 6px; border-radius: 3px; background: var(--panel-2); overflow: hidden; }
+.progress i { display: block; height: 100%; background: var(--ok); transition: width .3s; }
+.rv-sub { display: flex; justify-content: space-between; color: var(--muted); font-size: 12px; }
+.seg { display: inline-flex; border: 1px solid var(--line); border-radius: 6px; overflow: hidden; background: var(--win); }
+.seg button { padding: 3px 10px; font-size: 12px; color: var(--muted); }
+.seg button.on { background: var(--sel); color: var(--fg); font-weight: 500; }
+.seg button + button { border-left: 1px solid var(--line); }
+
+/* editor area */
+.editor-area { display: flex; flex-direction: column; min-width: 0; min-height: 0; position: relative; }
+.tabs { height: 36px; flex: none; display: flex; align-items: stretch; border-bottom: 1px solid var(--line); background: var(--win); overflow: hidden; }
+.tab { display: flex; align-items: center; gap: 6px; padding: 0 12px; color: var(--muted); border-right: 1px solid var(--line); white-space: nowrap; }
+.tab.on { color: var(--fg); box-shadow: inset 0 -2px 0 var(--accent); }
+.tab .x { opacity: .6; }
+.reviewbar { flex: none; display: flex; align-items: center; gap: 10px; padding: 6px 12px; background: var(--review); border-bottom: 1px solid var(--review-line); color: var(--review-fg); position: relative; }
+.reviewbar .what { font-weight: 600; white-space: nowrap; }
+.reviewbar .scope-btn { display: inline-flex; gap: 4px; align-items: center; border-radius: 5px; padding: 2px 6px; font-weight: 500; }
+.reviewbar .scope-btn:hover, .reviewbar .rb:hover { background: rgba(127, 127, 127, .16); }
+.reviewbar .grow { flex: 1; min-width: 0; }
+.reviewbar .rb { display: inline-flex; gap: 6px; align-items: center; border-radius: 5px; padding: 3px 8px; white-space: nowrap; }
+.reviewbar .rb.strong { background: var(--accent); color: #fff; font-weight: 600; }
+.reviewbar .rb.strong:hover { filter: brightness(1.08); background: var(--accent); }
+.reviewbar .readonly { font-size: 12px; opacity: .9; display: inline-flex; gap: 6px; align-items: center; }
+.reviewbar .flash { animation: flash 1.2s ease; }
+@keyframes flash { 0%, 30% { background: rgba(240, 160, 40, .35); } 100% { background: transparent; } }
+.count-pill { background: rgba(255, 255, 255, .25); border-radius: 9px; padding: 0 6px; font-size: 11px; }
+.editor { flex: 1; min-height: 0; overflow: auto; background: var(--win); position: relative; outline: none; }
+.code { font: 13px/20px var(--mono); padding: 6px 0 40px; min-width: max-content; }
+.ln { display: grid; grid-template-columns: 22px 44px 10px 1fr; align-items: stretch; min-height: 20px; position: relative; }
+.ln:hover .plus { opacity: 1; }
+.ln.caret { background: var(--hover); }
+.ln .plus { opacity: 0; width: 18px; height: 18px; margin: 1px 2px; border-radius: 4px; background: var(--accent); color: #fff; display: grid; place-items: center; }
+.ln .no { text-align: right; padding-right: 8px; color: var(--muted); user-select: none; }
+.ln .bar { position: relative; }
+.ln .bar button { position: absolute; left: 2px; top: 0; bottom: 0; width: 5px; border-radius: 1px; }
+.ln.k-add .bar button { background: var(--add); }
+.ln.k-mod .bar button { background: var(--mod); }
+.ln .bar .tri { position: absolute; left: 0; top: -5px; width: 0; height: 0; border-left: 8px solid var(--del); border-top: 5px solid transparent; border-bottom: 5px solid transparent; }
+.ln .txt { white-space: pre; padding-left: 8px; padding-right: 24px; }
+.blame { color: var(--muted); font-style: italic; margin-left: 32px; font-family: var(--ui); font-size: 12px; cursor: help; position: relative; }
+.blame:hover { color: var(--fg); }
+.blame-card { position: absolute; left: 0; top: 20px; z-index: 6; width: 340px; white-space: normal; font-style: normal; background: var(--win); color: var(--fg); border: 1px solid var(--line); border-radius: 8px; box-shadow: var(--shadow); padding: 10px 12px; display: none; font-size: 12px; line-height: 1.5; }
+.blame:hover .blame-card { display: block; }
+.blame-card b { font-size: 13px; }
+.blame-card .sha { font: 11px var(--mono); color: var(--muted); }
+.hunk-pop { margin: 0 0 4px 76px; border: 1px solid var(--line); border-radius: 6px; background: var(--panel); box-shadow: var(--shadow); max-width: 640px; overflow: hidden; }
+.hunk-pop .hp-head { display: flex; gap: 8px; align-items: center; padding: 4px 8px; font: 12px var(--ui); color: var(--muted); border-bottom: 1px solid var(--line); }
+.hunk-pop .hp-head .grow { flex: 1; }
+.hunk-pop pre { margin: 0; padding: 4px 10px; font: 13px/20px var(--mono); background: var(--del-bg); color: var(--fg); white-space: pre; overflow-x: auto; }
+.hunk-pop .hp-none { padding: 6px 10px; font: 12px var(--ui); color: var(--muted); }
+.comment-row { margin: 2px 0 6px 76px; max-width: 620px; border: 1px solid var(--line); border-radius: 8px; background: var(--win); box-shadow: var(--shadow); font: 13px/1.45 var(--ui); overflow: hidden; }
+.comment-row .c { padding: 8px 12px; display: grid; gap: 2px; }
+.comment-row .c + .c { border-top: 1px solid var(--line); }
+.comment-row .who { font-weight: 600; display: flex; gap: 8px; align-items: center; }
+.comment-row .who .pill { background: var(--review); color: var(--review-fg); }
+.comment-row textarea { width: 100%; min-height: 64px; border: 0; padding: 10px 12px; background: var(--win); color: var(--fg); font: inherit; resize: vertical; outline: none; }
+.comment-row .actions { display: flex; justify-content: space-between; align-items: center; gap: 8px; padding: 6px 10px; border-top: 1px solid var(--line); background: var(--panel); }
+.comment-row .actions .fineprint { flex: 1; }
+.file-tools { flex: none; display: flex; align-items: center; gap: 8px; padding: 4px 12px; border-bottom: 1px solid var(--line); background: var(--win); min-width: 0; }
+.file-tools .crumb { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; color: var(--muted); font-size: 12px; }
+.file-tools .crumb b { color: var(--fg); font-weight: 500; }
+.viewed-toggle { display: inline-flex; gap: 6px; align-items: center; background: var(--win); border: 1px solid var(--line); border-radius: 6px; padding: 3px 10px; font-size: 12px; height: 26px; }
+.viewed-toggle.on { color: var(--ok); border-color: var(--ok); }
+.file-tools .seg { height: 26px; }
+.diff { display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, 1fr); font: 13px/20px var(--mono); padding-bottom: 40px; }
+.diff > div { overflow-x: auto; min-width: 0; }
+.diff .col { min-width: max-content; }
+.diff .side-head { position: sticky; top: 0; background: var(--panel); border-bottom: 1px solid var(--line); padding: 6px 12px; font: 12px var(--ui); color: var(--muted); z-index: 2; }
+.diff .side-head b { color: var(--fg); font-weight: 600; }
+.dl { display: grid; grid-template-columns: 40px 1fr; min-height: 20px; }
+.dl .no { text-align: right; padding-right: 8px; color: var(--muted); }
+.dl .txt { white-space: pre; padding: 0 16px 0 6px; }
+.dl.del { background: var(--del-bg); } .dl.add { background: var(--add-bg); } .dl.mod { background: var(--mod-bg); }
+.dl.empty { background: repeating-linear-gradient(135deg, transparent 0 5px, var(--panel-2) 5px 7px); }
+.diff .left { border-right: 1px solid var(--line); }
+.tok-kw { color: var(--kw); } .tok-str { color: var(--str); } .tok-com { color: var(--com); font-style: italic; } .tok-num { color: var(--num); } .tok-dec { color: var(--dec); } .tok-fn { color: var(--fn); } .tok-self { color: var(--self); }
+.empty-editor { height: 100%; display: grid; place-items: center; color: var(--muted); text-align: center; }
+.empty-editor p { margin: 4px 0; }
+
+/* popovers */
+.pop { position: absolute; z-index: 20; background: var(--win); color: var(--fg); border: 1px solid var(--line); border-radius: 8px; box-shadow: var(--shadow); padding: 6px; }
+.pop .item { display: flex; gap: 8px; align-items: center; padding: 6px 10px; border-radius: 5px; width: 100%; text-align: left; }
+.pop .item:hover { background: var(--hover); }
+.pop .item .sha { font: 11px var(--mono); color: var(--muted); }
+.pop .item .tick { width: 14px; color: var(--accent); }
+.submit-pop { width: 380px; padding: 12px; display: grid; gap: 10px; }
+.submit-pop h3 { margin: 0; font-size: 14px; }
+.submit-pop textarea { width: 100%; min-height: 70px; border: 1px solid var(--line); border-radius: 6px; padding: 8px; background: var(--win); color: var(--fg); font: inherit; resize: vertical; }
+.verdicts { display: grid; gap: 4px; }
+.verdicts label { display: flex; gap: 8px; align-items: flex-start; padding: 4px 6px; border-radius: 5px; cursor: pointer; }
+.verdicts label:hover { background: var(--hover); }
+.verdicts small { display: block; color: var(--muted); }
+.verdicts input { accent-color: var(--accent); margin-top: 3px; }
+
+/* status bar + toast */
+.statusbar { display: flex; align-items: center; gap: 14px; padding: 0 12px; background: var(--panel); border-top: 1px solid var(--line); color: var(--muted); font-size: 12px; }
+.statusbar .grow { flex: 1; }
+.statusbar .rv { color: var(--review-fg); background: var(--review); padding: 0 8px; border-radius: 4px; }
+.toast { position: absolute; right: 16px; bottom: 40px; z-index: 30; width: 360px; background: var(--win); color: var(--fg); border: 1px solid var(--line); border-radius: 8px; box-shadow: var(--shadow); padding: 12px 14px; display: grid; grid-template-columns: 18px 1fr; gap: 4px 10px; animation: rise .25s ease; }
+.toast b { font-weight: 600; }
+.toast .ic { color: var(--ok); grid-row: span 2; margin-top: 1px; }
+.toast .sub { color: var(--muted); font-size: 12px; }
+@keyframes rise { from { transform: translateY(8px); opacity: 0; } }
+@media (prefers-reduced-motion: reduce) { *, *::before, *::after { animation: none !important; transition: none !important; } }
+</style>
+
+<div class="scenario">
+  <h1>Review Lens prototype</h1>
+  <div class="hint">Click the <b>Review</b> icon on the left stripe, open <b>#147</b>, and start a review. Sample data. In review: <kbd>⌥N</kbd> next file, <kbd>⌥R</kbd> mark viewed, <kbd>⌥D</kbd> diff, <kbd>Esc</kbd> close.</div>
+  <div class="controls">
+    <label class="chip-btn"><input type="checkbox" id="opt-dirty" checked> Uncommitted work on my branch</label>
+    <button class="chip-btn" id="opt-resume">Returning reviewer</button>
+    <button class="chip-btn" id="opt-reset">Reset</button>
+  </div>
+</div>
+<div class="frame-scroll"><div class="ide" id="ide"></div></div>
+
+<script>
+// ---------- sample data ----------
+const ME = { name: "Rishabh Vatsa", initials: "RV", color: "#7b61c9" };
+const PEOPLE = {
+  alice: { name: "Alice Chen", initials: "AC", color: "#c2185b" },
+  bob: { name: "Bob Diaz", initials: "BD", color: "#00897b" },
+  cara: { name: "Cara Novak", initials: "CN", color: "#ef6c00" },
+  dan: { name: "Dan Ito", initials: "DI", color: "#3949ab" },
+};
+const COMMITS = [
+  { sha: "a1f3c2e", msg: "feat(bucket): S3 client and key layout for the ETL bucket", body: "One client owns the bucket name and retries; keys are typed so nobody hand-builds S3 paths.", who: "alice", when: "3 days ago" },
+  { sha: "7be41d0", msg: "feat(invoices): invoice export vocabulary and model", body: "Field names follow the accounting export's column headers, so the parser and the table agree.", who: "alice", when: "3 days ago" },
+  { sha: "3c9e8aa", msg: "feat(invoices): repository writes invoice exports to the bucket", body: "Raw JSON goes to the bucket for replay; parsed rows go to Postgres with the bucket URI for lineage.", who: "bob", when: "2 days ago" },
+  { sha: "d02f7b1", msg: "chore(config): ETL_BUCKET settings", body: "Defaults to the staging bucket in eu-west-1.", who: "alice", when: "yesterday" },
+  { sha: "e91a4c3", msg: "refactor(invoices): drop legacy invoice parser", body: "The regex parser misread amounts with thousands separators; the vocabulary-driven parser replaces it.", who: "bob", when: "5 hours ago" },
+];
+// Entry kinds: c = context, a = added, m = modified [new, old], d = deleted lines before the next line.
+const FILES = [
+  { path: "requirements.txt", status: "M", lines: [
+    ["c", "fastapi==0.118.0"], ["c", "sqlalchemy==2.0.43"], ["c", "pydantic-settings==2.11.0"], ["a", "boto3==1.40.50", 0], ["c", "opentelemetry-sdk==1.37.0"] ] },
+  { path: "src/app/core/config.py", status: "M", lines: [
+    ["c", "from pydantic_settings import BaseSettings, SettingsConfigDict"], ["c", ""], ["c", ""],
+    ["c", "class Settings(BaseSettings):"], ["c", "    model_config = SettingsConfigDict(env_file=\".env\", extra=\"ignore\")"], ["c", ""],
+    ["c", "    database_url: str"], ["c", "    redis_url: str = \"redis://localhost:6379/0\""],
+    ["m", "    log_level: str = \"INFO\"", "    log_level: str = \"DEBUG\"", 3],
+    ["a", "    etl_bucket: str = \"acme-etl-staging\"", 3], ["a", "    etl_bucket_region: str = \"eu-west-1\"", 3],
+    ["c", ""], ["c", ""], ["c", "settings = Settings()"] ] },
+  { path: "src/app/modules/invoices/export/vocabulary.py", status: "A", lines: [
+    "\"\"\"Fields we read from an invoice export, in the accounting system's wording.\"\"\"", "from enum import StrEnum", "", "",
+    "class InvoiceField(StrEnum):", "    CUSTOMER_NAME = \"bill_to_name\"", "    QUANTITY = \"quantity_ordered\"",
+    "    UNIT_PRICE = \"unit_price\"", "    TERMS_DAYS = \"payment_terms_days\"", "    CURRENCY = \"currency_code\"", "", "",
+    "# Invoices fall due after 30 days; trusted accounts get 90.", "PAYMENT_TERMS_DAYS = (30, 90)",
+  ].map(t => ["a", t, 1]) },
+  { path: "src/app/modules/invoices/legacy_invoice_parser.py", status: "D", lines: [
+    ["d", ["\"\"\"Old regex parser for invoice exports. Replaced by the vocabulary-driven parser.\"\"\"", "import re", "",
+      "ROW = re.compile(r\"^(?P<name>.+?)\\s+(?P<qty>[\\d,]+)\\s+(?P<price>[\\d.]+)$\")", "", "",
+      "def parse(text: str) -> list[dict]:", "    return [m.groupdict() for line in text.splitlines() if (m := ROW.match(line))]"], 4] ] },
+  { path: "src/app/modules/invoices/models.py", status: "M", lines: [
+    ["c", "from datetime import date"], ["c", "from decimal import Decimal"], ["c", ""],
+    ["c", "from sqlalchemy import Date, ForeignKey, Numeric, String"], ["c", "from sqlalchemy.orm import Mapped, mapped_column"], ["c", ""],
+    ["c", "from app.platform.db import Base"], ["c", ""], ["c", ""],
+    ["c", "class Order(Base):"], ["c", "    __tablename__ = \"orders\""], ["c", ""],
+    ["c", "    id: Mapped[int] = mapped_column(primary_key=True)"], ["c", "    order_ref: Mapped[str] = mapped_column(String(32), unique=True)"],
+    ["c", "    placed_on: Mapped[date] = mapped_column(Date)"],
+    ["m", "    total_net: Mapped[Decimal] = mapped_column(Numeric(12, 2))", "    total: Mapped[str] = mapped_column(String(32))", 1],
+    ["a", "    total_tax: Mapped[Decimal] = mapped_column(Numeric(12, 2))", 1], ["c", ""], ["c", ""],
+    ["a", "class InvoiceLine(Base):", 1], ["a", "    __tablename__ = \"invoice_line\"", 1], ["a", "", 1],
+    ["a", "    id: Mapped[int] = mapped_column(primary_key=True)", 1], ["a", "    order_id: Mapped[int] = mapped_column(ForeignKey(\"orders.id\"))", 1],
+    ["a", "    customer_name: Mapped[str] = mapped_column(String(256))", 1], ["a", "    quantity: Mapped[int]", 1],
+    ["a", "    unit_price: Mapped[Decimal] = mapped_column(Numeric(12, 2))", 1], ["a", "    bucket_uri: Mapped[str] = mapped_column(String(512))", 2] ] },
+  { path: "src/app/modules/invoices/observability.py", status: "M", lines: [
+    ["c", "import logging"], ["c", ""], ["c", "from opentelemetry import metrics"], ["c", ""],
+    ["c", "log = logging.getLogger(\"invoices\")"], ["c", "meter = metrics.get_meter(\"invoices\")"], ["c", ""],
+    ["c", "orders_parsed = meter.create_counter(\"invoices.orders.parsed\")"],
+    ["d", ["parse_failures = meter.create_counter(\"invoices.parse.failures\")"], 4],
+    ["a", "invoice_lines_saved = meter.create_counter(", 2], ["a", "    \"invoices.lines.saved\", description=\"Invoice lines written to the bucket\"", 2], ["a", ")", 2],
+    ["c", ""], ["c", ""], ["c", "def record_parse(order_ref: str, ok: bool) -> None:"], ["c", "    orders_parsed.add(1, {\"order_ref\": order_ref, \"ok\": ok})"] ] },
+  { path: "src/app/modules/invoices/repositories/invoice_line_repo.py", status: "A", lines: [
+    "\"\"\"Persists parsed invoice exports: the raw JSON to the bucket, the rows to Postgres.\"\"\"", "import json", "from datetime import date", "",
+    "from sqlalchemy.orm import Session", "", "from app.modules.invoices.export.vocabulary import InvoiceField", "from app.modules.invoices.models import InvoiceLine",
+    "from app.platform.bucket.client import BucketClient", "from app.platform.bucket.keys import BucketKey", "", "",
+    "class InvoiceLineRepo:", "    def __init__(self, session: Session, bucket: BucketClient) -> None:", "        self._session = session", "        self._bucket = bucket", "",
+    "    def save(self, order_id: int, order_ref: str, as_of: date, rows: list[dict]) -> int:",
+    "        key = BucketKey(\"invoices\", \"exports\", as_of, f\"{order_ref}.json\")", "        uri = self._bucket.put_json(key, json.dumps(rows).encode())",
+    "        for row in rows:", "            self._session.add(InvoiceLine(", "                order_id=order_id,",
+    "                customer_name=row[InvoiceField.CUSTOMER_NAME],", "                quantity=int(row[InvoiceField.QUANTITY]),",
+    "                unit_price=row[InvoiceField.UNIT_PRICE],", "                bucket_uri=uri,", "            ))", "        return len(rows)",
+  ].map(t => ["a", t, 2]) },
+  { path: "src/app/platform/bucket/client.py", status: "A", lines: [
+    "\"\"\"Thin S3 client for the ETL bucket: one place that knows the bucket name and retries.\"\"\"", "from __future__ import annotations", "",
+    "import boto3", "from botocore.config import Config", "", "from app.core.config import settings", "from app.platform.bucket.keys import BucketKey", "", "",
+    "class BucketClient:", "    \"\"\"Reads and writes objects under ETL_BUCKET; callers pass typed keys, never raw strings.\"\"\"", "",
+    "    def __init__(self, client=None) -> None:", "        self._s3 = client or boto3.client(\"s3\", config=Config(retries={\"max_attempts\": 5}))",
+    "        self._bucket = settings.etl_bucket", "", "    def put_json(self, key: BucketKey, body: bytes) -> str:",
+    "        self._s3.put_object(Bucket=self._bucket, Key=str(key), Body=body,", "                            ContentType=\"application/json\")",
+    "        return f\"s3://{self._bucket}/{key}\"", "", "    def get_json(self, key: BucketKey) -> bytes:",
+    "        return self._s3.get_object(Bucket=self._bucket, Key=str(key))[\"Body\"].read()",
+  ].map(t => ["a", t, 0]) },
+  { path: "src/app/platform/bucket/keys.py", status: "A", lines: [
+    "\"\"\"Key layout for the ETL bucket. Changing it moves data: add a version, never edit in place.\"\"\"", "from dataclasses import dataclass", "from datetime import date", "", "",
+    "@dataclass(frozen=True)", "class BucketKey:", "    domain: str", "    dataset: str", "    as_of: date", "    name: str", "",
+    "    def __str__(self) -> str:", "        return f\"{self.domain}/{self.dataset}/v1/{self.as_of:%Y/%m/%d}/{self.name}\"",
+  ].map(t => ["a", t, 0]) },
+];
+const OWN_FILE = { path: "src/app/modules/payments/refunds.py", lines: [
+  "\"\"\"Applies refund webhooks to payments; one refund id applies exactly once.\"\"\"", "from decimal import Decimal", "",
+  "from app.modules.payments.models import Payment, Refund", "from app.platform.db import session_scope", "", "",
+  "def apply_refund(refund_id: str, amount: Decimal, gateway_status: str) -> Refund | None:", "    with session_scope() as session:",
+  "        payment = session.query(Payment).filter_by(refund_id=refund_id).one_or_none()", "        if payment is None or payment.refunded:", "            return None",
+  "        # TODO: reconcile partial refunds from the nightly gateway report", "        payment.refunded = gateway_status == \"SUCCEEDED\"",
+  "        return Refund(payment_id=payment.id, amount=amount, status=gateway_status)" ] };
+const OTHER_PATHS = [".env.example", "README.md", "src/app/main.py", "src/app/platform/db.py", "src/app/modules/invoices/__init__.py",
+  "src/app/modules/invoices/export/__init__.py", "src/app/modules/payments/models.py", OWN_FILE.path, "tests/test_refunds.py", "tests/invoices/test_invoice_repo.py"];
+const PRS = [
+  { n: 147, title: "feat(invoices): store invoice exports on the ETL bucket", who: "alice", head: "feat/invoice-exports", base: "main",
+    desc: "Invoice exports now land as raw JSON on the ETL bucket and as rows in invoice_line. Adds a typed bucket client and drops the legacy regex parser.",
+    requested: true, ci: "Checks passed", updated: "5 hours ago" },
+  { n: 151, title: "fix(payments): dedupe refund webhooks by refund id", who: "cara", head: "fix/refund-dedupe", base: "main", desc: "", requested: true, ci: "Checks passed", updated: "1 hour ago", files: 4, add: 61, del: 12 },
+  { n: 149, title: "feat(search): fuzzy matching for product titles", who: "dan", head: "feat/fuzzy-search", base: "main", desc: "", requested: false, ci: "1 check failing", updated: "yesterday", files: 11, add: 402, del: 37 },
+];
+const DIRTY = ["M  src/app/modules/payments/refunds.py", "M  tests/test_refunds.py", "?  notes/refunds.md"];
+
+// ---------- state ----------
+const fresh = () => ({
+  mode: "normal", tool: "project", panel: "list", pr: 147, scope: "all", picked: new Set(),
+  dirty: document.getElementById("opt-dirty").checked, confirm: false, step: 0,
+  filesView: "pr", open: OWN_FILE.path, tabs: [OWN_FILE.path], diff: false, caret: null, hunk: null,
+  viewed: {}, since: {}, comments: {}, draft: null, draftText: "", pop: null, toast: null, flash: false, resume: false, submitted: false,
+});
+let S = fresh();
+
+// ---------- derived ----------
+const file = p => FILES.find(f => f.path === p);
+const inScope = c => S.scope === "all" || S.picked.has(c); // "since" keeps its commits in picked too
+const scopeLabel = () => S.scope === "all" ? `All commits (${COMMITS.length})` : S.scope === "since" ? "Since your last review (2)" : S.picked.size === 1 ? `Commit ${COMMITS[[...S.picked][0]].sha}` : `${S.picked.size} of ${COMMITS.length} commits`;
+const scopedFiles = () => FILES.filter(f => f.lines.some(e => e[0] !== "c" && inScope(e[e.length - 1])));
+function counts(f) {
+  let a = 0, d = 0;
+  for (const e of f.lines) {
+    if (e[0] === "c" || !inScope(e[e.length - 1])) continue;
+    if (e[0] === "a") a++; else if (e[0] === "m") { a++; d++; } else if (e[0] === "d") d += e[1].length;
+  }
+  return { a, d };
+}
+const badge = p => S.viewed[p] ? (S.since[p] ? "since" : "check") : "star";
+const viewedCount = () => scopedFiles().filter(f => S.viewed[f.path] && !S.since[f.path]).length;
+const pendingCount = () => Object.values(S.comments).flatMap(o => Object.values(o)).flat().filter(c => c.pending).length;
+// Rows of the full file as it is at the PR head, with change kinds limited to the scope.
+function rowsOf(f) {
+  const rows = []; let delBefore = null;
+  for (const e of f.lines) {
+    const c = e[e.length - 1], scoped = e[0] !== "c" && inScope(c);
+    if (e[0] === "d") { if (scoped) delBefore = { old: e[1], c }; continue; }
+    const r = { text: e[1], kind: scoped ? (e[0] === "a" ? "add" : "mod") : "ctx", old: e[0] === "m" ? [e[2]] : null, c: scoped ? c : null, delBefore };
+    delBefore = null; rows.push(r);
+  }
+  return rows;
+}
+function diffRows(f) {
+  const L = [], R = []; let l = 0, r = 0;
+  for (const e of f.lines) {
+    const scoped = e[0] !== "c" && inScope(e[e.length - 1]);
+    if (e[0] === "c" || (!scoped && e[0] !== "d" && e[0] !== "a")) { const t = e[0] === "m" ? e[1] : e[1]; L.push({ n: ++l, t: e[0] === "m" && !scoped ? e[2] : t }); R.push({ n: ++r, t }); continue; }
+    if (!scoped && e[0] === "a") { L.push({ n: ++l, t: e[1] }); R.push({ n: ++r, t: e[1] }); continue; }
+    if (!scoped && e[0] === "d") { e[1].forEach(t => { L.push({ n: ++l, t }); R.push({ n: ++r, t }); }); continue; }
+    if (e[0] === "a") { L.push(null); R.push({ n: ++r, t: e[1], k: "add" }); }
+    else if (e[0] === "m") { L.push({ n: ++l, t: e[2], k: "mod" }); R.push({ n: ++r, t: e[1], k: "mod" }); }
+    else e[1].forEach(t => { L.push({ n: ++l, t, k: "del" }); R.push(null); });
+  }
+  return { L, R };
+}
+
+// ---------- rendering helpers ----------
+const esc = s => String(s).replace(/[&<>"]/g, ch => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", "\"": "&quot;" }[ch]));
+const KW = new Set("def class return from import for in if not None True False with as and or lambda raise pass try except is".split(" "));
+function hl(line, path) {
+  if (!/\.py$/.test(path)) return esc(line);
+  const re = /(#.*$)|([rf]?"""[\s\S]*?"""|[rf]?"(?:\\.|[^"\\])*"|[rf]?'(?:\\.|[^'\\])*')|(@\w+)|\b(\d+(?:\.\d+)?)\b|\b(self)\b|\b([A-Za-z_]\w*)\b(?=\()|\b([A-Za-z_]\w*)\b/g;
+  let out = "", last = 0, m;
+  while ((m = re.exec(line))) {
+    out += esc(line.slice(last, m.index)); last = re.lastIndex;
+    const [t, com, str, dec, num, self, fn, word] = m;
+    out += com ? `<span class="tok-com">${esc(t)}</span>` : str ? `<span class="tok-str">${esc(t)}</span>` : dec ? `<span class="tok-dec">${esc(t)}</span>`
+      : num ? `<span class="tok-num">${t}</span>` : self ? `<span class="tok-self">${t}</span>` : fn ? (KW.has(fn) ? `<span class="tok-kw">${fn}</span>` : `<span class="tok-fn">${fn}</span>`)
+      : KW.has(word) ? `<span class="tok-kw">${word}</span>` : esc(t);
+  }
+  return out + esc(line.slice(last));
+}
+const I = {
+  folder: '<svg width="16" height="16" viewBox="0 0 16 16"><path d="M1.5 3.5h4.2l1.5 1.5h7.3v8.5h-13z" fill="none" stroke="currentColor" stroke-width="1.2"/></svg>',
+  py: '<svg width="16" height="16" viewBox="0 0 16 16"><rect x="2" y="2" width="12" height="12" rx="3" fill="#3b78b0"/><rect x="5" y="5" width="6" height="6" rx="1.5" fill="#f2c94c"/></svg>',
+  txt: '<svg width="16" height="16" viewBox="0 0 16 16"><path d="M3.5 1.5h6l3 3v10h-9z" fill="none" stroke="currentColor" stroke-width="1.2"/><path d="M5.5 8h5M5.5 10.5h5" stroke="currentColor"/></svg>',
+  star: '<svg width="13" height="13" viewBox="0 0 16 16"><path d="M8 1.2l2.1 4.4 4.8.6-3.5 3.3.9 4.8L8 12l-4.3 2.3.9-4.8L1.1 6.2l4.8-.6z" fill="currentColor"/></svg>',
+  check: '<svg width="14" height="14" viewBox="0 0 16 16"><rect x="1.5" y="1.5" width="13" height="13" rx="3" fill="currentColor"/><path d="M4.5 8.2l2.3 2.3 4.7-4.9" fill="none" stroke="#fff" stroke-width="1.8"/></svg>',
+  box: '<svg width="14" height="14" viewBox="0 0 16 16"><rect x="2" y="2" width="12" height="12" rx="3" fill="none" stroke="currentColor" stroke-width="1.3"/></svg>',
+  since: '<svg width="14" height="14" viewBox="0 0 16 16"><path d="M13 8a5 5 0 1 1-1.5-3.6M13 2.5v3h-3" fill="none" stroke="currentColor" stroke-width="1.6"/></svg>',
+  project: '<svg width="18" height="18" viewBox="0 0 16 16"><path d="M1.5 3.5h4.2l1.5 1.5h7.3v8.5h-13z" fill="none" stroke="currentColor" stroke-width="1.3"/></svg>',
+  review: '<svg width="18" height="18" viewBox="0 0 16 16"><circle cx="4" cy="3.5" r="2" fill="none" stroke="currentColor" stroke-width="1.3"/><circle cx="4" cy="12.5" r="2" fill="none" stroke="currentColor" stroke-width="1.3"/><circle cx="12" cy="12.5" r="2" fill="none" stroke="currentColor" stroke-width="1.3"/><path d="M4 5.5v5M12 10.5V7a2 2 0 0 0-2-2H7.5m1.5-2L7 5l2 2" fill="none" stroke="currentColor" stroke-width="1.3"/></svg>',
+  commit: '<svg width="18" height="18" viewBox="0 0 16 16"><circle cx="8" cy="8" r="2.6" fill="none" stroke="currentColor" stroke-width="1.3"/><path d="M1 8h4.4M10.6 8H15" stroke="currentColor" stroke-width="1.3"/></svg>',
+  branch: '<svg width="14" height="14" viewBox="0 0 16 16"><circle cx="4.5" cy="3.5" r="1.8" fill="none" stroke="currentColor" stroke-width="1.3"/><circle cx="4.5" cy="12.5" r="1.8" fill="none" stroke="currentColor" stroke-width="1.3"/><circle cx="11.5" cy="5" r="1.8" fill="none" stroke="currentColor" stroke-width="1.3"/><path d="M4.5 5.3v5.4M11.5 6.8c0 3-7 2-7 4" fill="none" stroke="currentColor" stroke-width="1.3"/></svg>',
+  down: '<svg width="10" height="10" viewBox="0 0 10 10"><path d="M2 3.5l3 3 3-3" fill="none" stroke="currentColor" stroke-width="1.4"/></svg>',
+  back: '<svg width="14" height="14" viewBox="0 0 16 16"><path d="M10 3L5 8l5 5" fill="none" stroke="currentColor" stroke-width="1.6"/></svg>',
+  next: '<svg width="14" height="14" viewBox="0 0 16 16"><path d="M6 3l5 5-5 5" fill="none" stroke="currentColor" stroke-width="1.6"/></svg>',
+  lock: '<svg width="12" height="12" viewBox="0 0 16 16"><rect x="3" y="7" width="10" height="7.5" rx="1.5" fill="currentColor"/><path d="M5.5 7V5a2.5 2.5 0 0 1 5 0v2" fill="none" stroke="currentColor" stroke-width="1.5"/></svg>',
+  search: '<svg width="14" height="14" viewBox="0 0 16 16"><circle cx="7" cy="7" r="4.5" fill="none" stroke="currentColor" stroke-width="1.4"/><path d="M10.5 10.5L14 14" stroke="currentColor" stroke-width="1.4"/></svg>',
+  plus: '<svg width="12" height="12" viewBox="0 0 12 12"><path d="M6 2v8M2 6h8" stroke="currentColor" stroke-width="1.6"/></svg>',
+  ok: '<svg width="16" height="16" viewBox="0 0 16 16"><circle cx="8" cy="8" r="7" fill="currentColor"/><path d="M4.8 8.2l2.1 2.1 4.3-4.5" fill="none" stroke="#fff" stroke-width="1.6"/></svg>',
+  x: '<svg width="10" height="10" viewBox="0 0 10 10"><path d="M2 2l6 6M8 2L2 8" stroke="currentColor" stroke-width="1.3"/></svg>',
+  bubble: '<svg width="12" height="12" viewBox="0 0 16 16"><path d="M2 3h12v8H7l-3 3v-3H2z" fill="none" stroke="currentColor" stroke-width="1.4"/></svg>',
+  exit: '<svg width="14" height="14" viewBox="0 0 16 16"><path d="M9 3H3v10h6M7 8h7m-2.5-2.5L14 8l-2.5 2.5" fill="none" stroke="currentColor" stroke-width="1.4"/></svg>',
+};
+const iconFor = p => /\.py$/.test(p) ? I.py : I.txt;
+const person = k => PEOPLE[k] || ME;
+const avatar = k => { const p = person(k); return `<span class="avatar" style="background:${p.color}">${p.initials}</span>`; };
+const markIcon = p => { const b = badge(p); return `<button class="mark ${b}" data-act="toggle-viewed" data-path="${esc(p)}" title="${b === "check" ? "Viewed — click to unmark" : b === "since" ? "Changed since you viewed it" : "Not viewed yet — click to mark viewed"}">${b === "check" ? I.check : b === "since" ? I.since : I.star}</button>`; };
+
+// ---------- regions ----------
+function titlebar() {
+  const branch = S.mode === "review"
+    ? `<button class="widget branch in-review" data-act="branch-info">${I.branch} PR #147 <span class="muted">· read-only</span></button>`
+    : `<button class="widget branch">${I.branch} feat/my-work ${S.dirty ? '<span class="muted">· 3 changes</span>' : ""} ${I.down}</button>`;
+  return `<div class="titlebar"><div class="lights"><i></i><i></i><i></i></div>
+    <button class="widget"><span class="badge-sq">SD</span> acme-shop ${I.down}</button>${branch}
+    <div class="spacer"></div><span class="muted">Python 3.14 (.venv)</span></div>`;
+}
+function stripe() {
+  const btn = (id, icon, tip, dot) => `<button class="${S.tool === id ? "on" : ""}" data-act="tool" data-tool="${id}" aria-label="${tip}">${icon}${dot ? '<span class="dot"></span>' : ""}<span class="tip">${tip}</span></button>`;
+  return `<nav class="stripe">${btn("project", I.project, "Project")}${btn("review", I.review, "Review (2 requested)", S.mode === "normal")}${btn("commit", I.commit, "Commit")}</nav>`;
+}
+function projectTree(highlight) {
+  const paths = [...new Set([...OTHER_PATHS, ...FILES.filter(f => f.status !== "D").map(f => f.path)])].sort();
+  const rows = []; const seen = new Set();
+  for (const p of paths) {
+    const parts = p.split("/");
+    for (let i = 0; i < parts.length - 1; i++) {
+      const dir = parts.slice(0, i + 1).join("/");
+      if (seen.has(dir)) continue; seen.add(dir);
+      const pending = highlight ? scopedFiles().filter(f => f.path.startsWith(dir + "/") && badge(f.path) !== "check").length : 0;
+      rows.push(`<div class="row dir" style="padding-left:${12 + i * 16}px">${I.folder}<span class="name">${esc(parts[i])}</span>${pending ? `<span class="after"><span class="n-star">${I.star}${pending}</span></span>` : ""}</div>`);
+    }
+    const depth = parts.length - 1, inPr = highlight && scopedFiles().some(f => f.path === p);
+    rows.push(`<div class="row ${S.open === p ? "sel" : ""} ${highlight && !inPr ? "dimmed" : ""}" style="padding-left:${12 + depth * 16}px" data-act="open" data-path="${esc(p)}">
+      ${iconFor(p)}<span class="name">${esc(parts[depth])}</span>${inPr ? `<span class="after">${markIcon(p)}</span>` : ""}</div>`);
+  }
+  return rows.join("");
+}
+function prList() {
+  const item = pr => {
+    const resume = S.resume && pr.n === 147 && S.mode === "normal";
+    const stats = pr.n === 147 ? `${FILES.length} files` : `${pr.files} files`;
+    return `<div class="pr ${S.pr === pr.n && S.panel !== "list" ? "sel" : ""}" data-act="pick-pr" data-n="${pr.n}">${avatar(pr.who)}
+      <div class="t">${esc(pr.title)}</div>
+      <div class="m"><span>#${pr.n}</span><span>${person(pr.who).name}</span><span>${stats}</span>
+      ${resume ? '<span class="pill resume">Resume · 4 of 9 viewed</span>' : pr.requested ? '<span class="pill req">Review requested</span>' : ""}</div></div>`;
+  };
+  return `<div class="search">${I.search}<input id="pr-search" placeholder="Search pull requests" aria-label="Search pull requests"></div>
+    <div class="section-label">Waiting on you</div>${PRS.filter(p => p.requested).map(item).join("")}
+    <div class="section-label">Other open</div>${PRS.filter(p => !p.requested).map(item).join("")}`;
+}
+function prDetail() {
+  const pr = PRS.find(p => p.n === S.pr);
+  if (pr.n !== 147) return `<div class="detail"><button class="secondary" data-act="back" style="justify-self:start">${I.back} All pull requests</button>
+    <h2>${esc(pr.title)}</h2><p class="fineprint">This prototype only has sample files for #147. Pick it to walk the journey.</p></div>`;
+  const total = FILES.reduce((s, f) => { const c = counts(f); return { a: s.a + c.a, d: s.d + c.d }; }, { a: 0, d: 0 });
+  const scope = `<div class="scope">
+    <label><input type="radio" name="scope" data-act="scope-all" ${S.scope === "all" ? "checked" : ""}><span><b>All commits</b><div class="who">The whole PR against main</div></span></label>
+    ${S.resume ? `<label><input type="radio" name="scope" data-act="scope-since" ${S.scope === "since" ? "checked" : ""}><span><b>Since your last review</b><div class="who">2 commits pushed after you last looked</div></span></label>` : ""}
+    ${COMMITS.map((c, i) => `<label><input type="checkbox" data-act="scope-pick" data-i="${i}" ${S.scope === "pick" && S.picked.has(i) ? "checked" : ""}>
+      <span><span class="sha">${c.sha}</span> ${esc(c.msg)}<div class="who">${person(c.who).name} · ${c.when}</div></span></label>`).join("")}</div>`;
+  let action;
+  if (S.step > 0) {
+    const steps = ["Fetching PR #147", ...(S.dirty ? ["Parking your 3 changes on feat/my-work"] : []), "Checking out the PR head", "Opening the first file"];
+    action = `<div class="steps">${steps.map((t, i) => `<div class="step ${i + 1 < S.step ? "done" : i + 1 === S.step ? "now" : ""}">
+      ${i + 1 < S.step ? `<span style="color:var(--ok)">${I.ok}</span>` : i + 1 === S.step ? '<span class="spin"></span>' : '<span style="width:16px"></span>'} ${t}</div>`).join("")}</div>`;
+  } else if (S.confirm) {
+    action = `<div class="card"><b>You have 3 uncommitted changes on feat/my-work</b>
+      <ul>${DIRTY.map(d => `<li>${esc(d)}</li>`).join("")}</ul>
+      <span class="fineprint">Review Lens parks them in a stash named after this review and puts them back when you exit. Nothing is committed.</span>
+      <div class="btns"><button class="primary" data-act="start-go">Park and start review</button><button class="secondary" data-act="start-cancel">Cancel</button></div></div>`;
+  } else {
+    action = `<div style="display:flex;gap:10px;align-items:center;flex-wrap:wrap"><button class="primary" data-act="start">${S.resume ? "Resume review" : "Start review"}</button>
+      <span class="fineprint">Opens the PR in this window, read-only.</span></div>`;
+  }
+  return `<div class="detail"><button class="secondary" data-act="back" style="justify-self:start">${I.back} All pull requests</button>
+    <h2>${esc(pr.title)} <span style="color:var(--muted);font-weight:500">#${pr.n}</span></h2>
+    <div class="meta">${avatar(pr.who).replace('class="avatar"', 'class="avatar" style="width:18px;height:18px;font-size:8px;grid-row:auto;background:' + person(pr.who).color + '"')} ${person(pr.who).name} wants to merge
+      <span class="branch-chip">${pr.head}</span> into <span class="branch-chip">${pr.base}</span></div>
+    <div class="desc">${esc(pr.desc)}</div>
+    <div class="statline"><span>${FILES.length} files</span><span class="counts"><span class="p">+${total.a}</span> <span class="m">−${total.d}</span></span><span style="color:var(--ok)">${pr.ci}</span><span>Updated ${pr.updated}</span></div>
+    ${action}
+    <div><div class="section-label" style="padding:0 0 6px">What to review</div>${scope}</div></div>`;
+}
+function reviewFiles() {
+  const files = scopedFiles(), done = viewedCount();
+  const head = `<div class="rv-head"><div class="rv-title"><span class="num">#147</span> ${esc(PRS[0].title)}</div>
+    <div class="progress"><i style="width:${files.length ? done / files.length * 100 : 0}%"></i></div>
+    <div class="rv-sub"><span>${done} of ${files.length} files viewed</span><span>Synced with GitHub</span></div>
+    <div class="seg" role="tablist"><button class="${S.filesView === "pr" ? "on" : ""}" data-act="files-view" data-v="pr">Changed files</button><button class="${S.filesView === "all" ? "on" : ""}" data-act="files-view" data-v="all">Whole project</button></div></div>`;
+  if (S.filesView === "all") return head + `<div style="padding:4px 0">${projectTree(true)}</div>`;
+  const byDir = {};
+  files.forEach(f => (byDir[f.path.includes("/") ? f.path.slice(0, f.path.lastIndexOf("/")) : ""] ||= []).push(f));
+  const rows = Object.keys(byDir).sort().map(dir => {
+    const items = byDir[dir].map(f => {
+      const c = counts(f), n = Object.values(S.comments[f.path] || {}).flat().length;
+      return `<div class="row ${S.open === f.path ? "sel" : ""} ${f.status === "D" ? "strike" : ""}" style="padding-left:${dir ? 28 : 12}px" data-act="open" data-path="${esc(f.path)}">
+        ${markIcon(f.path)}${iconFor(f.path)}<span class="name">${esc(f.path.split("/").pop())}</span>
+        <span class="after">${n ? `<span style="display:inline-flex;gap:3px;align-items:center">${I.bubble}${n}</span>` : ""}<span class="counts"><span class="p">+${c.a}</span> <span class="m">−${c.d}</span></span><span class="st st-${f.status}">${f.status}</span></span></div>`;
+    }).join("");
+    return (dir ? `<div class="row dir" style="padding-left:12px">${I.folder}<span class="name">${esc(dir)}</span></div>` : "") + items;
+  }).join("");
+  return head + `<div style="padding:4px 0">${rows}</div>`;
+}
+function tool() {
+  if (S.tool === "commit") return `<aside class="tool"><div class="tool-head">Commit</div><div class="tool-body" style="padding:8px 12px" class="fineprint">
+    ${S.mode === "review" ? '<p class="fineprint">Nothing to commit. Review mode is read-only; your parked changes come back when you exit.</p>' : S.dirty ? `<p class="fineprint">Changes on feat/my-work</p>${DIRTY.map(d => `<div class="row" style="padding-left:4px;font:12px var(--mono)">${esc(d)}</div>`).join("")}` : '<p class="fineprint">No changes.</p>'}</div></aside>`;
+  if (S.tool === "project") return `<aside class="tool"><div class="tool-head">Project</div><div class="tool-body">${projectTree(S.mode === "review")}</div></aside>`;
+  const title = S.mode === "review" ? "Review" : S.panel === "list" ? "Pull requests" : "Pull request";
+  const body = S.mode === "review" ? reviewFiles() : S.panel === "list" ? prList() : prDetail();
+  return `<aside class="tool"><div class="tool-head">${title}</div><div class="tool-body">${body}</div></aside>`;
+}
+function reviewbar() {
+  if (S.mode !== "review") return "";
+  const pend = pendingCount();
+  return `<div class="reviewbar ${S.flash ? "flash" : ""}" id="reviewbar">
+    <span class="what">Reviewing #147</span>
+    <button class="scope-btn" data-act="pop" data-pop="scope">${scopeLabel()} ${I.down}</button>
+    <span class="readonly">${I.lock} ${S.flash ? "Read-only while reviewing. Exit review to edit." : "Read-only"}</span>
+    <span class="grow"></span>
+    <button class="rb" data-act="prev">${I.back} Prev</button>
+    <button class="rb" data-act="next" title="Next unviewed file (⌥N)">Next unviewed ${I.next}</button>
+    <button class="rb strong" data-act="pop" data-pop="submit">Finish review ${pend ? `<span class="count-pill">${pend}</span>` : ""}</button>
+    <button class="rb" data-act="exit" title="Back to feat/my-work">${I.exit} Exit</button>
+    ${S.pop === "scope" ? scopePop() : ""}${S.pop === "submit" ? submitPop() : ""}</div>`;
+}
+function scopePop() {
+  return `<div class="pop" style="left:110px;top:34px;width:440px">
+    <button class="item" data-act="set-scope" data-i="all"><span class="tick">${S.scope === "all" ? "✓" : ""}</span><b>All commits</b></button>
+    ${S.resume ? `<button class="item" data-act="set-scope" data-i="since"><span class="tick">${S.scope === "since" ? "✓" : ""}</span><b>Since your last review</b><span class="sha">2 commits</span></button>` : ""}
+    ${COMMITS.map((c, i) => `<button class="item" data-act="set-scope" data-i="${i}"><span class="tick">${S.scope === "pick" && S.picked.has(i) && S.picked.size === 1 ? "✓" : ""}</span><span class="sha">${c.sha}</span>${esc(c.msg)}</button>`).join("")}</div>`;
+}
+function submitPop() {
+  const pend = pendingCount();
+  return `<div class="pop submit-pop" style="right:70px;top:34px">
+    <h3>Finish your review</h3>
+    <span class="fineprint">${pend ? `${pend} pending comment${pend > 1 ? "s" : ""} will be posted with it.` : "No inline comments yet."} ${viewedCount()} of ${scopedFiles().length} files viewed.</span>
+    <textarea id="summary" placeholder="Leave a summary (optional)">Looks solid. One question on the key layout.</textarea>
+    <div class="verdicts">
+      <label><input type="radio" name="v" checked> <span>Comment<small>Feedback without a verdict</small></span></label>
+      <label><input type="radio" name="v"> <span>Approve<small>Ready to merge</small></span></label>
+      <label><input type="radio" name="v"> <span>Request changes<small>Must be addressed before merging</small></span></label></div>
+    <div style="display:flex;gap:8px;justify-content:flex-end"><button class="secondary" data-act="pop" data-pop="">Cancel</button><button class="primary" data-act="submit">Submit to GitHub</button></div></div>`;
+}
+function editor() {
+  if (S.mode === "review" && !file(S.open) && !OTHER_PATHS.includes(S.open)) return `<div class="editor"><div class="empty-editor"><div><p><b>Pick a file</b></p><p>or press ⌥N for the next unviewed one</p></div></div></div>`;
+  const f = file(S.open);
+  if (S.mode === "review" && f) return S.diff || f.status === "D" ? diffView(f) : fileView(f);
+  // Plain files (your own work, or unchanged files in review).
+  const lines = S.open === OWN_FILE.path ? OWN_FILE.lines : ["# " + S.open.split("/").pop(), "# (unchanged in this PR)"];
+  return `<div class="editor" tabindex="0" id="ed"><div class="code">${lines.map((t, i) => `<div class="ln"><span></span><span class="no">${i + 1}</span><span class="bar"></span><span class="txt">${hl(t, S.open)}</span></div>`).join("")}</div></div>`;
+}
+function fileTools(f) {
+  const v = S.viewed[f.path] && !S.since[f.path];
+  const dir = f.path.includes("/") ? f.path.slice(0, f.path.lastIndexOf("/") + 1) : "";
+  return `<div class="file-tools"><span class="crumb">${esc(dir)}<b>${esc(f.path.split("/").pop())}</b></span><div class="seg"><button class="${S.diff ? "" : "on"}" data-act="diff" data-v="0">File</button><button class="${S.diff ? "on" : ""}" data-act="diff" data-v="1" title="⌥D">Diff</button></div>
+    <button class="viewed-toggle ${v ? "on" : ""}" data-act="toggle-viewed" data-path="${esc(f.path)}" title="⌥R">${v ? I.check : I.box} Viewed</button></div>`;
+}
+function fileView(f) {
+  const rows = rowsOf(f);
+  const html = rows.map((r, i) => {
+    const no = i + 1, changed = r.kind !== "ctx", cm = (S.comments[f.path] || {})[no] || [];
+    let line = `<div class="ln k-${r.kind} ${S.caret === no ? "caret" : ""}" data-act="caret" data-line="${no}">
+      <span>${changed ? `<button class="plus" data-act="comment" data-line="${no}" title="Comment on line ${no}">${I.plus}</button>` : ""}</span>
+      <span class="no">${no}</span><span class="bar">${changed ? `<button data-act="hunk" data-line="${no}" aria-label="Show change"></button>` : ""}${r.delBefore ? `<button class="tri" data-act="hunk" data-line="${no}" aria-label="Show deleted lines" style="background:none;border-radius:0"></button>` : ""}</span>
+      <span class="txt">${hl(r.text, f.path)}${S.caret === no && r.c != null ? blame(r.c) : ""}</span></div>`;
+    if (S.hunk === no) line += hunkPop(r);
+    if (cm.length || (S.draft && S.draft.line === no)) line += commentBlock(f.path, no, cm);
+    return line;
+  }).join("");
+  return `${fileTools(f)}<div class="editor" tabindex="0" id="ed"><div class="code">${html}</div></div>`;
+}
+function blame(ci) {
+  const c = COMMITS[ci], p = person(c.who);
+  return `<span class="blame">${p.name}, ${c.when} · ${esc(c.msg)}<span class="blame-card"><b>${esc(c.msg)}</b><br>${esc(c.body)}<br><span class="sha">${c.sha}</span> · ${p.name} · ${c.when}</span></span>`;
+}
+function hunkPop(r) {
+  const old = r.old || (r.delBefore && r.delBefore.old);
+  return `<div class="hunk-pop"><div class="hp-head"><span>${r.kind === "add" && !r.delBefore ? "Added in this PR" : r.delBefore && r.kind === "ctx" ? "Deleted in this PR" : "Before this PR"}</span><span class="grow"></span>
+    <button class="secondary" data-act="diff" data-v="1" style="padding:1px 8px;font-size:12px">Open diff</button><button class="icon-btn" data-act="hunk" data-line="">${I.x}</button></div>
+    ${old ? `<pre>${old.map(esc).join("\n")}</pre>` : '<div class="hp-none">No earlier version: these lines are new.</div>'}</div>`;
+}
+function commentBlock(path, line, list) {
+  const items = list.map(c => `<div class="c"><div class="who">${ME.name} ${c.pending ? '<span class="pill">Pending</span>' : '<span class="fineprint">on GitHub</span>'}</div><div>${esc(c.text)}</div></div>`).join("");
+  const draft = S.draft && S.draft.path === path && S.draft.line === line ? `<textarea id="draft" placeholder="Comment on line ${line}…" aria-label="Comment">${esc(S.draftText)}</textarea>
+    <div class="actions"><span class="fineprint">Posted when you finish the review</span><button class="secondary" data-act="draft-cancel">Cancel</button><button class="primary" data-act="draft-save">Add comment</button></div>` : "";
+  return `<div class="comment-row">${items}${draft}</div>`;
+}
+function diffView(f) {
+  const { L, R } = diffRows(f);
+  const side = (rows, cls) => rows.map(r => r ? `<div class="dl ${r.k || ""}"><span class="no">${r.n}</span><span class="txt">${hl(r.t, f.path)}</span></div>` : '<div class="dl empty"><span></span><span></span></div>').join("");
+  const tools = f.status === "D" ? `<div class="file-tools"><span class="crumb">${esc(f.path)} · deleted in this PR</span><button class="viewed-toggle ${S.viewed[f.path] ? "on" : ""}" data-act="toggle-viewed" data-path="${esc(f.path)}">${S.viewed[f.path] ? I.check : I.box} Viewed</button></div>` : fileTools(f);
+  return `${tools}<div class="editor" tabindex="0" id="ed"><div class="diff">
+    <div class="left"><div class="col"><div class="side-head"><b>main</b> · before</div>${side(L)}</div></div>
+    <div><div class="col"><div class="side-head"><b>#147</b> · ${f.status === "D" ? "deleted in this PR" : scopeLabel()}</div>${side(R)}</div></div></div></div>`;
+}
+function tabs() {
+  return `<div class="tabs">${S.tabs.map(p => `<div class="tab ${p === S.open ? "on" : ""}" data-act="open" data-path="${esc(p)}">${iconFor(p)} ${esc(p.split("/").pop())}${S.mode === "review" && file(p) ? `<span class="mark ${badge(p)}" style="width:auto">${badge(p) === "check" ? "" : badge(p) === "since" ? I.since : I.star}</span>` : ""}</div>`).join("")}</div>`;
+}
+function statusbar() {
+  return `<div class="statusbar">${S.mode === "review" ? `<span class="rv">Reviewing #147 · ${viewedCount()} of ${scopedFiles().length} viewed</span>` : "<span>feat/my-work</span>"}
+    <span class="grow"></span><span>${S.caret ? `${S.caret}:1` : ""}</span><span>UTF-8</span><span>4 spaces</span><span>Python 3.14 (.venv)</span></div>`;
+}
+function toast() {
+  if (!S.toast) return "";
+  return `<div class="toast" role="status"><span class="ic">${I.ok}</span><b>${esc(S.toast[0])}</b><span class="sub">${esc(S.toast[1])}</span></div>`;
+}
+function render() {
+  const ed = document.getElementById("ed"), scroll = ed ? ed.scrollTop : 0;
+  document.getElementById("ide").innerHTML = titlebar() + `<div class="body">${stripe()}${tool()}<main class="editor-area">${tabs()}${reviewbar()}${editor()}</main></div>` + statusbar() + toast();
+  const ed2 = document.getElementById("ed"); if (ed2 && keepScroll) ed2.scrollTop = scroll;
+  keepScroll = false;
+  const d = document.getElementById("draft"); if (d) { d.focus(); d.setSelectionRange(d.value.length, d.value.length); }
+}
+let keepScroll = false;
+
+// ---------- behaviour ----------
+let toastTimer, flashTimer;
+function say(title, sub) { S.toast = [title, sub]; clearTimeout(toastTimer); toastTimer = setTimeout(() => { S.toast = null; render(); }, 4200); }
+function openPath(p) { S.open = p; if (!S.tabs.includes(p)) S.tabs = [...S.tabs.slice(-3), p]; S.caret = null; S.hunk = null; S.draft = null; if (file(p) && file(p).status === "D") S.diff = true; }
+function nextUnviewed(dir = 1) {
+  const files = scopedFiles(); if (!files.length) return;
+  const i = files.findIndex(f => f.path === S.open);
+  for (let k = 1; k <= files.length; k++) {
+    const f = files[(i + dir * k + files.length * 2) % files.length];
+    if (dir < 0 || badge(f.path) !== "check") { openPath(f.path); S.diff = f.status === "D"; return; }
+  }
+  say("Every file is viewed", "Finish the review when you're ready.");
+}
+function toggleViewed(p) {
+  const was = S.viewed[p] && !S.since[p];
+  if (was) delete S.viewed[p]; else { S.viewed[p] = true; delete S.since[p]; }
+  if (!was && p === S.open) nextUnviewed();
+}
+function startReview() {
+  S.confirm = false; S.step = 1; render();
+  const total = S.dirty ? 4 : 3;
+  const tick = () => {
+    if (S.step < total) { S.step++; render(); setTimeout(tick, 550); return; }
+    S.mode = "review"; S.step = 0; S.tool = "review"; S.tabs = []; S.diff = false;
+    // Returning reviewer: 6 files viewed earlier; the 2 new commits touched config.py and observability.py.
+    if (S.resume) {
+      ["requirements.txt", "src/app/modules/invoices/export/vocabulary.py", "src/app/modules/invoices/models.py", "src/app/platform/bucket/keys.py",
+        "src/app/core/config.py", "src/app/modules/invoices/observability.py"].forEach(p => S.viewed[p] = true);
+      S.since = { "src/app/core/config.py": true, "src/app/modules/invoices/observability.py": true };
+    }
+    nextUnviewed();
+    say(S.resume ? "Picked up where you left off" : "Reviewing #147 in this window", S.resume ? "config.py and observability.py changed since you viewed them, so they're back in your queue." : S.dirty ? "Your 3 changes on feat/my-work are parked. Exit brings them back." : "Exit review takes you back to feat/my-work.");
+    render();
+  };
+  setTimeout(tick, 550);
+}
+function exitReview() {
+  const pend = pendingCount();
+  S.mode = "normal"; S.tool = "project"; S.panel = "list"; S.tabs = [OWN_FILE.path]; S.open = OWN_FILE.path; S.pop = null; S.diff = false; S.caret = null; S.resume = Object.keys(S.viewed).length > 0 && !S.submitted;
+  say("Back on feat/my-work", (S.dirty ? "Your 3 parked changes are restored." : "Nothing to restore.") + (pend ? ` ${pend} draft comment${pend > 1 ? "s" : ""} kept for next time.` : ""));
+}
+
+document.getElementById("ide").addEventListener("click", e => {
+  const t = e.target.closest("[data-act]"); if (!t) { if (S.pop) { S.pop = null; render(); } return; }
+  const a = t.dataset.act, p = t.dataset.path;
+  if (a !== "pop" && !t.closest(".pop") && S.pop) S.pop = null;
+  switch (a) {
+    case "tool": S.tool = t.dataset.tool; break;
+    case "pick-pr": S.pr = +t.dataset.n; S.panel = "detail"; break;
+    case "back": S.panel = "list"; S.confirm = false; break;
+    case "scope-all": S.scope = "all"; S.picked = new Set(); break;
+    case "scope-since": S.scope = "since"; S.picked = new Set([3, 4]); break;
+    case "scope-pick": { const i = +t.dataset.i; if (S.scope !== "pick") { S.scope = "pick"; S.picked = new Set(); } S.picked.has(i) ? S.picked.delete(i) : S.picked.add(i); if (!S.picked.size) S.scope = "all"; break; }
+    case "start": if (S.dirty) S.confirm = true; else return startReview(); break;
+    case "start-go": return startReview();
+    case "start-cancel": S.confirm = false; break;
+    case "open": openPath(p); if (S.mode === "review" && file(p)) S.diff = file(p).status === "D"; break;
+    case "toggle-viewed": e.stopPropagation(); toggleViewed(p); break;
+    case "files-view": S.filesView = t.dataset.v; break;
+    case "diff": S.diff = t.dataset.v === "1"; S.hunk = null; break;
+    case "caret": if (e.target.closest(".blame,.plus,.bar button")) return; S.caret = +t.dataset.line; keepScroll = true; break;
+    case "hunk": e.stopPropagation(); S.hunk = t.dataset.line ? (S.hunk === +t.dataset.line ? null : +t.dataset.line) : null; keepScroll = true; break;
+    case "comment": e.stopPropagation(); S.draft = { path: S.open, line: +t.dataset.line }; S.draftText = ""; keepScroll = true; break;
+    case "draft-cancel": S.draft = null; keepScroll = true; break;
+    case "draft-save": {
+      const text = (document.getElementById("draft")?.value || "").trim(); keepScroll = true;
+      if (!text) break;
+      const m = (S.comments[S.draft.path] ||= {}); (m[S.draft.line] ||= []).push({ text, pending: true }); S.draft = null; break;
+    }
+    case "next": nextUnviewed(1); break;
+    case "prev": nextUnviewed(-1); break;
+    case "pop": S.pop = t.dataset.pop && S.pop !== t.dataset.pop ? t.dataset.pop : null; break;
+    case "set-scope": { const i = t.dataset.i; if (i === "all") { S.scope = "all"; S.picked = new Set(); } else if (i === "since") { S.scope = "since"; S.picked = new Set([3, 4]); } else { S.scope = "pick"; S.picked = new Set([+i]); } S.pop = null; if (!scopedFiles().some(f => f.path === S.open)) nextUnviewed(); break; }
+    case "submit": {
+      const pend = pendingCount();
+      Object.values(S.comments).forEach(o => Object.values(o).flat().forEach(c => c.pending = false));
+      S.pop = null; S.submitted = true;
+      say("Review posted to GitHub", `PR #147 · ${pend ? `${pend} comment${pend > 1 ? "s" : ""} and a summary` : "summary only"}. You're still in review mode.`); break;
+    }
+    case "exit": exitReview(); break;
+    case "branch-info": say("This window shows PR #147", "Read-only. Use Exit in the review bar to go back to feat/my-work."); break;
+  }
+  render();
+});
+document.getElementById("ide").addEventListener("input", e => { if (e.target.id === "draft") S.draftText = e.target.value; });
+document.addEventListener("keydown", e => {
+  if (e.key === "Escape") { S.pop = null; S.hunk = null; S.draft = null; render(); return; }
+  if (S.mode !== "review" || e.target.matches("textarea, input")) return;
+  if (e.altKey && e.code === "KeyN") { e.preventDefault(); nextUnviewed(); render(); return; }
+  if (e.altKey && e.code === "KeyR" && file(S.open)) { e.preventDefault(); toggleViewed(S.open); render(); return; }
+  if (e.altKey && e.code === "KeyD" && file(S.open)) { e.preventDefault(); S.diff = !S.diff; render(); return; }
+  if (e.target.id === "ed" && e.key.length === 1 && !e.metaKey && !e.ctrlKey) {
+    e.preventDefault(); S.flash = true; keepScroll = true; render(); clearTimeout(flashTimer);
+    flashTimer = setTimeout(() => { S.flash = false; keepScroll = true; render(); }, 2200);
+  }
+});
+document.getElementById("opt-dirty").addEventListener("change", e => { S.dirty = e.target.checked; render(); });
+document.getElementById("opt-reset").addEventListener("click", () => { S = fresh(); render(); });
+document.getElementById("opt-resume").addEventListener("click", () => {
+  S = fresh(); S.resume = true; S.tool = "review"; S.panel = "detail";
+  S.comments = { "src/app/platform/bucket/keys.py": { 14: [{ text: "Should v1 sit before the dataset name, so a layout change doesn't split one dataset across two prefixes?", pending: true }] } };
+  render();
+});
+render();
+</script>
