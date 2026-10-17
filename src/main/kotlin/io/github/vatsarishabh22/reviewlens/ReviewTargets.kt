@@ -3,19 +3,22 @@ package io.github.vatsarishabh22.reviewlens
 /** A row of the panel's list: a PR from `gh`, or a remote branch when `gh` can't list PRs ([pr] is null). */
 data class ListedTarget(val target: ReviewTarget, val title: String, val pr: PullRequest?, val requested: Boolean)
 
+/** The panel's rows; [branchesOnly] when `gh` could not list PRs, so the panel says why it shows branches (even none). */
+data class Listing(val targets: List<ListedTarget>, val branchesOnly: Boolean)
+
 /** What the Review panel lists: open PRs, or remote branches when this repo has no reachable GitHub. Runs CLIs: call off EDT. */
 class ReviewTargets(private val git: GitClient, private val gh: GhClient = GhClient(git.root)) {
 
-    fun list(): List<ListedTarget> {
+    fun list(): Listing {
         // gh can be logged in while this repo isn't on GitHub; then PRs can't be listed and branches stand in.
         val prs = if (gh.isReady()) runCatching { gh.openPullRequests() }.getOrNull() else null
-        if (prs == null) return branches()
+        if (prs == null) return Listing(branches(), branchesOnly = true)
         // ponytail: matches user review requests only; a request to one of the viewer's teams lists under "Other open".
         val me = runCatching { gh.viewerLogin() }.getOrNull()
-        return prs.map { pr ->
+        return Listing(prs.map { pr ->
             val target = ReviewTarget("pr-${pr.number}", "#${pr.number} ${pr.title}", pr.number, pr.headRefName, "${GitClient.REMOTE}/${pr.baseRefName}")
             ListedTarget(target, pr.title, pr, pr.reviewRequests.any { it.login != null && it.login == me })
-        }
+        }, branchesOnly = false)
     }
 
     /** Progress of a review this reviewer started before, counted in its own saved scope; null when never started. */
