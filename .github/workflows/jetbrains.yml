@@ -1,0 +1,99 @@
+name: JetBrains
+
+# The pattern every editor's CI follows: a `changes` job decides whether this editor's files changed, and every other
+# job is skipped when they didn't. GitHub counts a skipped job as passing, so these stay required checks on main
+# without making a docs-only or other-editor PR wait for them.
+on:
+  pull_request:
+  push:
+    branches: [main]
+
+defaults:
+  run:
+    working-directory: jetbrains
+
+concurrency:
+  group: jetbrains-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  changes:
+    name: JetBrains · changes
+    runs-on: ubuntu-latest
+    outputs:
+      run: ${{ steps.diff.outputs.run }}
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      - id: diff
+        working-directory: .
+        env:
+          BASE: ${{ github.base_ref }}
+        run: |
+          if [ -z "$BASE" ]; then echo "run=true" >> "$GITHUB_OUTPUT"; exit 0; fi
+          git diff --name-only "origin/$BASE...HEAD" | grep -qE '^(jetbrains/|spec/|\.github/workflows/(jetbrains|release-jetbrains)\.yml$)' \
+            && echo "run=true" >> "$GITHUB_OUTPUT" || echo "run=false" >> "$GITHUB_OUTPUT"
+
+  build:
+    name: JetBrains · build and test
+    needs: changes
+    if: needs.changes.outputs.run == 'true'
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: 25
+      - uses: gradle/actions/setup-gradle@v4
+      - run: ./gradlew test buildPlugin
+      - uses: actions/upload-artifact@v4
+        with:
+          name: review-lens-jetbrains
+          path: jetbrains/build/distributions/*.zip
+
+  ides:
+    name: JetBrains · list IDEs to verify
+    needs: changes
+    if: needs.changes.outputs.run == 'true'
+    runs-on: ubuntu-latest
+    outputs:
+      ides: ${{ steps.list.outputs.ides }}
+    steps:
+      - uses: actions/checkout@v4
+      # jetbrains/gradle.properties is the one list; each entry becomes a verify job
+      - id: list
+        working-directory: .
+        run: echo "ides=$(grep '^verifyIdes=' jetbrains/gradle.properties | cut -d= -f2 | jq -Rc 'split(",")')" >> "$GITHUB_OUTPUT"
+
+  verify:
+    name: JetBrains · verify ${{ matrix.ide }}
+    needs: ides
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        ide: ${{ fromJSON(needs.ides.outputs.ides) }}
+    steps:
+      # an unpacked IDE plus the plugins it needs can overflow the runner's disk; drop preinstalled SDKs we never use
+      - run: sudo rm -rf /usr/share/dotnet /usr/local/lib/android /opt/ghc
+        working-directory: /
+      - uses: actions/checkout@v4
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: 25
+      - uses: gradle/actions/setup-gradle@v4
+      # JetBrains' Plugin Verifier against this one IDE
+      - run: ./gradlew verifyPlugin -PverifyIdes=${{ matrix.ide }}
+
+  # the check main's protection requires, whatever the IDE list holds: green when every IDE passed, or nothing changed
+  verified:
+    name: JetBrains · verify plugin
+    needs: [changes, verify]
+    if: always()
+    runs-on: ubuntu-latest
+    steps:
+      - run: test "${{ needs.changes.outputs.run }}" = false || test "${{ needs.verify.result }}" = success
+        working-directory: /
