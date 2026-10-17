@@ -45,6 +45,9 @@ class PrDetailView(private val project: Project, private val onBack: () -> Unit)
     private var loaded: LoadedTarget? = null
     private var resuming = false
     private var picked: Set<Int> = emptySet()
+    /** "Since your last review" for a returning reviewer (null when nothing is new), and whether it is the chosen scope. */
+    private var since: Pair<ScopeRange, String>? = null
+    private var sinceChosen = false
 
     init {
         add(JBScrollPane(content).apply { border = null; horizontalScrollBarPolicy = JBScrollPane.HORIZONTAL_SCROLLBAR_NEVER })
@@ -52,12 +55,14 @@ class PrDetailView(private val project: Project, private val onBack: () -> Unit)
 
     /** Shows [target] and starts fetching it; [resuming] when the reviewer has started this PR before. */
     fun open(git: GitClient, target: ListedTarget, resuming: Boolean) {
-        listed = target; this.resuming = resuming; loaded = null; picked = emptySet()
+        listed = target; this.resuming = resuming; loaded = null; picked = emptySet(); since = null; sinceChosen = false
         session = ReviewSession(git)
         build()
         val session = session!!
-        background(project, "Fetching ${target.target.label}", { session.load(target.target) }) { result ->
-            if (listed === target) { loaded = result; showStart(); showScope() }
+        background(project, "Fetching ${target.target.label}", {
+            session.load(target.target).let { it to sinceLastReview(it.head, it.commits, ReviewMeta.load(git, target.target.key)?.seenHead) }
+        }) { (result, sinceRange) ->
+            if (listed === target) { loaded = result; since = sinceRange; showStart(); showScope() }
         }
         target.pr?.let { pr ->
             checksLabel.text = ""
@@ -170,7 +175,8 @@ class PrDetailView(private val project: Project, private val onBack: () -> Unit)
         }.flatMap { listOf(it, vgap(6)) }.toTypedArray()))
         showSteps(1)
         val picks = picked.map { loaded.commits[it] }
-        beginReview(project, session!!, loaded, resolveScope(loaded.mergeBase, loaded.commits, picks), scopeLabel(loaded.commits, picks),
+        val (range, label) = since?.takeIf { sinceChosen } ?: (resolveScope(loaded.mergeBase, loaded.commits, picks) to scopeLabel(loaded.commits, picks))
+        beginReview(project, session!!, loaded, range, label,
             progress = { step -> showSteps(steps.indexOfFirst { if (step == StartStep.PARK) it.startsWith("Parking") else it.startsWith("Checking out") }) },
             failed = ::showStart,
         )
@@ -188,16 +194,25 @@ class PrDetailView(private val project: Project, private val onBack: () -> Unit)
             alignmentX = LEFT_ALIGNMENT
         }
         val base = listed!!.target.base.removePrefix("${GitClient.REMOTE}/")
-        val all = JRadioButton().apply { isSelected = picked.isEmpty(); isOpaque = false }
+        val all = JRadioButton().apply { isSelected = picked.isEmpty() && !sinceChosen; isOpaque = false }
         box.add(scopeRow(all, stack(JBLabel("All commits").apply { font = JBFont.label().asBold() }, mutedLabel("The whole PR against $base"))) {
-            picked = emptySet(); showScope()
+            picked = emptySet(); sinceChosen = false; showScope()
         })
+        since?.let { (range, _) ->
+            val radio = JRadioButton().apply { isSelected = sinceChosen; isOpaque = false }
+            val count = loaded.commits.indexOfFirst { it.sha == range.from }
+            box.add(divider())
+            box.add(scopeRow(radio, stack(JBLabel("Since your last review").apply { font = JBFont.label().asBold() },
+                mutedLabel("$count ${if (count == 1) "commit" else "commits"} pushed after you last looked"))) {
+                picked = emptySet(); sinceChosen = true; showScope()
+            })
+        }
         loaded.commits.forEachIndexed { i, commit ->
             val check = JCheckBox().apply { isSelected = i in picked; isOpaque = false }
             val subject = wrappingText("${commit.sha.take(7)}  ${commit.subject}")
             val who = mutedLabel(listOf(commit.author, if (commit.time > 0) ago(commit.time * 1000) else "").filter { it.isNotEmpty() }.joinToString(" · "))
             box.add(divider())
-            box.add(scopeRow(check, stack(subject, row(who))) { picked = toggleScope(picked, i); showScope() })
+            box.add(scopeRow(check, stack(subject, row(who))) { picked = toggleScope(picked, i); sinceChosen = false; showScope() })
         }
         scopeSlot.removeAll(); scopeSlot.add(box); scopeSlot.revalidate(); scopeSlot.repaint()
     }

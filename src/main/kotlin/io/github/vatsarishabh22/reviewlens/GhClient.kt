@@ -50,8 +50,40 @@ class GhClient(private val root: Path) {
         return Gson().fromJson(json, Array<PullRequest>::class.java).toList()
     }
 
+    /** This viewer's GitHub "Viewed" ticks for PR [number], every page; owner and repo come from the checkout's remote. */
+    fun viewedStates(number: Int): ViewedStates = parseViewedStates(runCli(root, "gh", "api", "graphql", "--paginate",
+        "-F", "owner={owner}", "-F", "name={repo}", "-F", "number=$number", "-f", "query=$VIEWED_QUERY", "--jq", VIEWED_JQ))
+
+    /** Ticks or unticks one file on GitHub (private to the viewer; nobody is notified). */
+    fun setViewed(pullRequestId: String, path: String, viewed: Boolean) {
+        val mutation = if (viewed) "markFileAsViewed" else "unmarkFileAsViewed"
+        runCli(root, "gh", "api", "graphql", "-f", "id=$pullRequestId", "-f", "path=$path",
+            "-f", "query=mutation(\$id:ID!,\$path:String!){$mutation(input:{pullRequestId:\$id,path:\$path}){clientMutationId}}")
+    }
+
     fun checks(number: Int): Checks =
         summarizeChecks(runCli(root, "gh", "pr", "view", number.toString(), "--json", "statusCheckRollup"))
+}
+
+/** GitHub's own per-viewer state of a PR file; DISMISSED = "new changes since last viewed" (our 🔄). */
+enum class ViewedState { VIEWED, UNVIEWED, DISMISSED }
+
+data class ViewedStates(val pullRequestId: String, val files: Map<String, ViewedState>)
+
+private const val VIEWED_QUERY = "query(\$owner:String!,\$name:String!,\$number:Int!,\$endCursor:String){repository(owner:\$owner,name:\$name)" +
+    "{pullRequest(number:\$number){id files(first:100,after:\$endCursor){pageInfo{hasNextPage endCursor} nodes{path viewerViewedState}}}}}"
+private const val VIEWED_JQ = ".data.repository.pullRequest as \$p | (\"#id\\t\" + \$p.id), (\$p.files.nodes[] | \"\\(.path)\\t\\(.viewerViewedState)\")"
+
+/** Reads `#id<TAB>PR_…` then `path<TAB>STATE` lines (one `#id` line per page). */
+fun parseViewedStates(text: String): ViewedStates {
+    var id = ""
+    val files = LinkedHashMap<String, ViewedState>()
+    text.lines().filter { '\t' in it }.forEach { line ->
+        val (key, value) = line.split('\t', limit = 2)
+        if (key == "#id") id = value else runCatching { ViewedState.valueOf(value) }.getOrNull()?.let { files[key] = it }
+    }
+    require(id.isNotEmpty()) { "GitHub did not return this pull request" }
+    return ViewedStates(id, files)
 }
 
 private val FAILED = setOf("FAILURE", "ERROR", "TIMED_OUT", "CANCELLED", "ACTION_REQUIRED", "STARTUP_FAILURE")

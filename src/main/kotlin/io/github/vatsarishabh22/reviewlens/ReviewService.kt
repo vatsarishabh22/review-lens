@@ -1,10 +1,12 @@
 package io.github.vatsarishabh22.reviewlens
 
 import com.intellij.ide.projectView.ProjectView
+import com.intellij.notification.NotificationType
 import com.intellij.openapi.Disposable
 import com.intellij.openapi.application.ApplicationManager
 import com.intellij.openapi.components.Service
 import com.intellij.openapi.components.service
+import com.intellij.openapi.diagnostic.thisLogger
 import com.intellij.openapi.editor.EditorFactory
 import com.intellij.openapi.editor.event.CaretEvent
 import com.intellij.openapi.editor.event.CaretListener
@@ -35,6 +37,12 @@ class ReviewService(private val project: Project) : Disposable {
     @Volatile var trackedFiles: List<String> = emptyList(); private set
     @Volatile private var scopeCommits: Set<String> = emptySet()
 
+    /** Where the viewed checklist lives right now, for the panel's one-line status. */
+    enum class Sync(val text: String) { GITHUB("Synced with GitHub"), LOCAL("Viewed kept on this laptop"), FAILED("GitHub sync failed · kept on this laptop") }
+    @Volatile var sync = Sync.LOCAL; private set
+    @Volatile private var pullRequestId: String? = null
+    private var syncFailureShown = false
+
     val isActive get() = meta != null
 
     /** True for a moment after a blocked edit: the review bar shows "Read-only while reviewing" (step 4, option A). */
@@ -55,14 +63,38 @@ class ReviewService(private val project: Project) : Disposable {
     fun reload() {
         val git = git ?: project.basePath?.let { runCatching { GitClient.forProject(it) }.getOrNull() }?.also { git = it } ?: return
         val review = ReviewLifecycle(git).active()
-        val fresh = review?.let { ReviewMeta.load(git, it.target.key) }
-        changes = fresh?.let { git.changes(it.range) }.orEmpty()
+        val loaded = review?.let { ReviewMeta.load(git, it.target.key) }
+        changes = loaded?.let { git.changes(it.range) }.orEmpty()
+        val fresh = loaded?.let { withGitHubViewed(git, it) }
         scopeCommits = fresh?.let { git.commitShas(it.range) }.orEmpty()
         trackedFiles = if (fresh != null) git.trackedFiles() else emptyList()
         active = review
         meta = fresh
         blames.clear()
         fireChanged()
+    }
+
+    /** For a PR review, folds GitHub's ticks into the saved checklist (GitHub wins for its files); a branch review stays local. */
+    private fun withGitHubViewed(git: GitClient, meta: ReviewMeta): ReviewMeta {
+        val number = meta.target.prNumber ?: return meta.also { sync = Sync.LOCAL; pullRequestId = null }
+        val gh = GhClient(git.root)
+        return runCatching { gh.viewedStates(number) }.fold(
+            onSuccess = { states ->
+                pullRequestId = states.pullRequestId
+                syncViewed(meta, states.files, changes) { path, viewed -> runCatching { gh.setViewed(states.pullRequestId, path, viewed) }.isSuccess }
+                    .also { sync = if (it.unsent == null) Sync.GITHUB else Sync.FAILED; if (it != meta) ReviewMeta.save(git, it) }
+            },
+            onFailure = { syncFailed(it); meta },
+        )
+    }
+
+    /** Says once per session that ticks stay on the laptop, so a failed sync is never silent. */
+    private fun syncFailed(error: Throwable) {
+        sync = Sync.FAILED
+        if (syncFailureShown) return
+        syncFailureShown = true
+        thisLogger().info("GitHub viewed sync failed", error)
+        notify(project, "Can't reach GitHub right now", "Your viewed ticks are kept on this laptop and sent when GitHub is back.", NotificationType.WARNING)
     }
 
     fun relativePath(file: VirtualFile): String? {
@@ -83,12 +115,31 @@ class ReviewService(private val project: Project) : Disposable {
     /** Unreviewed files under [dir] ("" = the whole repository), for folder badges. */
     fun pendingUnder(dir: String) = changes.count { (dir.isEmpty() || it.path.startsWith("$dir/")) && badge(it) != Badge.REVIEWED }
 
-    /** Marks a file reviewed, or un-marks it when it already is. */
+    /** Marks a file viewed, or un-marks it, here at once; for a PR the same tick goes to GitHub in the background. */
+    @Synchronized
     fun toggleReviewed(change: FileChange) {
         val current = meta ?: return
-        val reviewed = if (badge(change) == Badge.REVIEWED) current.reviewed - change.path else current.reviewed + (change.path to change.newBlob)
-        meta = current.copy(reviewed = reviewed).also { ReviewMeta.save(git!!, it) }
+        val viewed = badge(change) != Badge.REVIEWED
+        val reviewed = if (viewed) current.reviewed + (change.path to change.newBlob) else current.reviewed - change.path
+        // A PR tick is queued even when GitHub is unreachable now, so the next load sends it instead of erasing it.
+        val unsent = if (current.target.prNumber == null) current.unsent else current.unsent.orEmpty() + (change.path to viewed)
+        meta = current.copy(reviewed = reviewed, unsent = unsent).also { ReviewMeta.save(git!!, it) }
         fireChanged()
+        val id = pullRequestId ?: return
+        val root = git!!.root
+        ApplicationManager.getApplication().executeOnPooledThread {
+            runCatching { GhClient(root).setViewed(id, change.path, viewed) }
+                .onSuccess { confirmSent(change.path, viewed) }
+                .onFailure { syncFailed(it); fireChanged() }
+        }
+    }
+
+    /** GitHub has the tick: drop it from [ReviewMeta.unsent] unless the reviewer flipped it again meanwhile. */
+    @Synchronized
+    private fun confirmSent(path: String, viewed: Boolean) {
+        val current = meta ?: return
+        if (current.unsent?.get(path) != viewed) return
+        meta = current.copy(unsent = (current.unsent - path).ifEmpty { null }).also { ReviewMeta.save(git!!, it) }
     }
 
     /** The file before [before] in path order, wrapping around. */

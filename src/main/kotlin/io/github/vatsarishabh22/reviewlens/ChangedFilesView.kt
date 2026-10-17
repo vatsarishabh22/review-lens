@@ -52,6 +52,7 @@ class ChangedFilesView(private val project: Project, parent: Disposable) : JPane
     private val title = wrappingText("", JBFont.label().asBold())
     private val strip = ProgressStrip()
     private val viewedText = mutedLabel()
+    private val syncText = mutedLabel()
     private val model = DefaultListModel<FileRow>()
     private val list = JBList(model).apply { cellRenderer = Renderer() }
     private val treeRoot = DefaultMutableTreeNode()
@@ -69,7 +70,8 @@ class ChangedFilesView(private val project: Project, parent: Disposable) : JPane
                     .whenItemSelected { whole -> wholeProject = whole; showBody() }
             }
         }.apply { isOpaque = false }
-        val head = stack(title, vgap(8), strip, vgap(6), row(viewedText), vgap(4), toggle).apply {
+        val counts = JPanel(BorderLayout()).apply { isOpaque = false; add(viewedText, BorderLayout.WEST); add(syncText, BorderLayout.EAST) }
+        val head = stack(title, vgap(8), strip, vgap(6), counts, vgap(4), toggle).apply {
             border = JBUI.Borders.compound(JBUI.Borders.customLineBottom(ReviewColors.line), JBUI.Borders.empty(6, 12, 6, 12))
         }
         add(head, BorderLayout.NORTH)
@@ -108,6 +110,7 @@ class ChangedFilesView(private val project: Project, parent: Disposable) : JPane
         val done = service.reviewedCount()
         strip.fraction = if (total == 0) 0.0 else done.toDouble() / total
         viewedText.text = "$done of $total files viewed · ${meta.scopeLabel}"
+        syncText.text = service.sync.text
 
         val selected = (list.selectedValue as? FileRow.File)?.change?.path
         model.clear()

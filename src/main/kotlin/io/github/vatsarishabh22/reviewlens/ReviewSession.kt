@@ -32,8 +32,10 @@ class ReviewSession(val git: GitClient) {
             active.head != range.to -> lifecycle.moveTo(range.to)
             else -> active
         }
-        val reviewed = ReviewMeta.load(git, loaded.target.key)?.reviewed.orEmpty()
-        ReviewMeta.save(git, ReviewMeta(loaded.target, range, scopeLabel, reviewed))
+        // copy, not rebuild: the ticks and the queue of ticks GitHub has not confirmed outlive a change of scope
+        val meta = ReviewMeta.load(git, loaded.target.key)?.copy(target = loaded.target, range = range, scopeLabel = scopeLabel, seenHead = loaded.head)
+            ?: ReviewMeta(loaded.target, range, scopeLabel, seenHead = loaded.head)
+        ReviewMeta.save(git, meta)
         return review
     }
 }

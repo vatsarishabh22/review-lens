@@ -26,7 +26,7 @@ enum class Restored { NOTHING_TO_RESTORE, RESTORED, KEPT_IN_STASH, STASH_MISSING
  */
 class ReviewLifecycle(private val git: GitClient) {
 
-    private val stateFile: Path by lazy { git.gitDir().resolve("review-lens/active.json") }
+    private val stateFile: Path by lazy { git.gitDir.resolve("review-lens/active.json") }
 
     fun active(): ActiveReview? = stateFile.takeIf(Files::exists)?.let { Gson().fromJson(Files.readString(it), ActiveReview::class.java) }
 

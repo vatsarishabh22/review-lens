@@ -15,7 +15,8 @@ class GitClient(val root: Path) {
     fun fetchAll() = git("fetch", "--no-tags", REMOTE)
 
     fun remoteBranches(): List<String> =
-        git("branch", "-r", "--format=%(refname:short)").lines().filter { it.isNotBlank() && !it.endsWith("/HEAD") }
+        // lstrip, not short: git shortens refs/remotes/origin/HEAD to a bare "origin", which slipped past the HEAD filter
+        git("branch", "-r", "--format=%(refname:lstrip=2)").lines().filter { it.isNotBlank() && !it.endsWith("/HEAD") }
 
     fun defaultBase(): String =
         runCatching { git("symbolic-ref", "--short", "refs/remotes/$REMOTE/HEAD") }.getOrDefault("$REMOTE/main")
@@ -41,8 +42,11 @@ class GitClient(val root: Path) {
     /** File content at [rev], or "" when the file does not exist there (added files have no base). */
     fun show(rev: String, path: String): String = runCatching { runCli(root, "git", "show", "$rev:$path", trim = false) }.getOrDefault("")
 
-    /** The repository's private dir (`.git`, or the worktree's own git dir). */
-    fun gitDir(): Path = root.resolve(git("rev-parse", "--git-dir"))
+    /**
+     * The repository's private dir (`.git`, or the worktree's own git dir), asked once: saving a tick runs on the UI
+     * thread, where running git is forbidden (it showed as "IDE error occurred").
+     */
+    val gitDir: Path by lazy { root.resolve(git("rev-parse", "--git-dir")) }
 
     /** The branch HEAD is on, or the commit SHA when HEAD is detached. */
     fun currentRef(): String = runCatching { git("symbolic-ref", "--short", "-q", "HEAD") }.getOrNull()?.ifBlank { null } ?: git("rev-parse", "HEAD")

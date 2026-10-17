@@ -99,22 +99,38 @@ class ReviewBanner : EditorNotificationProvider, DumbAware {
         return bar
     }
 
-    /** All commits, then each commit of the PR: picking one re-scopes the review in place (no fetch). */
-    private fun scopeMenu(project: Project, meta: ReviewMeta, anchor: JComponent) {
-        val git = ReviewService.of(project).git ?: return
-        val head = ReviewService.of(project).active?.head ?: return
+    /** One line of the scope menu and what picking it does. */
+    private class ScopeItem(val label: String, val ticked: Boolean, val pick: () -> Unit)
+
+    /**
+     * All commits, "Since your last review", then each commit; picking one re-scopes the review in place. The last line
+     * fetches the PR again, so commits pushed after the review started show up (and move the checkout to the new head).
+     */
+    private fun scopeMenu(project: Project, meta: ReviewMeta, anchor: JComponent, fetch: Boolean = false) {
+        val service = ReviewService.of(project)
+        val git = service.git ?: return
+        val head = service.active?.head ?: return
         val session = ReviewSession(git)
-        background(project, "Listing commits", { session.local(meta.target, head) }) { loaded ->
-            val all = Commit("", "All commits (${loaded.commits.size})")
-            JBPopupFactory.getInstance().createPopupChooserBuilder(listOf(all) + loaded.commits)
-                .setRenderer(SimpleListCellRenderer.create("") { c ->
-                    val tick = if ((c === all && meta.scopeLabel.startsWith("All commits")) || meta.scopeLabel == "Commit ${c.sha.take(7)}") "✓  " else "    "
-                    tick + if (c === all) c.subject else c.label
-                })
-                .setItemChosenCallback { picked ->
-                    val picks = if (picked === all) emptyList() else listOf(picked)
-                    beginReview(project, session, loaded, resolveScope(loaded.mergeBase, loaded.commits, picks), scopeLabel(loaded.commits, picks))
+        background(project, if (fetch) "Checking GitHub for new commits" else "Listing commits", {
+            if (fetch) session.load(meta.target) else session.local(meta.target, head)
+        }) { loaded ->
+            fun scope(range: ScopeRange, label: String) = beginReview(project, session, loaded, range, label)
+            val all = scopeLabel(loaded.commits, emptyList())
+            val items = buildList {
+                add(ScopeItem(all, meta.scopeLabel == all) { scope(resolveScope(loaded.mergeBase, loaded.commits, emptyList()), all) })
+                sinceLastReview(loaded.head, loaded.commits, meta.seenHead)?.let { (range, label) ->
+                    add(ScopeItem(label, meta.scopeLabel == label) { scope(range, label) })
                 }
+                loaded.commits.forEach { c ->
+                    val label = scopeLabel(loaded.commits, listOf(c))
+                    add(ScopeItem(c.label, meta.scopeLabel == label) { scope(resolveScope(loaded.mergeBase, loaded.commits, listOf(c)), label) })
+                }
+                add(ScopeItem("Check GitHub for new commits…", false) { scopeMenu(project, meta, anchor, fetch = true) })
+            }
+            if (fetch && loaded.head == head) notify(project, "No new commits", "${meta.target.label} has nothing newer than what you're reviewing.")
+            JBPopupFactory.getInstance().createPopupChooserBuilder(items)
+                .setRenderer(SimpleListCellRenderer.create("") { (if (it.ticked) "✓  " else "    ") + it.label })
+                .setItemChosenCallback { it.pick() }
                 .createPopup()
                 .showUnderneathOf(anchor)
         }

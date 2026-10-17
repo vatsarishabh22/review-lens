@@ -158,4 +158,30 @@ class ReviewLifecycleTest {
         ReviewMeta.save(git, ReviewMeta(target, range, "All commits (1)", mapOf("app.py" to "old-blob")))
         assertEquals(ReviewProgress(0, 2), ReviewTargets(git).progress(target)) // changed since viewed
     }
+
+    @Test
+    fun `starting a review remembers the head it started on, for the next since-your-last-review`() {
+        val head = setUp()
+        val session = ReviewSession(GitClient(repo))
+        val local = target.copy(base = "main") // the fixture repo has no remote
+        val loaded = session.local(local, head)
+        session.begin(loaded, resolveScope(loaded.mergeBase, loaded.commits, emptyList()), "All commits (1)")
+        assertEquals(head, ReviewMeta.load(GitClient(repo), local.key)!!.seenHead)
+    }
+
+    @Test
+    fun `re-scoping keeps the ticks and the ones GitHub has not confirmed yet`() {
+        val head = setUp()
+        val git = GitClient(repo)
+        val session = ReviewSession(git)
+        val local = target.copy(base = "main")
+        val loaded = session.local(local, head)
+        val range = resolveScope(loaded.mergeBase, loaded.commits, emptyList())
+        session.begin(loaded, range, "All commits (1)")
+        ReviewMeta.save(git, ReviewMeta.load(git, local.key)!!.copy(reviewed = mapOf("app.py" to "b"), unsent = mapOf("app.py" to true)))
+        session.begin(loaded, range, "Commit abc1234")
+        val meta = ReviewMeta.load(git, local.key)!!
+        assertEquals("Commit abc1234" to mapOf("app.py" to "b"), meta.scopeLabel to meta.reviewed)
+        assertEquals(mapOf("app.py" to true), meta.unsent)
+    }
 }

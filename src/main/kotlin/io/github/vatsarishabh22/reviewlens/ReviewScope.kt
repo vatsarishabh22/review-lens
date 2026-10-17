@@ -33,6 +33,16 @@ fun toggleScope(picked: Set<Int>, index: Int): Set<Int> = when {
 /** The index before [index] in a list of [size], wrapping to the last; -1 (not in the list) also starts from the last. */
 fun previousIndex(size: Int, index: Int): Int = if (index <= 0) size - 1 else index - 1
 
+/**
+ * "Since your last review": the commits pushed after [seenHead] up to the PR head. Null when nothing is new, or when
+ * [seenHead] is no longer in the PR's history (a force-push rewrote it).
+ */
+fun sinceLastReview(head: String, commits: List<Commit>, seenHead: String?): Pair<ScopeRange, String>? {
+    val newCommits = commits.indexOfFirst { it.sha == seenHead } // commits are newest first, so the index counts what's new
+    if (seenHead == null || newCommits <= 0) return null
+    return ScopeRange(seenHead, head) to "Since your last review ($newCommits)"
+}
+
 fun scopeLabel(commits: List<Commit>, picked: Collection<Commit>): String = when {
     picked.isEmpty() || picked.size == commits.size -> "All commits (${commits.size})"
     picked.size == 1 -> "Commit ${picked.first().sha.take(7)}"
