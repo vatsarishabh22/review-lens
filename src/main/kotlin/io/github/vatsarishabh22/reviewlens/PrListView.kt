@@ -1,6 +1,12 @@
 package io.github.vatsarishabh22.reviewlens
 
 import com.intellij.icons.AllIcons
+import com.intellij.openapi.actionSystem.ActionPlaces
+import com.intellij.openapi.actionSystem.ActionToolbar
+import com.intellij.openapi.actionSystem.AnActionEvent
+import com.intellij.openapi.actionSystem.impl.ActionButton
+import com.intellij.openapi.project.DumbAwareAction
+import java.awt.Cursor
 import com.intellij.ui.DocumentAdapter
 import com.intellij.ui.ScrollPaneFactory
 import com.intellij.ui.SearchTextField
@@ -14,7 +20,6 @@ import java.awt.Component
 import java.awt.event.MouseAdapter
 import java.awt.event.MouseEvent
 import javax.swing.DefaultListModel
-import javax.swing.JButton
 import javax.swing.JComponent
 import javax.swing.JList
 import javax.swing.JPanel
@@ -35,17 +40,23 @@ class PrListView(private val onPick: (ListedTarget) -> Unit, onRefresh: () -> Un
     private val list = JBList(model).apply { cellRenderer = Renderer(); emptyText.text = "Loading pull requests…" }
     private var all: List<ListedTarget> = emptyList()
     private var progress: Map<String, ReviewProgress> = emptyMap()
+    /** Branches stand in when `gh` could not list PRs (not installed, signed out, offline, not a GitHub repo): say so. */
+    private val fallbackNote = mutedLabel("Couldn't get pull requests from GitHub · showing branches").apply {
+        border = JBUI.Borders.empty(0, 12, 4, 12); isVisible = false
+    }
 
     init {
-        val refresh = JButton(AllIcons.Actions.Refresh).apply {
-            toolTipText = "Refresh"
-            isBorderPainted = false; isContentAreaFilled = false
-            addActionListener { onRefresh() }
+        // IntelliJ's own toolbar button (hover highlight, tooltip): a bare icon was easy to miss
+        val action = object : DumbAwareAction("Refresh", "List the pull requests again", AllIcons.Actions.Refresh) {
+            override fun actionPerformed(e: AnActionEvent) = onRefresh()
         }
-        add(JPanel(BorderLayout(JBUI.scale(4), 0)).apply {
+        val refresh = ActionButton(action, action.templatePresentation.clone(), ActionPlaces.TOOLWINDOW_CONTENT, ActionToolbar.DEFAULT_MINIMUM_BUTTON_SIZE)
+            .apply { cursor = Cursor.getPredefinedCursor(Cursor.HAND_CURSOR) }
+        val bar = JPanel(BorderLayout(JBUI.scale(4), 0)).apply {
             border = JBUI.Borders.empty(6, 10, 6, 6)
             add(search); add(refresh, BorderLayout.EAST)
-        }, BorderLayout.NORTH)
+        }
+        add(stack(bar, fallbackNote), BorderLayout.NORTH)
         add(ScrollPaneFactory.createScrollPane(list, true))
         search.addDocumentListener(object : DocumentAdapter() {
             override fun textChanged(e: DocumentEvent) = rebuild()
@@ -59,19 +70,20 @@ class PrListView(private val onPick: (ListedTarget) -> Unit, onRefresh: () -> Un
     }
 
     fun loading() {
-        all = emptyList(); model.clear()
+        all = emptyList(); model.clear(); fallbackNote.isVisible = false
         list.emptyText.text = "Loading pull requests…"
     }
 
     fun failed() {
-        all = emptyList(); model.clear()
+        all = emptyList(); model.clear(); fallbackNote.isVisible = false
         list.emptyText.text = "Couldn't list pull requests"
     }
 
     /** [progress] per target key, for PRs this reviewer started before (the "Resume" pill). */
-    fun show(targets: List<ListedTarget>, progress: Map<String, ReviewProgress>) {
-        all = targets; this.progress = progress
-        list.emptyText.text = "No open pull requests"
+    fun show(listing: Listing, progress: Map<String, ReviewProgress>) {
+        all = listing.targets; this.progress = progress
+        fallbackNote.isVisible = listing.branchesOnly
+        list.emptyText.text = if (listing.branchesOnly) "No branches to review" else "No open pull requests"
         rebuild()
     }
 

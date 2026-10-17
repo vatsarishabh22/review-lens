@@ -31,4 +31,16 @@ class GitClientTest {
         git("symbolic-ref", "refs/remotes/origin/HEAD", "refs/remotes/origin/main")
         assertEquals(listOf("origin/main"), GitClient(real).remoteBranches())
     }
+
+    @Test
+    fun `an error says the tool's reason, never the command line`() {
+        assertEquals("Could not read from remote repository.",
+            cliReason("fatal: Could not read from remote repository.\n\nPlease make sure you have the correct access rights\n", "git"))
+        assertEquals("error connecting to api.github.com", cliReason("error connecting to api.github.com\n", "gh"))
+        assertEquals("git failed", cliReason("  \n", "git"))
+    }
+
+    @Test
+    fun `without GitHub the list says it shows branches, even when there are none`() =
+        assertEquals(Listing(emptyList(), branchesOnly = true), ReviewTargets(GitClient(real)).list())
 }
