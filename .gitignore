@@ -1,5 +1,7 @@
 .gradle/
 build/
+node_modules/
+vscode/out/
 .idea/
 .kotlin/
 # IDE sandboxes created by runIde / runIdeForUiTests (hundreds of MB)
