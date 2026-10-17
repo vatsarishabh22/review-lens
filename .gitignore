@@ -10,3 +10,5 @@ vscode/out/
 .venv/
 /pyproject.toml
 CLAUDE.local.md
+# local secrets (Marketplace tokens); CI reads its own from GitHub repo secrets
+.env
