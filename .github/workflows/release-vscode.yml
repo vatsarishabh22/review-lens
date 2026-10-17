@@ -1,0 +1,54 @@
+name: Release VS Code
+
+# Push a tag like vscode-v0.2.0: the extension is packaged at that version and attached to a GitHub Release.
+on:
+  push:
+    tags: ['vscode-v*']
+
+permissions:
+  contents: write
+
+defaults:
+  run:
+    working-directory: vscode
+
+jobs:
+  release:
+    name: VS Code · release
+    runs-on: ubuntu-latest
+    env:
+      VERSION: ${{ github.ref_name }}
+      HAS_VSCE_TOKEN: ${{ secrets.VSCE_PAT != '' }}
+      HAS_OVSX_TOKEN: ${{ secrets.OVSX_PAT != '' }}
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0 # the tags, to find this editor's previous release
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+          cache-dependency-path: vscode/package-lock.json
+      - run: npm ci
+      - run: npm test
+      - run: npm version "${VERSION#vscode-v}" --no-git-tag-version
+      - run: npm run package -- --out "review-lens-${VERSION#vscode-v}.vsix"
+      # notes since this editor's previous release, not since the other editor's
+      - name: Previous VS Code release
+        run: echo "PREVIOUS=$(git describe --tags --abbrev=0 --match 'vscode-v*' "$VERSION^" 2>/dev/null)" >> "$GITHUB_ENV"
+      - name: GitHub Release
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: gh release create "$VERSION" ./*.vsix --title "Review Lens for VS Code ${VERSION#vscode-v}" --generate-notes ${PREVIOUS:+--notes-start-tag "$PREVIOUS"} --latest=false
+      # Marketplaces: each step is skipped until its token is added to the repo secrets
+      - name: Publish to the VS Code Marketplace
+        if: env.HAS_VSCE_TOKEN == 'true'
+        env:
+          VSCE_PAT: ${{ secrets.VSCE_PAT }}
+        run: npx vsce publish --skip-license --packagePath ./*.vsix
+      # Open VSX serves the VS Code forks (Cursor, Windsurf, VSCodium)
+      - name: Publish to Open VSX
+        if: env.HAS_OVSX_TOKEN == 'true'
+        env:
+          OVSX_PAT: ${{ secrets.OVSX_PAT }}
+        run: npx ovsx publish ./*.vsix

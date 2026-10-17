@@ -1,0 +1,55 @@
+name: VS Code
+
+# Same pattern as jetbrains.yml: `changes` decides, every other job is skipped when nothing of this editor changed.
+on:
+  pull_request:
+  push:
+    branches: [main]
+
+defaults:
+  run:
+    working-directory: vscode
+
+concurrency:
+  group: vscode-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  changes:
+    name: VS Code · changes
+    runs-on: ubuntu-latest
+    outputs:
+      run: ${{ steps.diff.outputs.run }}
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      - id: diff
+        working-directory: .
+        env:
+          BASE: ${{ github.base_ref }}
+        run: |
+          if [ -z "$BASE" ]; then echo "run=true" >> "$GITHUB_OUTPUT"; exit 0; fi
+          git diff --name-only "origin/$BASE...HEAD" | grep -qE '^(vscode/|spec/|\.github/workflows/(vscode|release-vscode)\.yml$)' \
+            && echo "run=true" >> "$GITHUB_OUTPUT" || echo "run=false" >> "$GITHUB_OUTPUT"
+
+  build:
+    name: VS Code · build and test
+    needs: changes
+    if: needs.changes.outputs.run == 'true'
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+          cache-dependency-path: vscode/package-lock.json
+      - run: npm ci
+      # compiles the extension, checks its state reader against spec/fixtures and the fixtures against the schema
+      - run: npm test
+      - run: npm run package -- --out review-lens-vscode.vsix
+      - uses: actions/upload-artifact@v4
+        with:
+          name: review-lens-vscode
+          path: vscode/review-lens-vscode.vsix
