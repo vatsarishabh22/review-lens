@@ -90,6 +90,11 @@ class GitClient(val root: Path) {
         // names an ignored path exactly, which a repo ignoring `.idea` while tracking files in it hits (stash saved, tree not cleaned).
         private const val NOT_IDE = ":(exclude,glob).ide[a]/**"
 
-        fun forProject(basePath: String) = GitClient(Path.of(runCli(Path.of(basePath), "git", "rev-parse", "--show-toplevel")))
+        /**
+         * The repo root in the IDE's own spelling of the path. `--show-toplevel` resolves symlinks (macOS /tmp is
+         * /private/tmp), and a file opened through that spelling is outside the project: no guard, no bar, a dialog.
+         */
+        fun forProject(basePath: String): GitClient =
+            GitClient(Path.of(basePath).resolve(runCli(Path.of(basePath), "git", "rev-parse", "--show-cdup")).normalize())
     }
 }

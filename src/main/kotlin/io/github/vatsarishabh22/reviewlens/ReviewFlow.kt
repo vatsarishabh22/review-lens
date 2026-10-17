@@ -61,6 +61,7 @@ fun beginReview(
         session.begin(loaded, range, label, onEdt).also { afterCheckout(project, session.git) }
     }, failed) { review ->
         val service = ReviewService.of(project)
+        refreshViews(project)
         ToolWindowManager.getInstance(project).getToolWindow(TOOL_WINDOW_ID)?.activate(null)
         service.nextUnreviewed(null)?.let { openChange(project, it) }
         if (!wasActive) notify(project, "Reviewing ${review.target.label}",
@@ -75,6 +76,7 @@ fun exitReview(project: Project) {
     val git = service.git ?: return
     val branch = service.active?.originalRef ?: return
     background(project, "Exiting review", { ReviewLifecycle(git).exit().also { afterCheckout(project, git) } }) { restored ->
+        refreshViews(project)
         // The "Reviewing…" balloons offer Exit, which no longer applies.
         NotificationsManager.getNotificationsManager().getNotificationsOfType(Notification::class.java, project)
             .filter { it.groupId == TITLE }.forEach(Notification::expire)
@@ -109,8 +111,8 @@ fun openChange(project: Project, change: FileChange) {
         .submit(AppExecutorUtil.getAppExecutorService())
 }
 
-/** The file at the scope's base vs at `<to>`, in IntelliJ's diff viewer. */
-fun showDiff(project: Project, change: FileChange) {
+/** The file at the scope's base vs at `<to>`, read off EDT, handed to [then] on EDT. */
+fun loadDiff(project: Project, change: FileChange, then: (SimpleDiffRequest) -> Unit) {
     val meta = ReviewService.of(project).meta ?: return
     val git = ReviewService.of(project).git ?: return
     background(project, "Loading diff", {
@@ -118,12 +120,10 @@ fun showDiff(project: Project, change: FileChange) {
     }) { (before, after) ->
         val factory = DiffContentFactory.getInstance()
         val fileType = FileTypeManager.getInstance().getFileTypeByFileName(change.name)
-        DiffManager.getInstance().showDiff(project, SimpleDiffRequest(
-            "${change.path} · ${meta.scopeLabel}",
-            factory.create(project, before, fileType),
-            factory.create(project, after, fileType),
-            "Base ${meta.range.from.take(9)}",
-            "PR ${meta.range.to.take(9)}",
-        ))
+        then(SimpleDiffRequest("${change.path} · ${meta.scopeLabel}", factory.create(project, before, fileType),
+            factory.create(project, after, fileType), "Base ${meta.range.from.take(9)}", "PR ${meta.range.to.take(9)}"))
     }
 }
+
+/** A deleted file has no tab to flip, so its diff opens in IntelliJ's diff viewer. */
+fun showDiff(project: Project, change: FileChange) = loadDiff(project, change) { DiffManager.getInstance().showDiff(project, it) }

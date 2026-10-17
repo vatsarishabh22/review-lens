@@ -41,7 +41,7 @@ class ReviewBanner : EditorNotificationProvider, DumbAware {
         val meta = service.meta ?: return null
         val path = service.relativePath(file) ?: return null // IDE pages, scratches, files outside the repo
         val change = service.changeFor(file)
-        return Function { stack(reviewBar(project, meta, change), fileBar(project, path, change)) }
+        return Function { editor -> stack(reviewBar(project, meta, change), fileBar(project, file, path, change, editor is ReviewDiffEditor)) }
     }
 
     private fun reviewBar(project: Project, meta: ReviewMeta, change: FileChange?): JComponent {
@@ -66,7 +66,7 @@ class ReviewBanner : EditorNotificationProvider, DumbAware {
         }
     }
 
-    private fun fileBar(project: Project, path: String, change: FileChange?): JComponent {
+    private fun fileBar(project: Project, file: VirtualFile, path: String, change: FileChange?, diffShown: Boolean): JComponent {
         val service = ReviewService.of(project)
         val crumb = SimpleColoredComponent().apply {
             isOpaque = false
@@ -80,15 +80,14 @@ class ReviewBanner : EditorNotificationProvider, DumbAware {
             add(crumb)
         }
         if (change == null) return bar
-        // ponytail: Diff opens today's diff window and the toggle returns to File; step 6 makes Diff an editor tab.
         val view = panel {
             row {
                 segmentedButton(listOf(false, true)) { text = if (it) "Diff" else "File" }.apply {
-                    selectedItem = false
-                    whenItemSelected { diff -> if (diff) { showDiff(project, change); selectedItem = false } }
+                    selectedItem = diffShown
+                    whenItemSelected { diff -> if (diff != diffShown) showView(project, file, diff) }
                 }
             }
-        }.apply { isOpaque = false }
+        }.apply { isOpaque = false; toolTipText = "⌥D" }
         val viewed = service.badge(change) == Badge.REVIEWED
         val toggle = JButton("Viewed", if (viewed) BadgeIcon(Badge.REVIEWED) else BOX).apply {
             isOpaque = false

@@ -14,6 +14,7 @@
         <writingAccessProvider implementation="io.github.vatsarishabh22.reviewlens.ReadOnlyGuard"/>
         <toolWindow id="Review" anchor="left" icon="AllIcons.Actions.Preview"
                     factoryClass="io.github.vatsarishabh22.reviewlens.ReviewToolWindowFactory"/>
+        <fileEditorProvider implementation="io.github.vatsarishabh22.reviewlens.ReviewDiffEditorProvider"/>
         <editorNotificationProvider implementation="io.github.vatsarishabh22.reviewlens.ReviewBanner"/>
         <editor.linePainter implementation="io.github.vatsarishabh22.reviewlens.InlineBlame"/>
         <projectViewNodeDecorator implementation="io.github.vatsarishabh22.reviewlens.TreeBadges"/>
@@ -40,7 +41,7 @@
             <keyboard-shortcut keymap="$default" first-keystroke="alt N"/>
         </action>
         <action id="ReviewLens.ShowDiff" class="io.github.vatsarishabh22.reviewlens.ShowDiffAction"
-                text="Show Review Diff" description="This file at the scope's base vs the PR" icon="AllIcons.Actions.Diff">
+                text="File / Diff" description="Flip this file between the file and its diff against the scope's base" icon="AllIcons.Actions.Diff">
             <keyboard-shortcut keymap="$default" first-keystroke="alt D"/>
         </action>
         <action id="ReviewLens.Exit" class="io.github.vatsarishabh22.reviewlens.ExitReviewAction"

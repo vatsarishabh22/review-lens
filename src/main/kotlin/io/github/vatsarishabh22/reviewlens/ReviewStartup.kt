@@ -17,6 +17,7 @@ class ReviewStartup : ProjectActivity {
         service.reload()
         val review = service.active ?: return
         withContext(Dispatchers.EDT) {
+            refreshViews(project) // tabs restored at startup opened before the review was known, without their Diff view
             val windows = ToolWindowManager.getInstance(project)
             windows.invokeLater { windows.getToolWindow(TOOL_WINDOW_ID)?.activate(null) }
             notify(project, "Still reviewing ${review.target.label}", "You're on ${review.reviewBranch}. Exit review takes you back to ${review.originalRef}" +

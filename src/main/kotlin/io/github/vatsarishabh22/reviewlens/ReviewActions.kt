@@ -3,6 +3,8 @@ package io.github.vatsarishabh22.reviewlens
 import com.intellij.openapi.actionSystem.ActionUpdateThread
 import com.intellij.openapi.actionSystem.AnActionEvent
 import com.intellij.openapi.actionSystem.CommonDataKeys
+import com.intellij.openapi.fileEditor.FileEditorManager
+import com.intellij.openapi.vfs.VirtualFile
 import com.intellij.openapi.project.DumbAwareAction
 
 /** Base for actions that only apply while a review is in progress. */
@@ -15,7 +17,13 @@ abstract class ReviewAction : DumbAwareAction() {
 
     protected fun currentChange(e: AnActionEvent): FileChange? {
         val project = e.project ?: return null
-        return e.getData(CommonDataKeys.VIRTUAL_FILE)?.let { ReviewService.of(project).changeFor(it) }
+        return currentFile(e)?.let { ReviewService.of(project).changeFor(it) }
+    }
+
+    /** The open tab's file: inside the Diff view the data context names the diff's content, not the file. */
+    protected fun currentFile(e: AnActionEvent): VirtualFile? {
+        val project = e.project ?: return null
+        return FileEditorManager.getInstance(project).selectedEditor?.file ?: e.getData(CommonDataKeys.VIRTUAL_FILE)
     }
 }
 
@@ -37,10 +45,12 @@ class NextFileAction : ReviewAction() {
     }
 }
 
+/** ⌥D: flips the open changed file between File and Diff, in place. */
 class ShowDiffAction : ReviewAction() {
     override fun actionPerformed(e: AnActionEvent) {
         val project = e.project ?: return
-        currentChange(e)?.let { showDiff(project, it) }
+        val file = currentFile(e)?.takeIf { currentChange(e) != null } ?: return
+        showView(project, file, !isDiffShown(project, file))
     }
 }
 
