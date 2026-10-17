@@ -24,6 +24,7 @@ fun markdownHtml(markdown: String): String? {
     val text = markdown.replace(Regex("<!--.*?-->", RegexOption.DOT_MATCHES_ALL), "").replace("\r", "").trim()
     if (text.isEmpty()) return null
     val flavour = GFMFlavourDescriptor()
+    // Deprecated, not scheduled for removal; its replacement (the CancellationToken constructor) is experimental, so the stable call stays
     val html = HtmlGenerator(text, MarkdownParser(flavour).buildMarkdownTreeFromString(text), flavour).generateHtml()
     return html.replace(IMAGE) { it.groupValues[1] } // GitHub's attachments need a sign-in Swing can't give; the alt text stands in
 }
