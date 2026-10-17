@@ -31,14 +31,16 @@ Then it puts you back exactly where you were.
 ```mermaid
 flowchart LR
     A["Your branch<br/>with uncommitted work"] -->|Start review:<br/>work parked| B["The PR, read-only<br/>full files, changes marked"]
-    B -->|Finish review| C(["GitHub:<br/>one review"])
-    B -->|Exit review:<br/>work restored| D["Your branch<br/>as you left it"]
+    B -->|Finish review:<br/>post or mark reviewed| C(["GitHub: one review,<br/>or nothing posted"])
+    C -->|work restored| D["Your branch as you left it,<br/>the PR list ready for the next"]
+    B -->|Exit review:<br/>work restored| D
 ```
 
 - **Your work stays safe.** Uncommitted changes are parked and come back exactly on Exit.
 - **Read the change in context.** Full files, changes marked in the gutter, a diff one click away.
 - **Track progress.** ⭐ not viewed · ✅ viewed · 🔄 changed since viewed, synced with GitHub.
-- **Comment, then post once.** Drafts, summary and verdict go to GitHub as a single review.
+- **Comment, then post once.** Drafts, summary and verdict go to GitHub as a single review, or mark it reviewed without posting.
+- **See what's done.** Reviewed PRs turn green in the list with their verdict: ✓ Reviewed · approved.
 - **Review only what's new.** Pick all commits, some commits, or only those since your last review.
 
 ## Get started

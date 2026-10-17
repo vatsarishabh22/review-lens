@@ -64,20 +64,22 @@ and write. Comments stay drafts until you finish.
 | File / Diff | `⌥D` / `Alt+D` | The full file with changes marked, or a side-by-side diff |
 | Viewed | `⌥R` / `Alt+R` | Tick the file and open the next one |
 
-**5. Finish review.** Add a summary, pick **Comment**, **Approve** or **Request changes**, and click **Submit to GitHub**. Your
-drafts go to GitHub as one review.
+**5. Finish review.** Once every file is viewed, Review Lens offers **Finish review…**. Add a summary, pick **Comment**,
+**Approve** or **Request changes**, and click **Submit to GitHub**: your drafts go to GitHub as one review. Nothing to
+say? Pick **Mark as reviewed**: nothing is posted, and any drafts are kept. Either way you're back on your branch with
+your work restored, on the pull request list, where the PR shows **✓ Reviewed** in green. Click it to **Review again**.
 
 ![Finish review](../docs/images/finish.png)
 
-**6. Exit review.** You're back on your branch with your work restored. Come back any time: **Resume review** keeps
-your ticks and drafts.
+**6. Or exit partway.** **Exit** puts you back on your branch with your work restored, without finishing. Come back any
+time: **Resume review** keeps your ticks and drafts.
 
 ## Troubleshooting
 
 | You see | Do this |
 |---|---|
 | "Couldn't get pull requests from GitHub · showing branches" | `gh` is missing, signed out or offline. Run `gh auth status`. |
-| "Back on *your-branch*: your changes need a hand" | Your parked work conflicted with the branch. It's safe in the stash `review-lens: parked from …`. Resolve it, or run `git stash pop`. |
+| "Back on *your-branch*" or "Finished #*N*": "your changes need a hand" | Your parked work conflicted with the branch. It's safe in the stash `review-lens: parked from …`. Resolve it, or run `git stash pop`. |
 | "…Your comments are kept as drafts" | GitHub refused the review, and the message gives its reason (for example, a comment on a line that no longer exists). Fix that comment and finish again. Nothing was lost. |
 | Typing in a file does nothing | PR files are read-only during a review. Exit review to edit your own branch. |
 
