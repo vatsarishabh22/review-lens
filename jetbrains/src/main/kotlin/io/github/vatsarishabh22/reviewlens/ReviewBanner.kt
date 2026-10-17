@@ -95,7 +95,9 @@ class ReviewBanner : EditorNotificationProvider, DumbAware {
             row {
                 segmentedButton(listOf(false, true)) { text = if (it) "Diff" else "File" }.apply {
                     selectedItem = diffShown
-                    whenItemSelected { diff -> if (diff != diffShown) showView(project, file, diff) }
+                    // Each view (File, Diff) has its own bar, so this control always shows its own view: after asking for
+                    // the other one it snaps back, or coming back here would show a stale choice and swallow the next click.
+                    whenItemSelected { diff -> if (diff != diffShown) { showView(project, file, diff); selectedItem = diffShown } }
                 }
             }
         }.apply { isOpaque = false; toolTipText = "⌥D" }
