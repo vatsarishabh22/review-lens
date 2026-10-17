@@ -16,13 +16,16 @@ class ReviewSession(val git: GitClient) {
         return LoadedTarget(target, head, mergeBase, git.commits(mergeBase, head))
     }
 
-    /** Starts the review (parking the reviewer's work), or re-scopes the one in progress and moves it to a newer head. */
+    /**
+     * Starts the review (parking the reviewer's work), or re-scopes the one in progress. The checkout sits at the
+     * scope's end ([ScopeRange.to]), so the files on disk are exactly what the scope delivers: one-commit scope = that commit.
+     */
     fun begin(loaded: LoadedTarget, range: ScopeRange, scopeLabel: String): ActiveReview {
         val active = lifecycle.active()
         val review = when {
-            active == null -> lifecycle.start(loaded.target, loaded.head)
+            active == null -> lifecycle.start(loaded.target, range.to)
             active.target.key != loaded.target.key -> error("Already reviewing ${active.target.label}. Exit that review first.")
-            active.head != loaded.head -> lifecycle.moveTo(loaded.head)
+            active.head != range.to -> lifecycle.moveTo(range.to)
             else -> active
         }
         val reviewed = ReviewMeta.load(git, loaded.target.key)?.reviewed.orEmpty()

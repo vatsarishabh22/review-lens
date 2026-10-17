@@ -15,6 +15,7 @@ class ReviewBanner : EditorNotificationProvider, DumbAware {
     override fun collectNotificationData(project: Project, file: VirtualFile): Function<in FileEditor, out JComponent?>? {
         val service = ReviewService.of(project)
         val meta = service.meta ?: return null
+        if (service.relativePath(file) == null) return null // IDE pages, scratches, files outside the repo
         val change = service.changeFor(file)
         return Function { editor ->
             EditorNotificationPanel(editor, EditorNotificationPanel.Status.Info).apply {

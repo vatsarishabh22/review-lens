@@ -468,7 +468,7 @@ function titlebar() {
     ? `<button class="widget branch in-review" data-act="branch-info">${I.branch} PR #147 <span class="muted">· read-only</span></button>`
     : `<button class="widget branch">${I.branch} feat/my-work ${S.dirty ? '<span class="muted">· 3 changes</span>' : ""} ${I.down}</button>`;
   return `<div class="titlebar"><div class="lights"><i></i><i></i><i></i></div>
-    <button class="widget"><span class="badge-sq">SD</span> acme-shop ${I.down}</button>${branch}
+    <button class="widget"><span class="badge-sq">LP</span> ledger-pipelines ${I.down}</button>${branch}
     <div class="spacer"></div><span class="muted">Python 3.14 (.venv)</span></div>`;
 }
 function stripe() {

@@ -13,6 +13,7 @@ import kotlinx.coroutines.withContext
 class ReviewStartup : ProjectActivity {
     override suspend fun execute(project: Project) {
         val service = ReviewService.of(project)
+        ReviewGutter.of(project) // listens before the first reload, so marks appear as soon as a review is active
         service.reload()
         val review = service.active ?: return
         withContext(Dispatchers.EDT) {

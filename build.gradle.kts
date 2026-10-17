@@ -18,7 +18,10 @@ repositories {
 }
 
 dependencies {
-    intellijPlatform { local(providers.gradleProperty("platformPath")) }
+    intellijPlatform {
+        local(providers.gradleProperty("platformPath"))
+        bundledModule("intellij.platform.vcs.impl") // SimpleLocalLineStatusTracker for the review gutter
+    }
     testImplementation("junit:junit:4.13.2")
 }
 
