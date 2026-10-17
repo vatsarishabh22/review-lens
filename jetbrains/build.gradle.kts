@@ -1,4 +1,5 @@
 import org.jetbrains.intellij.platform.gradle.IntelliJPlatformType
+import org.jetbrains.kotlin.gradle.dsl.JvmDefaultMode
 import org.jetbrains.kotlin.gradle.dsl.JvmTarget
 import org.jetbrains.kotlin.gradle.tasks.KotlinCompile
 
@@ -38,6 +39,9 @@ tasks.test { inputs.dir("../spec/fixtures") }
 tasks.withType<KotlinCompile> {
     compilerOptions {
         jvmTarget = JvmTarget.JVM_21
+        // use the platform interfaces' own default methods: no compiler-made bridges, which the Plugin Verifier reports
+        // as our overriding deprecated and experimental APIs (isApplicable, getAnchor, manage, getPresentation(type), …)
+        jvmDefault = JvmDefaultMode.NO_COMPATIBILITY
         freeCompilerArgs.add("-Xjdk-release=21")
     }
 }

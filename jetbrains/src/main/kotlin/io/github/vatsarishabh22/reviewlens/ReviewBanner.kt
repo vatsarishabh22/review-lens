@@ -28,6 +28,7 @@ import java.util.function.Function
 import javax.swing.Icon
 import javax.swing.JButton
 import javax.swing.JComponent
+import javax.swing.JList
 import javax.swing.JPanel
 import javax.swing.SwingConstants
 
@@ -149,7 +150,12 @@ class ReviewBanner : EditorNotificationProvider, DumbAware {
             }
             if (fetch && loaded.head == head) notify(project, "No new commits", "${meta.target.label} has nothing newer than what you're reviewing.")
             JBPopupFactory.getInstance().createPopupChooserBuilder(items)
-                .setRenderer(SimpleListCellRenderer.create("") { (if (it.ticked) "✓  " else "    ") + it.label })
+                .setRenderer(object : SimpleListCellRenderer<ScopeItem>() {
+                    // the factory shortcuts (create) are scheduled for removal in 2026.2; customize is the class's own hook
+                    override fun customize(list: JList<out ScopeItem>, item: ScopeItem, index: Int, selected: Boolean, focused: Boolean) {
+                        text = (if (item.ticked) "✓  " else "    ") + item.label
+                    }
+                })
                 .setItemChosenCallback { it.pick() }
                 .createPopup()
                 .showUnderneathOf(anchor)

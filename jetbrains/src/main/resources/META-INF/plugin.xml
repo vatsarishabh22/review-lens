@@ -3,9 +3,39 @@
     <name>Review Lens</name>
     <vendor email="vatsarishabh22@gmail.com" url="https://github.com/vatsarishabh22/review-lens">Rishabh Vatsa</vendor>
     <description><![CDATA[
-        Review a GitHub PR inside the real codebase, in the same window: your work is parked, the PR is checked out
-        read-only with its changes marked, and Exit review brings you back to your branch with your work restored.
+        <p>Review GitHub pull requests inside your IDE, with the whole codebase around them.</p>
+        <p>A diff page shows the lines that changed. To judge them you need the rest: the caller, the test, the config.
+        Review Lens checks the pull request out in the window you already have open, so you read full files with every
+        IDE tool, then puts you back exactly where you were.</p>
+        <ul>
+          <li><b>Your work stays safe:</b> uncommitted changes are parked in a named git stash and restored exactly on Exit.</li>
+          <li><b>Read the change in context:</b> full files, read-only, with changes marked in the gutter and a diff one click away.</li>
+          <li><b>Track progress:</b> &#11088; not viewed, &#9989; viewed, &#128260; changed since viewed, synced with GitHub's Viewed checkboxes.</li>
+          <li><b>Comment, then post once:</b> inline drafts, a summary and a verdict go to GitHub as a single review.</li>
+          <li><b>Review only what's new:</b> all commits, a few, or only those pushed since your last review.</li>
+          <li><b>Works offline:</b> without GitHub it lists branches instead, and viewed ticks sync later.</li>
+        </ul>
+        <p><b>Requires</b> git and the <a href="https://cli.github.com/">GitHub CLI</a> signed in (<code>gh auth login</code>).
+        Open the <b>Review</b> tool window, or click <b>Review PR&hellip;</b> in the toolbar.</p>
+        <p><a href="https://github.com/vatsarishabh22/review-lens/blob/main/jetbrains/README.md">User guide</a> &middot;
+        <a href="https://github.com/vatsarishabh22/review-lens">Source</a> &middot;
+        <a href="https://github.com/vatsarishabh22/review-lens/issues">Issues</a></p>
     ]]></description>
+
+    <change-notes><![CDATA[
+        <h3>0.1.2</h3>
+        <ul>
+          <li>Ready for upcoming IDE versions: no longer uses an API JetBrains has scheduled for removal, and no longer
+          builds against deprecated or experimental platform APIs it never needed.</li>
+          <li>A fuller plugin page: features, requirements and links to the user guide.</li>
+        </ul>
+        <h3>0.1.1</h3>
+        <ul>
+          <li>First release: review a pull request in the window you already have open, with your work parked and
+          restored, a viewed checklist synced with GitHub, inline comments posted as one review, and blame on the caret
+          line.</li>
+        </ul>
+    ]]></change-notes>
 
     <depends>com.intellij.modules.platform</depends>
     <depends>com.intellij.modules.vcs</depends>
