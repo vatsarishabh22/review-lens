@@ -14,6 +14,16 @@ class ReviewCommentsTest {
     private val scope = listOf(change("a.py", "a2"), change("b.py", "b2"))
 
     @Test
+    fun `the PR list says reviewed only when every file is viewed, with the last posted verdict`() {
+        assertEquals("Resume · 3 of 4 viewed", ReviewProgress(3, 4, Verdict.APPROVE).label) // new commits re-open it
+        assertEquals("✓ Reviewed · 4 of 4", ReviewProgress(4, 4).label) // marked reviewed, never posted
+        assertEquals("✓ Reviewed · approved", ReviewProgress(4, 4, Verdict.APPROVE).label)
+        assertEquals("✓ Reviewed · commented", ReviewProgress(4, 4, Verdict.COMMENT).label)
+        assertEquals("✓ Reviewed · changes requested", ReviewProgress(4, 4, Verdict.REQUEST_CHANGES).label)
+        assertEquals("Resume · 0 of 0 viewed", ReviewProgress(0, 0).label) // an empty scope is never "reviewed"
+    }
+
+    @Test
     fun `only pending drafts on the version this scope shows are posted`() {
         val now = Draft("a.py", 7, "a2", "now")
         val posted = Draft("a.py", 9, "a2", "sent before", posted = true)

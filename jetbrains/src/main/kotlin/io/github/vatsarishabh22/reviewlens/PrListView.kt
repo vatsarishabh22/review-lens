@@ -124,7 +124,8 @@ class PrListView(private val onPick: (ListedTarget) -> Unit, onRefresh: () -> Un
             }
             val progress = row.progress
             when {
-                progress != null -> meta += Pill("Resume · ${progress.viewed} of ${progress.total} viewed", ReviewColors.review, ReviewColors.reviewFg)
+                progress != null -> meta += if (progress.done) Pill(progress.label, ReviewColors.okSoft, ReviewColors.ok)
+                    else Pill(progress.label, ReviewColors.review, ReviewColors.reviewFg)
                 row.listed.requested -> meta += Pill("Review requested", ReviewColors.accentSoft, ReviewColors.accent)
             }
             val text = JPanel(BorderLayout(0, JBUI.scale(2))).apply {

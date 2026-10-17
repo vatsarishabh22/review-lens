@@ -27,14 +27,14 @@ class ReviewDrafts(private val project: Project) {
     /** Removes a pending comment; the way out when GitHub refuses one, which would otherwise block every Finish review. */
     fun delete(draft: Draft) = update { it - draft }
 
-    /** Posts the pending comments with [summary] and [verdict] as one GitHub review and returns how many went. Runs gh: call off EDT. */
+    /** Posts the pending comments with [summary] and [verdict] as one GitHub review, remembers [verdict], and returns how many went. Runs gh: call off EDT. */
     fun submit(summary: String, verdict: Verdict): Int {
         val meta = review.meta ?: error("No review in progress")
         val number = meta.target.prNumber ?: error("Only a pull request can be reviewed on GitHub")
         val sending = toPost(meta.drafts.orEmpty(), review.changes)
         GhClient(review.git!!.root).submitReview(number, reviewPayload(meta.range.to, summary, verdict, sending))
         val sent = sending.toSet()
-        update { drafts -> drafts.map { if (it in sent) it.copy(posted = true) else it } }
+        review.update { m -> m.copy(drafts = m.drafts?.map { if (it in sent) it.copy(posted = true) else it }, verdict = verdict) }
         this.summary = ""
         return sending.size
     }

@@ -8,11 +8,11 @@ import com.google.gson.Gson
  */
 data class Draft(val path: String, val line: Int, val blob: String, val body: String, val posted: Boolean = false)
 
-/** The three ways GitHub lets a review end; [name] is GitHub's own `event` value. */
-enum class Verdict(val label: String, val hint: String) {
-    COMMENT("Comment", "Feedback without a verdict"),
-    APPROVE("Approve", "Ready to merge"),
-    REQUEST_CHANGES("Request changes", "Must be addressed before merging"),
+/** The three ways GitHub lets a review end; [name] is GitHub's own `event` value, [done] how the PR list says it was posted, [posted] how the finish message does. */
+enum class Verdict(val label: String, val hint: String, val done: String, val posted: String) {
+    COMMENT("Comment", "Feedback without a verdict", "commented", "Commented"),
+    APPROVE("Approve", "Ready to merge", "approved", "Approved"),
+    REQUEST_CHANGES("Request changes", "Must be addressed before merging", "changes requested", "Requested changes"),
 }
 
 /**
