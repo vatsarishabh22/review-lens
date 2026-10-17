@@ -5,6 +5,7 @@ import com.intellij.ide.ui.laf.darcula.ui.DarculaButtonUI
 import com.intellij.openapi.project.Project
 import com.intellij.ui.AnimatedIcon
 import com.intellij.ui.RoundedLineBorder
+import com.intellij.ui.components.ActionLink
 import com.intellij.ui.components.JBLabel
 import com.intellij.ui.components.JBScrollPane
 import com.intellij.util.text.DateFormatUtil
@@ -48,6 +49,8 @@ class PrDetailView(private val project: Project, private val onBack: () -> Unit)
     /** "Since your last review" for a returning reviewer (null when nothing is new), and whether it is the chosen scope. */
     private var since: Pair<ScopeRange, String>? = null
     private var sinceChosen = false
+    /** The fetch failed (offline, no access): say so and offer a retry instead of "Fetching…" forever. */
+    private var fetchFailed = false
 
     init {
         add(JBScrollPane(content).apply { border = null; horizontalScrollBarPolicy = JBScrollPane.HORIZONTAL_SCROLLBAR_NEVER })
@@ -55,13 +58,13 @@ class PrDetailView(private val project: Project, private val onBack: () -> Unit)
 
     /** Shows [target] and starts fetching it; [resuming] when the reviewer has started this PR before. */
     fun open(git: GitClient, target: ListedTarget, resuming: Boolean) {
-        listed = target; this.resuming = resuming; loaded = null; picked = emptySet(); since = null; sinceChosen = false
+        listed = target; this.resuming = resuming; loaded = null; picked = emptySet(); since = null; sinceChosen = false; fetchFailed = false
         session = ReviewSession(git)
         build()
         val session = session!!
         background(project, "Fetching ${target.target.label}", {
             session.load(target.target).let { it to sinceLastReview(it.head, it.commits, ReviewMeta.load(git, target.target.key)?.seenHead) }
-        }) { (result, sinceRange) ->
+        }, failed = { if (listed === target) { fetchFailed = true; showStart(); showScope() } }) { (result, sinceRange) ->
             if (listed === target) { loaded = result; since = sinceRange; showStart(); showScope() }
         }
         target.pr?.let { pr ->
@@ -120,12 +123,20 @@ class PrDetailView(private val project: Project, private val onBack: () -> Unit)
             isEnabled = ready
             addActionListener { checkWorkThenStart() }
         }
-        val hint = when {
-            loaded == null -> "Fetching the PR…"
-            loaded!!.commits.isEmpty() -> "Nothing to review: no commits beyond ${listed!!.target.base}."
-            else -> "Opens the PR in this window, read-only."
+        // while greyed out, the button says why: on hover, and beside it while the fetch runs
+        val (status, hint) = when {
+            fetchFailed -> null to "Couldn't fetch the PR from GitHub."
+            loaded == null -> JBLabel("Fetching the PR from GitHub…", AnimatedIcon.Default.INSTANCE, SwingConstants.LEFT)
+                .apply { foreground = ReviewColors.muted; font = JBFont.small() } to null
+            loaded!!.commits.isEmpty() -> null to "Nothing to review: no commits beyond ${listed!!.target.base}."
+            else -> null to "Opens the PR in this window, read-only."
         }
-        setAction(stack(row(start), vgap(8), wrappingText(hint, JBFont.small()).apply { foreground = ReviewColors.muted }))
+        if (!ready) start.toolTipText = hint ?: status?.text
+        val retry = ActionLink("Try again") { open(session!!.git, listed!!, resuming) }.takeIf { fetchFailed }
+        setAction(stack(
+            row(*listOfNotNull<JComponent>(start, status).toTypedArray(), gap = 10), vgap(8),
+            row(*listOfNotNull<JComponent>(hint?.let(::mutedLabel), retry).toTypedArray(), gap = 6),
+        ))
     }
 
     private fun checkWorkThenStart() {
@@ -185,7 +196,8 @@ class PrDetailView(private val project: Project, private val onBack: () -> Unit)
     private fun showScope() {
         val loaded = loaded
         if (loaded == null) {
-            scopeSlot.removeAll(); scopeSlot.add(row(mutedLabel("Loading commits…"))); scopeSlot.revalidate(); return
+            val text = if (fetchFailed) "Commits appear once the PR is fetched." else "Loading commits…"
+            scopeSlot.removeAll(); scopeSlot.add(row(mutedLabel(text))); scopeSlot.revalidate(); return
         }
         val box = JPanel().apply {
             layout = BoxLayout(this, BoxLayout.Y_AXIS)

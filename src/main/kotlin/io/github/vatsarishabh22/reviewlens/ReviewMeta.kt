@@ -9,6 +9,7 @@ import java.nio.file.Path
  * [reviewed] maps a path to the blob it had when marked reviewed, so a later change to that file un-reviews it.
  * [seenHead] is the PR head the reviewer last started or re-scoped on: "Since your last review" starts there.
  * [unsent] holds ticks GitHub has not confirmed yet (path → viewed); they are re-sent first and win until confirmed.
+ * [drafts] are the reviewer's inline comments, kept here (across exit) until Finish review posts them.
  */
 data class ReviewMeta(
     val target: ReviewTarget,
@@ -17,6 +18,7 @@ data class ReviewMeta(
     val reviewed: Map<String, String> = emptyMap(),
     val seenHead: String? = null,
     val unsent: Map<String, Boolean>? = null,
+    val drafts: List<Draft>? = null,
 ) {
     companion object {
         private val gson = GsonBuilder().setPrettyPrinting().create()

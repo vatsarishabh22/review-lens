@@ -15,6 +15,12 @@ class ViewedSyncTest {
         assertEquals(mapOf(".github/a.yml" to ViewedState.VIEWED, ".github/b.yml" to ViewedState.UNVIEWED, "src/c.kt" to ViewedState.DISMISSED), states.files)
     }
 
+    @Test
+    fun `whose pull request it is comes with the ticks`() {
+        assertEquals(true, parseViewedStates("#id\tPR_1\n#own\ttrue\na.yml\tVIEWED\n").ownPullRequest)
+        assertEquals(false, parseViewedStates("#id\tPR_1\n#own\tfalse\n").ownPullRequest)
+    }
+
     @Test(expected = IllegalArgumentException::class)
     fun `an answer without the pull request is refused`() { parseViewedStates("a.yml\tVIEWED\n") }
 

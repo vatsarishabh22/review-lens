@@ -3,6 +3,7 @@ package io.github.vatsarishabh22.reviewlens
 import com.google.gson.Gson
 import com.google.gson.JsonArray
 import com.google.gson.JsonObject
+import java.nio.file.Files
 import java.nio.file.Path
 
 data class GhUser(val login: String, val name: String?) {
@@ -61,6 +62,19 @@ class GhClient(private val root: Path) {
             "-f", "query=mutation(\$id:ID!,\$path:String!){$mutation(input:{pullRequestId:\$id,path:\$path}){clientMutationId}}")
     }
 
+    /** Posts one review (summary, verdict, inline comments) in a single call; a refusal throws with GitHub's reason. */
+    fun submitReview(number: Int, payload: String) {
+        val file = Files.createTempFile("review-lens-review", ".json")
+        try {
+            Files.writeString(file, payload)
+            runCli(root, "gh", "api", "repos/{owner}/{repo}/pulls/$number/reviews", "--method", "POST", "--input", file.toString())
+        } catch (e: CliException) {
+            throw CliException(githubRefusal(e.stdout) ?: e.stderr.ifBlank { "GitHub didn't answer" })
+        } finally {
+            Files.deleteIfExists(file)
+        }
+    }
+
     fun checks(number: Int): Checks =
         summarizeChecks(runCli(root, "gh", "pr", "view", number.toString(), "--json", "statusCheckRollup"))
 }
@@ -68,22 +82,37 @@ class GhClient(private val root: Path) {
 /** GitHub's own per-viewer state of a PR file; DISMISSED = "new changes since last viewed" (our 🔄). */
 enum class ViewedState { VIEWED, UNVIEWED, DISMISSED }
 
-data class ViewedStates(val pullRequestId: String, val files: Map<String, ViewedState>)
+/** [ownPullRequest]: the viewer opened it, so GitHub allows only Comment reviews. */
+data class ViewedStates(val pullRequestId: String, val files: Map<String, ViewedState>, val ownPullRequest: Boolean = false)
 
-private const val VIEWED_QUERY = "query(\$owner:String!,\$name:String!,\$number:Int!,\$endCursor:String){repository(owner:\$owner,name:\$name)" +
-    "{pullRequest(number:\$number){id files(first:100,after:\$endCursor){pageInfo{hasNextPage endCursor} nodes{path viewerViewedState}}}}}"
-private const val VIEWED_JQ = ".data.repository.pullRequest as \$p | (\"#id\\t\" + \$p.id), (\$p.files.nodes[] | \"\\(.path)\\t\\(.viewerViewedState)\")"
+private const val VIEWED_QUERY = "query(\$owner:String!,\$name:String!,\$number:Int!,\$endCursor:String){viewer{login} repository(owner:\$owner,name:\$name)" +
+    "{pullRequest(number:\$number){id author{login} files(first:100,after:\$endCursor){pageInfo{hasNextPage endCursor} nodes{path viewerViewedState}}}}}"
+private const val VIEWED_JQ = ".data as \$d | \$d.repository.pullRequest as \$p | (\"#id\\t\" + \$p.id), " +
+    "(\"#own\\t\" + ((\$p.author.login // \"\") == \$d.viewer.login | tostring)), (\$p.files.nodes[] | \"\\(.path)\\t\\(.viewerViewedState)\")"
 
-/** Reads `#id<TAB>PR_…` then `path<TAB>STATE` lines (one `#id` line per page). */
+/** Reads `#id<TAB>PR_…`, `#own<TAB>true|false`, then `path<TAB>STATE` lines (the `#` lines repeat per page). */
 fun parseViewedStates(text: String): ViewedStates {
     var id = ""
+    var own = false
     val files = LinkedHashMap<String, ViewedState>()
     text.lines().filter { '\t' in it }.forEach { line ->
         val (key, value) = line.split('\t', limit = 2)
-        if (key == "#id") id = value else runCatching { ViewedState.valueOf(value) }.getOrNull()?.let { files[key] = it }
+        when (key) {
+            "#id" -> id = value
+            "#own" -> own = value == "true"
+            else -> runCatching { ViewedState.valueOf(value) }.getOrNull()?.let { files[key] = it }
+        }
     }
     require(id.isNotEmpty()) { "GitHub did not return this pull request" }
-    return ViewedStates(id, files)
+    return ViewedStates(id, files, own)
+}
+
+/** GitHub's reason from an error body (`{"message":"Unprocessable Entity","errors":["Path could not be resolved"]}`), or null. */
+fun githubRefusal(body: String): String? {
+    val json = runCatching { Gson().fromJson(body, JsonObject::class.java) }.getOrNull() ?: return null
+    val errors = (json.get("errors") as? JsonArray)?.map { if (it.isJsonObject) it.asJsonObject.get("message")?.asString.orEmpty() else it.asString }
+        ?.filter { it.isNotBlank() }.orEmpty()
+    return errors.joinToString("; ").ifEmpty { json.get("message")?.asString }
 }
 
 private val FAILED = setOf("FAILURE", "ERROR", "TIMED_OUT", "CANCELLED", "ACTION_REQUIRED", "STARTUP_FAILURE")
