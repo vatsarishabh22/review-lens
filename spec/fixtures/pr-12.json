@@ -1,0 +1,16 @@
+{
+  "target": {
+    "key": "pr-12",
+    "label": "#12 Split the export job by customer",
+    "prNumber": 12,
+    "head": "feat/split-export",
+    "base": "origin/main"
+  },
+  "range": {
+    "from": "7ea9ca986520dde5e9ba47a75c28bd8d6b8cd838^",
+    "to": "7ea9ca986520dde5e9ba47a75c28bd8d6b8cd838"
+  },
+  "scopeLabel": "Commit 7ea9ca9",
+  "reviewed": {},
+  "seenHead": "43570598c5d0e2ac74ff1edbf7de8b2c06ec557a"
+}
