@@ -71,18 +71,32 @@ fun beginReview(
 }
 
 /** Goes back to the reviewer's branch and restores their parked work. */
+/** Posts the review to GitHub; on a refusal the comments stay drafts, so nothing typed is lost. */
+fun finishReview(project: Project, summary: String, verdict: Verdict) {
+    val service = ReviewService.of(project)
+    val number = service.meta?.target?.prNumber ?: return
+    background(project, "Posting your review", {
+        runCatching { service.submitReview(summary, verdict) }.getOrElse { throw IllegalStateException("${it.message}. Your comments are kept as drafts.", it) }
+    }) { sent ->
+        val what = if (sent > 0) "$sent comment${if (sent > 1) "s" else ""}${if (summary.isNotBlank()) " and a summary" else ""}" else "summary only"
+        notify(project, "Review posted to GitHub", "PR #$number · $what. You're still in review mode.")
+    }
+}
+
 fun exitReview(project: Project) {
     val service = ReviewService.of(project)
     val git = service.git ?: return
     val branch = service.active?.originalRef ?: return
+    val drafts = service.meta?.drafts.orEmpty().count { !it.posted }
+    val kept = if (drafts > 0) " $drafts draft comment${if (drafts > 1) "s" else ""} kept for next time." else ""
     background(project, "Exiting review", { ReviewLifecycle(git).exit().also { afterCheckout(project, git) } }) { restored ->
         refreshViews(project)
         // The "Reviewing…" balloons offer Exit, which no longer applies.
         NotificationsManager.getNotificationsManager().getNotificationsOfType(Notification::class.java, project)
             .filter { it.groupId == TITLE }.forEach(Notification::expire)
         when (restored) {
-            Restored.RESTORED -> notify(project, "Back on $branch", "Your parked changes are restored.")
-            Restored.NOTHING_TO_RESTORE -> notify(project, "Back on $branch", "Nothing was parked, so nothing to restore.")
+            Restored.RESTORED -> notify(project, "Back on $branch", "Your parked changes are restored.$kept")
+            Restored.NOTHING_TO_RESTORE -> notify(project, "Back on $branch", "Nothing was parked, so nothing to restore.$kept")
             Restored.KEPT_IN_STASH -> notify(project, "Back on $branch: your changes need a hand", "They didn't apply cleanly, so they are still safe in the stash \"review-lens: parked from $branch…\". Resolve the conflicts, or run git stash pop.", NotificationType.WARNING)
             Restored.STASH_MISSING -> notify(project, "Back on $branch", "The parked stash was not found; it may have been popped by hand.", NotificationType.WARNING)
         }

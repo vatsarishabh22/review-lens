@@ -51,6 +51,9 @@ class ReviewGutter(private val project: Project) : Disposable {
         }
     }
 
+    /** 0-based lines the review added or modified in [file], exactly as its gutter marks show them (deletions have none). */
+    fun changedLines(file: VirtualFile): Set<Int> = trackers[file]?.getRanges().orEmpty().flatMap { it.line1 until it.line2 }.toSet()
+
     private fun release(file: VirtualFile) {
         trackers.remove(file)?.release()
     }

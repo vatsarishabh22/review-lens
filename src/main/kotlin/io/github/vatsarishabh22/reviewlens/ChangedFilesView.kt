@@ -172,7 +172,10 @@ class ChangedFilesView(private val project: Project, parent: Disposable) : JPane
                         name.foreground = ReviewColors.muted
                         name.font = name.font.deriveFont(mapOf(TextAttribute.STRIKETHROUGH to TextAttribute.STRIKETHROUGH_ON))
                     }
+                    val comments = service.drafts(change).size
                     val counts = if (change.added == null) mutedLabel("binary") else row(
+                        *listOfNotNull(JBLabel("$comments", AllIcons.General.Balloon, JBLabel.LEFT).apply { foreground = ReviewColors.muted; iconTextGap = JBUI.scale(3) }
+                            .takeIf { comments > 0 }).toTypedArray(),
                         JBLabel("+${change.added}").apply { foreground = ReviewColors.add; font = mono() },
                         JBLabel("−${change.deleted}").apply { foreground = ReviewColors.del; font = mono() },
                         JBLabel(change.status.toString()).apply { foreground = ReviewColors.status(change.status); font = mono().deriveFont(Font.BOLD) },

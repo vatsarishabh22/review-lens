@@ -41,6 +41,10 @@ class ReviewService(private val project: Project) : Disposable {
     enum class Sync(val text: String) { GITHUB("Synced with GitHub"), LOCAL("Viewed kept on this laptop"), FAILED("GitHub sync failed · kept on this laptop") }
     @Volatile var sync = Sync.LOCAL; private set
     @Volatile private var pullRequestId: String? = null
+    /** The viewer opened this PR (from GitHub at load); false when unknown, so GitHub's own refusal still applies. */
+    @Volatile var ownPullRequest = false; private set
+    /** The Finish review summary while it is being written; cleared once the review is posted. */
+    @Volatile var summaryDraft = ""
     private var syncFailureShown = false
 
     val isActive get() = meta != null
@@ -81,6 +85,7 @@ class ReviewService(private val project: Project) : Disposable {
         return runCatching { gh.viewedStates(number) }.fold(
             onSuccess = { states ->
                 pullRequestId = states.pullRequestId
+                ownPullRequest = states.ownPullRequest
                 syncViewed(meta, states.files, changes) { path, viewed -> runCatching { gh.setViewed(states.pullRequestId, path, viewed) }.isSuccess }
                     .also { sync = if (it.unsent == null) Sync.GITHUB else Sync.FAILED; if (it != meta) ReviewMeta.save(git, it) }
             },
@@ -140,6 +145,41 @@ class ReviewService(private val project: Project) : Disposable {
         val current = meta ?: return
         if (current.unsent?.get(path) != viewed) return
         meta = current.copy(unsent = (current.unsent - path).ifEmpty { null }).also { ReviewMeta.save(git!!, it) }
+    }
+
+    /** Comments on [change]'s file as this scope shows it; posted ones stay visible, marked as on GitHub. */
+    fun drafts(change: FileChange): List<Draft> = meta?.drafts.orEmpty().filter { it.path == change.path && it.blob == change.newBlob }
+
+    /** The comments Finish review would post now. */
+    fun pendingDrafts(): List<Draft> = toPost(meta?.drafts.orEmpty(), changes)
+
+    fun addDraft(change: FileChange, line: Int, body: String) = updateDrafts { it + Draft(change.path, line, change.newBlob, body) }
+
+    /** Replaces a pending comment's text, keeping its line and its place among the drafts. */
+    fun editDraft(draft: Draft, body: String) = updateDrafts { drafts -> drafts.map { if (it == draft) it.copy(body = body) else it } }
+
+    /** Removes a pending comment; the way out when GitHub refuses one, which would otherwise block every Finish review. */
+    fun deleteDraft(draft: Draft) = updateDrafts { it - draft }
+
+    /** Posts the pending comments with [summary] and [verdict] as one GitHub review and returns how many went. Runs gh: call off EDT. */
+    fun submitReview(summary: String, verdict: Verdict): Int {
+        val current = meta ?: error("No review in progress")
+        val number = current.target.prNumber ?: error("Only a pull request can be reviewed on GitHub")
+        val sending = toPost(current.drafts.orEmpty(), changes)
+        GhClient(git!!.root).submitReview(number, reviewPayload(current.range.to, summary, verdict, sending))
+        markPosted(sending.toSet())
+        summaryDraft = ""
+        return sending.size
+    }
+
+    private fun markPosted(sent: Set<Draft>) = updateDrafts { drafts -> drafts.map { if (it in sent) it.copy(posted = true) else it } }
+
+    /** Every change to the comments: saved at once (they survive exit and a crash), then the editor and panel redraw. */
+    @Synchronized
+    private fun updateDrafts(change: (List<Draft>) -> List<Draft>) {
+        val current = meta ?: return
+        meta = current.copy(drafts = change(current.drafts.orEmpty())).also { ReviewMeta.save(git!!, it) }
+        fireChanged()
     }
 
     /** The file before [before] in path order, wrapping around. */

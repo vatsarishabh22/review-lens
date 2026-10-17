@@ -32,9 +32,11 @@ export JAVA_HOME=/Applications/PyCharm.app/Contents/jbr/Contents/Home GRADLE_OPT
 |---|---|
 | `ReviewLifecycle` | Park work → checkout `review/<key>` at scope end → exit restores. State in `.git/review-lens/active.json` |
 | `ReviewSession` | Fetch a target (PR via `pull/N/head`, or branch), start / re-scope a review |
-| `ReviewMeta` | Per-PR state (`.git/review-lens/<key>.json`): range, scope label, reviewed blobs |
+| `ReviewMeta` | Per-PR state (`.git/review-lens/<key>.json`): range, scope label, reviewed blobs, unsent ticks, draft comments |
 | `ReviewService` | Project service: active review, changed files, badges, reviewed state, caret blame |
 | `ReviewGutter` | Gutter marks vs the scope base (`SimpleLocalLineStatusTracker`), only while reviewing |
+| `CommentInlays` | Inline comments in the editor: "+" on the hovered changed line, the comment box and draft cards (embedded components) |
+| `ReviewComments` | Draft, Verdict, what Finish review posts and GitHub's one-call review payload |
 | `ReviewFlow` | UI glue: background tasks, notifications, begin/exit, re-scope popup (until step 4), open file, diff |
 | `ReviewTargets` | What the panel lists: open PRs via `gh` (who is waiting on you), or remote branches without `gh` |
 | `ReviewPanel` | The Review tool window: switches between `PrListView` → `PrDetailView` (Start review, park card, steps, scope list) and `ChangedFilesView` (during a review) |
