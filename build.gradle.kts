@@ -45,10 +45,12 @@ intellijPlatform {
     pluginConfiguration { ideaVersion { sinceBuild = "261" } }
     // JetBrains' compatibility check, against the IDEs the README promises
     pluginVerification {
+        // verifyIdes in gradle.properties; CI runs one per job (-PverifyIdes=IU:2026.2.3), since all of them overflow a runner's disk
         ides {
-            listOf(IntelliJPlatformType.IntellijIdea, IntelliJPlatformType.PyCharm, IntelliJPlatformType.WebStorm, IntelliJPlatformType.GoLand)
-                .forEach { create(it, "2026.1.5") }
-            create(IntelliJPlatformType.IntellijIdea, "2026.2.3")
+            providers.gradleProperty("verifyIdes").get().split(",").forEach {
+                val (code, version) = it.trim().split(":")
+                create(IntelliJPlatformType.fromCode(code), version)
+            }
         }
     }
     // Marketplace release: read from CI secrets, unused until the Marketplace account exists
