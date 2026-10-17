@@ -1,149 +1,86 @@
 package io.github.vatsarishabh22.reviewlens
 
-import com.intellij.icons.AllIcons
 import com.intellij.openapi.Disposable
-import com.intellij.openapi.actionSystem.ActionGroup
-import com.intellij.openapi.actionSystem.ActionManager
-import com.intellij.openapi.fileEditor.FileEditorManagerEvent
-import com.intellij.openapi.fileEditor.FileEditorManagerListener
-import com.intellij.openapi.fileTypes.FileTypeManager
 import com.intellij.openapi.project.DumbAware
 import com.intellij.openapi.project.Project
-import com.intellij.openapi.vcs.FileStatus
 import com.intellij.openapi.wm.ToolWindow
 import com.intellij.openapi.wm.ToolWindowFactory
-import com.intellij.ui.ColoredTreeCellRenderer
-import com.intellij.ui.ScrollPaneFactory
-import com.intellij.ui.SimpleTextAttributes
-import com.intellij.ui.components.JBLabel
 import com.intellij.ui.content.ContentFactory
-import com.intellij.ui.treeStructure.Tree
-import com.intellij.util.ui.JBFont
-import com.intellij.util.ui.JBUI
-import com.intellij.util.ui.tree.TreeUtil
-import java.awt.BorderLayout
-import javax.swing.BoxLayout
+import java.awt.CardLayout
 import javax.swing.JPanel
-import javax.swing.JProgressBar
-import javax.swing.JTree
-import javax.swing.tree.DefaultMutableTreeNode
-import javax.swing.tree.DefaultTreeModel
-import javax.swing.tree.TreePath
 
 const val TOOL_WINDOW_ID = "Review"
 
 class ReviewToolWindowFactory : ToolWindowFactory, DumbAware {
 
     override fun createToolWindowContent(project: Project, toolWindow: ToolWindow) {
-        val panel = ReviewPanel(project)
+        val panel = ReviewPanel(project, toolWindow)
         val content = ContentFactory.getInstance().createContent(panel, "", false)
         content.setDisposer(panel)
         toolWindow.contentManager.addContent(content)
     }
 }
 
-/** Header (what, scope, progress) over the changed files grouped by folder; selecting a file opens it. */
-class ReviewPanel(private val project: Project) : JPanel(BorderLayout()), Disposable {
+/** The Review tool window: the PR list and one PR's detail before a review, its changed files during one. */
+class ReviewPanel(private val project: Project, private val toolWindow: ToolWindow) : JPanel(CardLayout()), Disposable {
 
     private val service = ReviewService.of(project)
-    private val title = JBLabel().apply { font = JBFont.label().asBold().biggerOn(1f) }
-    private val scope = JBLabel().apply { foreground = JBUI.CurrentTheme.ContextHelp.FOREGROUND }
-    private val progress = JProgressBar()
-    private val progressText = JBLabel()
-    private val root = DefaultMutableTreeNode()
-    private val tree = Tree(DefaultTreeModel(root)).apply { isRootVisible = false; cellRenderer = FileRenderer() }
-    private var syncing = false
+    private val list = PrListView(::openDetail, ::loadList)
+    private val detail = PrDetailView(project) { show(LIST) }
+    private val files = ChangedFilesView(project, this)
+    private var git: GitClient? = null
+    private var progress: Map<String, ReviewProgress> = emptyMap()
+    private var wasActive: Boolean? = null
 
     init {
-        val actions = ActionManager.getInstance()
-        val toolbar = actions.createActionToolbar("ReviewLens", actions.getAction("ReviewLens.Toolbar") as ActionGroup, true)
-        toolbar.targetComponent = this
-        val header = JPanel().apply {
-            layout = BoxLayout(this, BoxLayout.Y_AXIS)
-            border = JBUI.Borders.empty(4, 8, 8, 8)
-            listOf(title, scope, progress, progressText).forEach { it.alignmentX = LEFT_ALIGNMENT; add(it) }
-        }
-        add(JPanel(BorderLayout()).apply { add(toolbar.component, BorderLayout.NORTH); add(header) }, BorderLayout.NORTH)
-        add(ScrollPaneFactory.createScrollPane(tree, true))
-
-        tree.addTreeSelectionListener {
-            if (!syncing) ((tree.lastSelectedPathComponent as? DefaultMutableTreeNode)?.userObject as? FileChange)?.let { openChange(project, it) }
-        }
-        project.messageBus.connect(this).subscribe(FileEditorManagerListener.FILE_EDITOR_MANAGER, object : FileEditorManagerListener {
-            override fun selectionChanged(event: FileEditorManagerEvent) {
-                event.newFile?.let(service::relativePath)?.let(::select)
-            }
-        })
+        add(list, LIST); add(detail, DETAIL); add(files, FILES)
         service.onChanged(this, ::refresh)
         refresh()
     }
 
     private fun refresh() {
-        val meta = service.meta
-        if (meta == null) { // no review in progress (step 3 replaces this with the PR list)
-            title.text = "No review in progress"
-            scope.text = "Use Review PR… to pick a pull request"
-            progress.value = 0
-            progressText.text = ""
-            root.removeAllChildren()
-            (tree.model as DefaultTreeModel).reload()
-            return
+        val active = service.isActive
+        if (active) {
+            files.refresh()
+            show(FILES)
+        } else if (wasActive != false) { // first paint, or the review just ended: back to a fresh list
+            show(LIST)
+            loadList()
         }
-        val done = service.reviewedCount()
-        val total = service.changes.size
-        title.text = meta.target.label
-        scope.text = "${meta.scopeLabel} · read-only"
-        progress.maximum = maxOf(total, 1)
-        progress.value = done
-        progressText.text = "Reviewed $done of $total files"
-
-        val selected = ((tree.lastSelectedPathComponent as? DefaultMutableTreeNode)?.userObject as? FileChange)?.path
-        root.removeAllChildren()
-        service.changes.groupBy { it.dir }.forEach { (dir, files) ->
-            root.add(DefaultMutableTreeNode(dir).apply { files.forEach { add(DefaultMutableTreeNode(it, false)) } })
-        }
-        (tree.model as DefaultTreeModel).reload()
-        TreeUtil.expandAll(tree)
-        selected?.let(::select)
+        wasActive = active
     }
 
-    /** Moves the tree selection to [path] without re-opening it. */
-    private fun select(path: String) {
-        val node = TreeUtil.treeNodeTraverser(root).find { ((it as DefaultMutableTreeNode).userObject as? FileChange)?.path == path }
-            as? DefaultMutableTreeNode ?: return
-        syncing = true
-        TreeUtil.selectPath(tree, TreePath(node.path))
-        syncing = false
+    /** Lists PRs (or branches) and which of them this reviewer has started before. */
+    fun loadList() {
+        list.loading()
+        background(project, "Listing pull requests", {
+            val git = git ?: GitClient.forProject(project.basePath!!)
+            val source = ReviewTargets(git)
+            val targets = source.list()
+            Triple(git, targets, targets.mapNotNull { t -> source.progress(t.target)?.let { t.target.key to it } }.toMap())
+        }, failed = list::failed) { (git, targets, progress) ->
+            this.git = git
+            this.progress = progress
+            list.show(targets, progress)
+        }
+    }
+
+    private fun openDetail(listed: ListedTarget) {
+        detail.open(git ?: return, listed, progress[listed.target.key] != null)
+        show(DETAIL)
+    }
+
+    /** Shows a screen and names it in the tool window header, as the prototype does (the stripe title is the header's text). */
+    private fun show(card: String) {
+        (layout as CardLayout).show(this, card)
+        toolWindow.stripeTitle = when (card) { LIST -> "Pull requests"; DETAIL -> "Pull request"; else -> "Review" }
     }
 
     override fun dispose() = Unit
 
-    private inner class FileRenderer : ColoredTreeCellRenderer() {
-        override fun customizeCellRenderer(
-            tree: JTree, value: Any?, selected: Boolean, expanded: Boolean, leaf: Boolean, row: Int, hasFocus: Boolean,
-        ) {
-            when (val item = (value as? DefaultMutableTreeNode)?.userObject) {
-                is FileChange -> {
-                    val badge = service.badge(item)
-                    icon = FileTypeManager.getInstance().getFileTypeByFileName(item.name).icon
-                    append("${badge.symbol} ")
-                    append(item.name, if (badge == Badge.REVIEWED) SimpleTextAttributes.GRAYED_ATTRIBUTES else SimpleTextAttributes.REGULAR_BOLD_ATTRIBUTES)
-                    append("  ${item.status}", SimpleTextAttributes(SimpleTextAttributes.STYLE_BOLD, statusColor(item.status)))
-                    val counts = if (item.added == null) "  binary" else "  +${item.added} −${item.deleted}"
-                    append(counts, SimpleTextAttributes.GRAYED_SMALL_ATTRIBUTES)
-                    item.oldPath?.let { append("  ← ${it.substringAfterLast('/')}", SimpleTextAttributes.GRAYED_SMALL_ATTRIBUTES) }
-                }
-                is String -> {
-                    icon = AllIcons.Nodes.Folder
-                    append(item.ifEmpty { "(root)" }, SimpleTextAttributes.GRAYED_ATTRIBUTES)
-                }
-            }
-        }
-
-        private fun statusColor(status: Char) = when (status) {
-            'A' -> FileStatus.ADDED.color
-            'D' -> FileStatus.DELETED.color
-            else -> FileStatus.MODIFIED.color
-        }
+    private companion object {
+        const val LIST = "list"
+        const val DETAIL = "detail"
+        const val FILES = "files"
     }
 }

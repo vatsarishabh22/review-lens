@@ -44,16 +44,6 @@ class ShowDiffAction : ReviewAction() {
     }
 }
 
-class ChangeScopeAction : ReviewAction() {
-    override fun actionPerformed(e: AnActionEvent) {
-        val project = e.project ?: return
-        val service = ReviewService.of(project)
-        val meta = service.meta ?: return
-        val session = ReviewSession(service.git ?: return)
-        background(project, "Fetching ${meta.target.label}", { session.load(meta.target) }) { loaded -> pickScope(project, session, loaded) }
-    }
-}
-
 class ExitReviewAction : ReviewAction() {
     override fun actionPerformed(e: AnActionEvent) {
         e.project?.let(::exitReview)

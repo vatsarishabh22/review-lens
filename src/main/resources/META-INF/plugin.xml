@@ -19,6 +19,7 @@
         <projectViewNodeDecorator implementation="io.github.vatsarishabh22.reviewlens.TreeBadges"/>
         <postStartupActivity implementation="io.github.vatsarishabh22.reviewlens.ReviewStartup"/>
         <notificationGroup id="Review Lens" displayType="BALLOON"/>
+        <statusBarWidgetFactory id="ReviewLens.Status" implementation="io.github.vatsarishabh22.reviewlens.ReviewStatusWidgetFactory"/>
     </extensions>
 
     <actions>
@@ -30,28 +31,19 @@
         </action>
 
         <action id="ReviewLens.MarkReviewed" class="io.github.vatsarishabh22.reviewlens.MarkReviewedAction"
-                text="Mark Reviewed" description="Mark this file reviewed and open the next one"
+                text="Mark Viewed" description="Mark this file viewed and open the next unviewed one"
                 icon="AllIcons.Actions.Checked">
             <keyboard-shortcut keymap="$default" first-keystroke="alt R"/>
         </action>
         <action id="ReviewLens.NextFile" class="io.github.vatsarishabh22.reviewlens.NextFileAction"
-                text="Next Unreviewed File" icon="AllIcons.Actions.Forward">
+                text="Next Unviewed File" icon="AllIcons.Actions.Forward">
             <keyboard-shortcut keymap="$default" first-keystroke="alt N"/>
         </action>
         <action id="ReviewLens.ShowDiff" class="io.github.vatsarishabh22.reviewlens.ShowDiffAction"
                 text="Show Review Diff" description="This file at the scope's base vs the PR" icon="AllIcons.Actions.Diff">
             <keyboard-shortcut keymap="$default" first-keystroke="alt D"/>
         </action>
-        <action id="ReviewLens.ChangeScope" class="io.github.vatsarishabh22.reviewlens.ChangeScopeAction"
-                text="Change Scope / Refresh…" description="Re-fetch the PR and pick commits again" icon="AllIcons.Actions.Refresh"/>
         <action id="ReviewLens.Exit" class="io.github.vatsarishabh22.reviewlens.ExitReviewAction"
                 text="Exit Review" description="Go back to your branch and restore your parked changes" icon="AllIcons.Actions.Exit"/>
-
-        <group id="ReviewLens.Toolbar">
-            <reference ref="ReviewLens.NextFile"/>
-            <reference ref="ReviewLens.ChangeScope"/>
-            <separator/>
-            <reference ref="ReviewLens.Exit"/>
-        </group>
     </actions>
 </idea-plugin>

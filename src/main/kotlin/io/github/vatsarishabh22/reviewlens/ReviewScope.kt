@@ -1,6 +1,6 @@
 package io.github.vatsarishabh22.reviewlens
 
-data class Commit(val sha: String, val subject: String) {
+data class Commit(val sha: String, val subject: String, val author: String = "", val time: Long = 0) {
     val label get() = "${sha.take(7)}  $subject"
 }
 
@@ -20,6 +20,18 @@ fun resolveScope(mergeBase: String, commits: List<Commit>, picked: Collection<Co
     val indexes = picked.map { commits.indexOf(it) }
     return ScopeRange("${commits[indexes.max()].sha}^", commits[indexes.min()].sha)
 }
+
+/**
+ * The scope list's checked commit indexes after the reviewer clicks [index] (0 = newest). A scope is one git range, so
+ * checking fills the gap to the other picks, and unchecking a middle commit keeps only the part newer than it.
+ */
+fun toggleScope(picked: Set<Int>, index: Int): Set<Int> = when {
+    index !in picked -> (picked + index).let { (it.min()..it.max()).toSet() }
+    else -> picked.filter { it < index }.toSet().ifEmpty { picked - index }
+}
+
+/** The index before [index] in a list of [size], wrapping to the last; -1 (not in the list) also starts from the last. */
+fun previousIndex(size: Int, index: Int): Int = if (index <= 0) size - 1 else index - 1
 
 fun scopeLabel(commits: List<Commit>, picked: Collection<Commit>): String = when {
     picked.isEmpty() || picked.size == commits.size -> "All commits (${commits.size})"

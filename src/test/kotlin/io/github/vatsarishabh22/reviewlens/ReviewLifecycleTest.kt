@@ -95,4 +95,67 @@ class ReviewLifecycleTest {
         assertTrue(error?.message.orEmpty().startsWith("Already reviewing #7"))
         assertEquals("review/pr-7", git("branch", "--show-current"))
     }
+
+    @Test
+    fun `start reports parking before checkout, and only parks dirty work`() {
+        val head = setUp()
+        write("app.py", "mine\n")
+        val steps = mutableListOf<StartStep>()
+        ReviewLifecycle(GitClient(repo)).start(target, head) { steps += it }
+        assertEquals(listOf(StartStep.PARK, StartStep.CHECKOUT), steps)
+    }
+
+    @Test
+    fun `dirty files list tracked edits and untracked files but not the IDE folder`() {
+        setUp()
+        write("app.py", "mine\n"); write("notes.md", "n\n")
+        Files.createDirectories(repo.resolve(".idea")); write(".idea/workspace.xml", "x")
+        assertEquals(listOf(" M app.py", "?? notes.md"), GitClient(repo).dirtyFiles())
+    }
+
+    @Test
+    fun `commits carry author and time, newest first`() {
+        val head = setUp()
+        val base = git("rev-parse", "main")
+        val commits = GitClient(repo).commits(base, head)
+        assertEquals(1, commits.size)
+        assertEquals("pr", commits[0].subject)
+        assertEquals("t", commits[0].author)
+        assertTrue(commits[0].time > 1_700_000_000)
+    }
+
+    @Test
+    fun `parking works when the repo ignores the IDE folder but tracks files in it`() {
+        setUp()
+        // The JetBrains plugin template's shape: `.idea` in .gitignore, yet some .idea files committed (on main, so the PR has them too).
+        git("checkout", "-q", "main")
+        Files.createDirectories(repo.resolve(".idea")); write(".idea/gradle.xml", "g1\n"); write("keep.txt", "k\n")
+        write(".gitignore", ".idea\n"); git("add", ".gitignore", "keep.txt"); git("add", "-f", ".idea/gradle.xml"); git("commit", "-qm", "ide")
+        git("checkout", "-qb", "pr2"); write("app.py", "v2\n"); git("commit", "-qam", "pr2")
+        val head = git("rev-parse", "HEAD")
+        git("checkout", "-q", "-B", "feat/my-work", "main")
+        write(".idea/gradle.xml", "g2\n"); write(".idea/workspace.xml", "w\n")
+        write("app.py", "mine\n"); write("notes.md", "n\n"); git("mv", "keep.txt", "kept.txt")
+        val lifecycle = ReviewLifecycle(GitClient(repo))
+        lifecycle.start(target, head)
+        assertEquals("v2\n", read("app.py"))
+        assertEquals("g2\n", read(".idea/gradle.xml")) // the IDE's own file never moves
+        assertEquals(Restored.RESTORED, lifecycle.exit())
+        assertEquals("mine\n", read("app.py"))
+        assertEquals("n\n", read("notes.md"))
+        assertTrue(git("status", "--short").contains("R  keep.txt -> kept.txt"))
+        assertEquals("", git("stash", "list"))
+    }
+
+    @Test
+    fun `resume progress counts viewed files in the review's own scope, at their current version`() {
+        val head = setUp()
+        val git = GitClient(repo)
+        val range = ScopeRange(git("rev-parse", "main"), head)
+        val app = git.changes(range).first { it.path == "app.py" }
+        ReviewMeta.save(git, ReviewMeta(target, range, "All commits (1)", mapOf("app.py" to app.newBlob, "gone.py" to "x")))
+        assertEquals(ReviewProgress(1, 2), ReviewTargets(git).progress(target)) // app.py of {app.py, new.py}; a stale path does not count
+        ReviewMeta.save(git, ReviewMeta(target, range, "All commits (1)", mapOf("app.py" to "old-blob")))
+        assertEquals(ReviewProgress(0, 2), ReviewTargets(git).progress(target)) // changed since viewed
+    }
 }

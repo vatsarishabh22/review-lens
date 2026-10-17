@@ -22,11 +22,11 @@ class GitClient(val root: Path) {
 
     fun mergeBase(a: String, b: String): String = git("merge-base", a, b)
 
-    /** Commits in `from..to`, newest first. */
+    /** Commits in `from..to`, newest first, with author and commit time (epoch seconds). */
     fun commits(from: String, to: String): List<Commit> =
-        git("log", "--format=%H%x09%s", "$from..$to").lines().filter { it.isNotBlank() }.map {
-            val (sha, subject) = it.split('\t', limit = 2).let { parts -> parts[0] to parts.getOrElse(1) { "" } }
-            Commit(sha, subject)
+        git("log", "--format=%H%x09%an%x09%ct%x09%s", "$from..$to").lines().filter { it.isNotBlank() }.map {
+            val parts = it.split('\t', limit = 4)
+            Commit(parts[0], parts.getOrElse(3) { "" }, parts[1], parts[2].toLong())
         }
 
     fun changes(range: ScopeRange): List<FileChange> = parseChanges(
@@ -47,8 +47,14 @@ class GitClient(val root: Path) {
     /** The branch HEAD is on, or the commit SHA when HEAD is detached. */
     fun currentRef(): String = runCatching { git("symbolic-ref", "--short", "-q", "HEAD") }.getOrNull()?.ifBlank { null } ?: git("rev-parse", "HEAD")
 
-    /** Tracked changes or untracked files, ignoring the IDE's own `.idea/` (ignored files do not count either). */
-    fun isDirty(): Boolean = git("status", "--porcelain", "--", ".", NOT_IDE).isNotBlank()
+    /** Tracked changes and untracked files as `git status --short` lines (`M  app.py`), ignoring the IDE's own `.idea/`. */
+    fun dirtyFiles(): List<String> =
+        runCli(root, "git", "status", "--porcelain", "--", ".", NOT_IDE, trim = false).lines().filter { it.isNotBlank() }
+
+    fun isDirty(): Boolean = dirtyFiles().isNotEmpty()
+
+    /** Every tracked path at HEAD, for the panel's whole-project view. */
+    fun trackedFiles(): List<String> = git("ls-files").lines().filter { it.isNotBlank() }
 
     /**
      * Stashes the reviewer's work, untracked files included, under [message] so it can be found again by name.
@@ -80,7 +86,9 @@ class GitClient(val root: Path) {
     companion object {
         // ponytail: assumes the GitHub remote is "origin"; make it a setting when a fork-based repo needs another.
         const val REMOTE = "origin"
-        private const val NOT_IDE = ":(exclude).idea"
+        // A glob, not ":(exclude).idea": stash re-runs `git add` with the pathspec, and git add refuses a pathspec that
+        // names an ignored path exactly, which a repo ignoring `.idea` while tracking files in it hits (stash saved, tree not cleaned).
+        private const val NOT_IDE = ":(exclude,glob).ide[a]/**"
 
         fun forProject(basePath: String) = GitClient(Path.of(runCli(Path.of(basePath), "git", "rev-parse", "--show-toplevel")))
     }

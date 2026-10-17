@@ -15,12 +15,13 @@ import com.intellij.ui.EditorNotifications
 import com.intellij.util.text.DateFormatUtil
 import java.util.concurrent.ConcurrentHashMap
 import java.util.concurrent.CopyOnWriteArrayList
+import javax.swing.Timer
 
 /** The review in progress in this checkout, if any: its changed files, reviewed state and blame. */
 @Service(Service.Level.PROJECT)
 class ReviewService(private val project: Project) : Disposable {
 
-    override fun dispose() = Unit
+    override fun dispose() = flashEnd.stop()
 
     @Volatile var git: GitClient? = null; private set
     private val blames = ConcurrentHashMap<String, Blame>()
@@ -30,9 +31,16 @@ class ReviewService(private val project: Project) : Disposable {
     @Volatile var active: ActiveReview? = null; private set
     @Volatile var meta: ReviewMeta? = null; private set
     @Volatile var changes: List<FileChange> = emptyList(); private set
+    /** Every tracked path at the review's checkout, for the panel's whole-project view. */
+    @Volatile var trackedFiles: List<String> = emptyList(); private set
     @Volatile private var scopeCommits: Set<String> = emptySet()
 
     val isActive get() = meta != null
+
+    /** True for a moment after a blocked edit: the review bar shows "Read-only while reviewing" (step 4, option A). */
+    @Volatile var flashing = false; private set
+    private val flashEnd = Timer(2200) { flashing = false; EditorNotifications.getInstance(project).updateAllNotifications() }
+        .apply { isRepeats = false }
 
     init {
         // Inline blame shows on the caret's line only, so a caret move must repaint.
@@ -50,6 +58,7 @@ class ReviewService(private val project: Project) : Disposable {
         val fresh = review?.let { ReviewMeta.load(git, it.target.key) }
         changes = fresh?.let { git.changes(it.range) }.orEmpty()
         scopeCommits = fresh?.let { git.commitShas(it.range) }.orEmpty()
+        trackedFiles = if (fresh != null) git.trackedFiles() else emptyList()
         active = review
         meta = fresh
         blames.clear()
@@ -81,6 +90,16 @@ class ReviewService(private val project: Project) : Disposable {
         meta = current.copy(reviewed = reviewed).also { ReviewMeta.save(git!!, it) }
         fireChanged()
     }
+
+    /** The file before [before] in path order, wrapping around. */
+    fun previous(before: String?): FileChange? = changes.getOrNull(previousIndex(changes.size, changes.indexOfFirst { it.path == before }))
+
+    /** Called when an edit was refused; extends the flash while the reviewer keeps typing. */
+    fun flashReadOnly() = ApplicationManager.getApplication().invokeLater({
+        flashing = true
+        flashEnd.restart()
+        EditorNotifications.getInstance(project).updateAllNotifications()
+    }, project.disposed)
 
     /** The first file after [after] (in path order, wrapping around) that is not reviewed yet. */
     fun nextUnreviewed(after: String?): FileChange? {

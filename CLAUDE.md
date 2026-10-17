@@ -35,11 +35,14 @@ export JAVA_HOME=/Applications/PyCharm.app/Contents/jbr/Contents/Home GRADLE_OPT
 | `ReviewMeta` | Per-PR state (`.git/review-lens/<key>.json`): range, scope label, reviewed blobs |
 | `ReviewService` | Project service: active review, changed files, badges, reviewed state, caret blame |
 | `ReviewGutter` | Gutter marks vs the scope base (`SimpleLocalLineStatusTracker`), only while reviewing |
-| `ReviewFlow` | UI glue: background tasks, notifications, begin/exit, scope popup, open file, diff |
-| `GitClient` / `GhClient` / `Cli` | Thin CLI wrappers (`git`, `gh`) |
+| `ReviewFlow` | UI glue: background tasks, notifications, begin/exit, re-scope popup (until step 4), open file, diff |
+| `ReviewTargets` | What the panel lists: open PRs via `gh` (who is waiting on you), or remote branches without `gh` |
+| `ReviewPanel` | The Review tool window: switches between `PrListView` → `PrDetailView` (Start review, park card, steps, scope list) and `ChangedFilesView` (during a review) |
+| `ReviewUi` | Prototype colour tokens and small shared widgets (avatar, badge icons, pill, progress strip) |
+| `GitClient` / `GhClient` / `Cli` | Thin CLI wrappers (`git`, `gh`); `GhClient` also summarises a PR's checks |
 | `GitParsers` | `diff --raw/--numstat -z` and `blame --porcelain` parsers |
 | `ReviewScope` | Commit pick → `ScopeRange(from, to)` and its label |
-| `ReviewPanel`, `ReviewBanner`, `TreeBadges`, `InlineBlame`, `ReviewActions`, `ReviewPrAction`, `ReviewStartup`, `ReadOnlyGuard` | UI surfaces (steps 3–4 rebuild the panel and banner to the prototype) |
+| `ReviewBanner`, `TreeBadges`, `InlineBlame`, `ReviewActions`, `ReviewPrAction`, `ReviewStartup`, `ReadOnlyGuard` | Other UI surfaces (step 4 rebuilds the banner into the review bar) |
 
 ## Rules
 

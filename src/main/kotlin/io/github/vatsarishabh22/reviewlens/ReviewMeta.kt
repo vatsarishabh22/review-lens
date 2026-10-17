@@ -30,4 +30,7 @@ data class ReviewMeta(
     }
 }
 
+/** How far a started review got: files viewed (at their current version) out of the files in its scope. */
+data class ReviewProgress(val viewed: Int, val total: Int)
+
 enum class Badge(val symbol: String) { TODO("⭐"), REVIEWED("✅"), CHANGED_SINCE("🔄") }

@@ -11,7 +11,11 @@ class ReviewSession(val git: GitClient) {
     fun load(target: ReviewTarget): LoadedTarget {
         val ref = target.prNumber?.let { git.fetchPr(it, target.base.removePrefix("${GitClient.REMOTE}/")) }
             ?: target.head.also { git.fetchAll() }
-        val head = git.revParse(ref)
+        return local(target, git.revParse(ref))
+    }
+
+    /** The target's commits up to [head] from what is already fetched: the review bar's scope menu, no network. */
+    fun local(target: ReviewTarget, head: String): LoadedTarget {
         val mergeBase = git.mergeBase(target.base, head)
         return LoadedTarget(target, head, mergeBase, git.commits(mergeBase, head))
     }
@@ -20,10 +24,10 @@ class ReviewSession(val git: GitClient) {
      * Starts the review (parking the reviewer's work), or re-scopes the one in progress. The checkout sits at the
      * scope's end ([ScopeRange.to]), so the files on disk are exactly what the scope delivers: one-commit scope = that commit.
      */
-    fun begin(loaded: LoadedTarget, range: ScopeRange, scopeLabel: String): ActiveReview {
+    fun begin(loaded: LoadedTarget, range: ScopeRange, scopeLabel: String, progress: (StartStep) -> Unit = {}): ActiveReview {
         val active = lifecycle.active()
         val review = when {
-            active == null -> lifecycle.start(loaded.target, range.to)
+            active == null -> lifecycle.start(loaded.target, range.to, progress)
             active.target.key != loaded.target.key -> error("Already reviewing ${active.target.label}. Exit that review first.")
             active.head != range.to -> lifecycle.moveTo(range.to)
             else -> active

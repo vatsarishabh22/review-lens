@@ -13,6 +13,9 @@ data class ActiveReview(
     val stashMessage: String?,
 )
 
+/** The visible stages of starting a review, reported as each begins. */
+enum class StartStep { PARK, CHECKOUT }
+
 /** What exit did with the reviewer's own work. */
 enum class Restored { NOTHING_TO_RESTORE, RESTORED, KEPT_IN_STASH, STASH_MISSING }
 
@@ -27,14 +30,15 @@ class ReviewLifecycle(private val git: GitClient) {
 
     fun active(): ActiveReview? = stateFile.takeIf(Files::exists)?.let { Gson().fromJson(Files.readString(it), ActiveReview::class.java) }
 
-    fun start(target: ReviewTarget, head: String): ActiveReview {
+    fun start(target: ReviewTarget, head: String, progress: (StartStep) -> Unit = {}): ActiveReview {
         active()?.let { error("Already reviewing ${it.target.label}. Exit that review first.") }
         val original = git.currentRef()
         val stash = if (git.isDirty()) "review-lens: parked from $original for ${target.label}" else null
         val review = ActiveReview(target, head, "review/${target.key}", original, stash)
         save(review) // before touching git, so a crash at any later point still knows how to get back
         try {
-            stash?.let(git::stash)
+            stash?.let { progress(StartStep.PARK); git.stash(it) }
+            progress(StartStep.CHECKOUT)
             git.checkoutBranchAt(review.reviewBranch, head)
         } catch (e: Exception) {
             runCatching { if (git.currentRef() != original) git.checkout(original) }

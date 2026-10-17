@@ -9,6 +9,7 @@ import com.intellij.notification.NotificationsManager
 import com.intellij.notification.NotificationType
 import com.intellij.openapi.actionSystem.ActionManager
 import com.intellij.openapi.actionSystem.AnAction
+import com.intellij.openapi.application.ApplicationManager
 import com.intellij.openapi.application.ModalityState
 import com.intellij.openapi.application.ReadAction
 import com.intellij.openapi.fileEditor.FileEditorManager
@@ -16,39 +17,29 @@ import com.intellij.openapi.fileTypes.FileTypeManager
 import com.intellij.openapi.progress.ProgressIndicator
 import com.intellij.openapi.progress.Task
 import com.intellij.openapi.project.Project
-import com.intellij.openapi.ui.popup.JBPopupFactory
 import com.intellij.openapi.vfs.LocalFileSystem
 import com.intellij.openapi.vcs.changes.VcsDirtyScopeManager
 import com.intellij.openapi.vfs.VfsUtil
 import com.intellij.openapi.vfs.VirtualFile
 import com.intellij.openapi.wm.ToolWindowManager
-import com.intellij.ui.SimpleListCellRenderer
 import com.intellij.util.concurrency.AppExecutorUtil
-import javax.swing.ListSelectionModel
 
 const val TITLE = "Review Lens"
 
-/** Runs [work] off EDT with a progress bar, then [then] on EDT; failures surface as an error balloon, never a dialog. */
-fun <T> background(project: Project, title: String, work: () -> T, then: (T) -> Unit = {}) {
+/**
+ * Runs [work] off EDT with a progress bar, then [then] on EDT; failures surface as an error balloon, never a dialog,
+ * and [failed] lets the caller put its UI back.
+ */
+fun <T> background(project: Project, title: String, work: () -> T, failed: () -> Unit = {}, then: (T) -> Unit = {}) {
     object : Task.Backgroundable(project, title) {
         private var result: Result<T>? = null
         override fun run(indicator: ProgressIndicator) {
             result = runCatching(work)
         }
         override fun onSuccess() {
-            result!!.onSuccess(then).onFailure { notify(project, "$title failed", it.message.orEmpty(), NotificationType.ERROR) }
+            result!!.onSuccess(then).onFailure { notify(project, "$title failed", it.message.orEmpty(), NotificationType.ERROR); failed() }
         }
     }.queue()
-}
-
-fun <T> choose(project: Project, title: String, items: List<T>, label: (T) -> String, onChosen: (T) -> Unit) {
-    JBPopupFactory.getInstance().createPopupChooserBuilder(items)
-        .setTitle(title)
-        .setRenderer(SimpleListCellRenderer.create("") { label(it) })
-        .setNamerForFiltering { label(it) }
-        .setItemChosenCallback(onChosen)
-        .createPopup()
-        .showCenteredInCurrentWindow(project)
 }
 
 fun notify(project: Project, title: String, content: String, type: NotificationType = NotificationType.INFORMATION, vararg actions: AnAction) {
@@ -56,31 +47,19 @@ fun notify(project: Project, title: String, content: String, type: NotificationT
         .apply { actions.forEach(::addAction) }.notify(project)
 }
 
-/** Shows the scope popup for a fetched target, then starts or re-scopes its review in this window. */
-fun pickScope(project: Project, session: ReviewSession, loaded: LoadedTarget) {
-    if (loaded.commits.isEmpty()) return notify(project, "Nothing to review", "${loaded.target.label} has no commits beyond its base.")
-    val all = Commit("", "All commits (${loaded.commits.size})")
-    JBPopupFactory.getInstance().createPopupChooserBuilder(listOf(all) + loaded.commits)
-        .setTitle("Scope: pick one commit, a contiguous range, or all")
-        .setRenderer(SimpleListCellRenderer.create("") { if (it === all) it.subject else it.label })
-        .setNamerForFiltering { it.subject }
-        .setSelectionMode(ListSelectionModel.SINGLE_INTERVAL_SELECTION)
-        .setItemsChosenCallback { chosen ->
-            val picked = if (all in chosen) emptyList() else chosen.toList()
-            val range = resolveScope(loaded.mergeBase, loaded.commits, picked)
-            val label = scopeLabel(loaded.commits, picked)
-            beginReview(project, session, loaded, range, label)
-        }
-        .createPopup()
-        .showCenteredInCurrentWindow(project)
-}
-
-/** Parks the reviewer's work, checks the PR out here, and opens the first file to review. */
-fun beginReview(project: Project, session: ReviewSession, loaded: LoadedTarget, range: ScopeRange, label: String) {
+/**
+ * Parks the reviewer's work, checks the PR out here, and opens the first file to review.
+ * [progress] hears each stage on EDT; [failed] runs after the error balloon.
+ */
+fun beginReview(
+    project: Project, session: ReviewSession, loaded: LoadedTarget, range: ScopeRange, label: String,
+    progress: (StartStep) -> Unit = {}, failed: () -> Unit = {},
+) {
     val wasActive = ReviewService.of(project).isActive
+    val onEdt = { step: StartStep -> ApplicationManager.getApplication().invokeLater({ progress(step) }, project.disposed) }
     background(project, "Starting review of ${loaded.target.label}", {
-        session.begin(loaded, range, label).also { afterCheckout(project, session.git) }
-    }) { review ->
+        session.begin(loaded, range, label, onEdt).also { afterCheckout(project, session.git) }
+    }, failed) { review ->
         val service = ReviewService.of(project)
         ToolWindowManager.getInstance(project).getToolWindow(TOOL_WINDOW_ID)?.activate(null)
         service.nextUnreviewed(null)?.let { openChange(project, it) }
