@@ -1,0 +1,179 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://github.com/vatsarishabh22/review-lens/spec/state.schema.json",
+  "title": "Review Lens state (.git/review-lens/*.json)",
+  "$defs": {
+    "target": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "key",
+        "label",
+        "head",
+        "base"
+      ],
+      "properties": {
+        "key": {
+          "type": "string",
+          "pattern": "^(pr-[0-9]+|branch-[A-Za-z0-9._-]+)$",
+          "description": "pr-<number>, or branch-<name> with anything outside [A-Za-z0-9._-] replaced by _"
+        },
+        "label": {
+          "type": "string"
+        },
+        "prNumber": {
+          "type": [
+            "integer",
+            "null"
+          ]
+        },
+        "head": {
+          "type": "string"
+        },
+        "base": {
+          "type": "string"
+        }
+      }
+    },
+    "active": {
+      "description": "active.json: the review in progress",
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "target",
+        "head",
+        "reviewBranch",
+        "originalRef"
+      ],
+      "properties": {
+        "target": {
+          "$ref": "#/$defs/target"
+        },
+        "head": {
+          "type": "string",
+          "pattern": "^[0-9a-f]{40}$"
+        },
+        "reviewBranch": {
+          "type": "string",
+          "pattern": "^review/"
+        },
+        "originalRef": {
+          "type": "string",
+          "description": "branch name, or a commit sha when HEAD was detached"
+        },
+        "stashMessage": {
+          "type": [
+            "string",
+            "null"
+          ],
+          "description": "null when there was nothing to park"
+        }
+      }
+    },
+    "pr": {
+      "description": "<key>.json: one PR's scope, ticks and drafts",
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "target",
+        "range",
+        "scopeLabel",
+        "reviewed"
+      ],
+      "properties": {
+        "target": {
+          "$ref": "#/$defs/target"
+        },
+        "range": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": [
+            "from",
+            "to"
+          ],
+          "properties": {
+            "from": {
+              "type": "string",
+              "pattern": "^[0-9a-f]{40}\\^?$",
+              "description": "the scope's base: a commit, or <sha>^ when a commit pick starts at that commit"
+            },
+            "to": {
+              "type": "string",
+              "pattern": "^[0-9a-f]{40}$"
+            }
+          }
+        },
+        "scopeLabel": {
+          "type": "string"
+        },
+        "reviewed": {
+          "type": "object",
+          "description": "path -> blob when ticked, or \"dismissed\" when GitHub says changed-since-viewed for a file never seen here",
+          "additionalProperties": {
+            "type": "string",
+            "pattern": "^([0-9a-f]{40}|dismissed)$"
+          }
+        },
+        "seenHead": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "unsent": {
+          "type": [
+            "object",
+            "null"
+          ],
+          "description": "path -> viewed, ticks GitHub has not confirmed",
+          "additionalProperties": {
+            "type": "boolean"
+          }
+        },
+        "drafts": {
+          "type": [
+            "array",
+            "null"
+          ],
+          "items": {
+            "type": "object",
+            "additionalProperties": false,
+            "required": [
+              "path",
+              "line",
+              "blob",
+              "body"
+            ],
+            "properties": {
+              "path": {
+                "type": "string"
+              },
+              "line": {
+                "type": "integer",
+                "minimum": 1
+              },
+              "blob": {
+                "type": "string",
+                "pattern": "^[0-9a-f]{40}$"
+              },
+              "body": {
+                "type": "string"
+              },
+              "posted": {
+                "type": "boolean"
+              }
+            }
+          }
+        }
+      }
+    }
+  },
+  "oneOf": [
+    {
+      "$ref": "#/$defs/active"
+    },
+    {
+      "$ref": "#/$defs/pr"
+    }
+  ]
+}

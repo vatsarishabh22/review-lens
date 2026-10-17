@@ -1,0 +1,38 @@
+{
+  "target": {
+    "key": "pr-7",
+    "label": "#7 Retry invoice exports when the bucket drops the connection",
+    "prNumber": 7,
+    "head": "feat/export-retries",
+    "base": "origin/main"
+  },
+  "range": {
+    "from": "7c0317803d5f7ca8e71c9824addfc550b5f29788",
+    "to": "7ea9ca986520dde5e9ba47a75c28bd8d6b8cd838"
+  },
+  "scopeLabel": "All commits (2)",
+  "reviewed": {
+    "invoices/retry.py": "5ae8f8ca4d381cc3e2ee0ea2441406e0d291097c",
+    "invoices/export.py": "dismissed"
+  },
+  "seenHead": "7ea9ca986520dde5e9ba47a75c28bd8d6b8cd838",
+  "unsent": {
+    "invoices/retry.py": true
+  },
+  "drafts": [
+    {
+      "path": "invoices/export.py",
+      "line": 22,
+      "blob": "14d6ed33afe668fd14bca587acaf79544436afb1",
+      "body": "Retry only on connection errors, not on 4xx.",
+      "posted": false
+    },
+    {
+      "path": "invoices/retry.py",
+      "line": 8,
+      "blob": "5ae8f8ca4d381cc3e2ee0ea2441406e0d291097c",
+      "body": "Cap the backoff?",
+      "posted": true
+    }
+  ]
+}

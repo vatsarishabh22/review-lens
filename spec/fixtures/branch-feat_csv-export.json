@@ -1,0 +1,14 @@
+{
+  "target": {
+    "key": "branch-feat_csv-export",
+    "label": "origin/feat/csv-export",
+    "head": "origin/feat/csv-export",
+    "base": "origin/main"
+  },
+  "range": {
+    "from": "7c0317803d5f7ca8e71c9824addfc550b5f29788",
+    "to": "43570598c5d0e2ac74ff1edbf7de8b2c06ec557a"
+  },
+  "scopeLabel": "All commits (1)",
+  "reviewed": {}
+}

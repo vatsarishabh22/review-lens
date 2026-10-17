@@ -1,0 +1,13 @@
+{
+  "target": {
+    "key": "pr-7",
+    "label": "#7 Retry invoice exports when the bucket drops the connection",
+    "prNumber": 7,
+    "head": "feat/export-retries",
+    "base": "origin/main"
+  },
+  "head": "7ea9ca986520dde5e9ba47a75c28bd8d6b8cd838",
+  "reviewBranch": "review/pr-7",
+  "originalRef": "feat/my-work",
+  "stashMessage": "review-lens: parked from feat/my-work for #7 Retry invoice exports when the bucket drops the connection"
+}
