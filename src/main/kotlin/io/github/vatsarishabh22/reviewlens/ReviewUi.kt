@@ -1,5 +1,6 @@
 package io.github.vatsarishabh22.reviewlens
 
+import com.intellij.openapi.editor.colors.EditorColorsManager
 import com.intellij.ui.JBColor
 import com.intellij.ui.components.JBLabel
 import com.intellij.ui.components.JBTextArea
@@ -26,7 +27,10 @@ import javax.swing.JTextPane
 import javax.swing.text.SimpleAttributeSet
 import javax.swing.text.StyleConstants
 
-/** The prototype's colour tokens, light and dark. */
+/**
+ * Every colour the plugin paints, in one place. Each is a JBColor, resolved when painted, never when a component is built:
+ * the platform repaints on a theme or editor-scheme switch, so nothing of ours has to listen for one.
+ */
 object ReviewColors {
     val accent = JBColor(0x3574f0, 0x3574f0)
     val accentSoft = JBColor(0xe6eeff, 0x25324d)
@@ -40,8 +44,15 @@ object ReviewColors {
     val star = JBColor(0xe5a50a, 0xf2c55c)
     val warn = JBColor(0xc27c0e, 0xe0a63a)
     val chip = JBColor(0xebecf0, 0x393b40)
-    val muted get() = UIUtil.getContextHelpForeground()
-    val line get() = JBColor.border()
+    val flash = JBColor(0xf8d79a, 0x6b5320)
+    val muted: Color = JBColor.lazy { UIUtil.getContextHelpForeground() }
+    val line: Color = JBColor.lazy { JBColor.border() }
+    val buttonText: Color = JBColor.lazy { UIUtil.getLabelForeground() }
+    /** The panel and bars around the editor: theme surfaces, like the platform's own editor banners. */
+    val surface: Color = JBColor.lazy { JBUI.CurrentTheme.ToolWindow.background() }
+    /** Inside the editor (the comment cards): the editor scheme, which can differ from the theme (light UI, dark editor). */
+    val editorBackground: Color = JBColor.lazy { EditorColorsManager.getInstance().globalScheme.defaultBackground }
+    val editorText: Color = JBColor.lazy { EditorColorsManager.getInstance().globalScheme.defaultForeground }
 
     fun status(status: Char): Color = when (status) { 'A' -> add; 'D' -> del; else -> mod }
 }

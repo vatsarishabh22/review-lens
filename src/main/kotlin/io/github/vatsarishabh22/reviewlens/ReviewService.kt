@@ -19,7 +19,7 @@ import java.util.concurrent.ConcurrentHashMap
 import java.util.concurrent.CopyOnWriteArrayList
 import javax.swing.Timer
 
-/** The review in progress in this checkout, if any: its changed files, reviewed state and blame. */
+/** The review in progress in this checkout, if any: its changed files, viewed state (synced with GitHub) and blame. */
 @Service(Service.Level.PROJECT)
 class ReviewService(private val project: Project) : Disposable {
 
@@ -43,8 +43,6 @@ class ReviewService(private val project: Project) : Disposable {
     @Volatile private var pullRequestId: String? = null
     /** The viewer opened this PR (from GitHub at load); false when unknown, so GitHub's own refusal still applies. */
     @Volatile var ownPullRequest = false; private set
-    /** The Finish review summary while it is being written; cleared once the review is posted. */
-    @Volatile var summaryDraft = ""
     private var syncFailureShown = false
 
     val isActive get() = meta != null
@@ -128,8 +126,7 @@ class ReviewService(private val project: Project) : Disposable {
         val reviewed = if (viewed) current.reviewed + (change.path to change.newBlob) else current.reviewed - change.path
         // A PR tick is queued even when GitHub is unreachable now, so the next load sends it instead of erasing it.
         val unsent = if (current.target.prNumber == null) current.unsent else current.unsent.orEmpty() + (change.path to viewed)
-        meta = current.copy(reviewed = reviewed, unsent = unsent).also { ReviewMeta.save(git!!, it) }
-        fireChanged()
+        update { current.copy(reviewed = reviewed, unsent = unsent) }
         val id = pullRequestId ?: return
         val root = git!!.root
         ApplicationManager.getApplication().executeOnPooledThread {
@@ -147,38 +144,11 @@ class ReviewService(private val project: Project) : Disposable {
         meta = current.copy(unsent = (current.unsent - path).ifEmpty { null }).also { ReviewMeta.save(git!!, it) }
     }
 
-    /** Comments on [change]'s file as this scope shows it; posted ones stay visible, marked as on GitHub. */
-    fun drafts(change: FileChange): List<Draft> = meta?.drafts.orEmpty().filter { it.path == change.path && it.blob == change.newBlob }
-
-    /** The comments Finish review would post now. */
-    fun pendingDrafts(): List<Draft> = toPost(meta?.drafts.orEmpty(), changes)
-
-    fun addDraft(change: FileChange, line: Int, body: String) = updateDrafts { it + Draft(change.path, line, change.newBlob, body) }
-
-    /** Replaces a pending comment's text, keeping its line and its place among the drafts. */
-    fun editDraft(draft: Draft, body: String) = updateDrafts { drafts -> drafts.map { if (it == draft) it.copy(body = body) else it } }
-
-    /** Removes a pending comment; the way out when GitHub refuses one, which would otherwise block every Finish review. */
-    fun deleteDraft(draft: Draft) = updateDrafts { it - draft }
-
-    /** Posts the pending comments with [summary] and [verdict] as one GitHub review and returns how many went. Runs gh: call off EDT. */
-    fun submitReview(summary: String, verdict: Verdict): Int {
-        val current = meta ?: error("No review in progress")
-        val number = current.target.prNumber ?: error("Only a pull request can be reviewed on GitHub")
-        val sending = toPost(current.drafts.orEmpty(), changes)
-        GhClient(git!!.root).submitReview(number, reviewPayload(current.range.to, summary, verdict, sending))
-        markPosted(sending.toSet())
-        summaryDraft = ""
-        return sending.size
-    }
-
-    private fun markPosted(sent: Set<Draft>) = updateDrafts { drafts -> drafts.map { if (it in sent) it.copy(posted = true) else it } }
-
-    /** Every change to the comments: saved at once (they survive exit and a crash), then the editor and panel redraw. */
+    /** Every change to the saved review: written at once (it survives exit and a crash), then the editor and panel redraw. */
     @Synchronized
-    private fun updateDrafts(change: (List<Draft>) -> List<Draft>) {
+    fun update(change: (ReviewMeta) -> ReviewMeta) {
         val current = meta ?: return
-        meta = current.copy(drafts = change(current.drafts.orEmpty())).also { ReviewMeta.save(git!!, it) }
+        meta = change(current).also { ReviewMeta.save(git!!, it) }
         fireChanged()
     }
 

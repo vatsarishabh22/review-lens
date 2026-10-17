@@ -9,7 +9,6 @@ import com.intellij.openapi.editor.Editor
 import com.intellij.openapi.editor.EditorFactory
 import com.intellij.openapi.editor.EditorKind
 import com.intellij.openapi.editor.Inlay
-import com.intellij.openapi.editor.colors.EditorColorsManager
 import com.intellij.openapi.editor.event.EditorFactoryEvent
 import com.intellij.openapi.editor.event.EditorFactoryListener
 import com.intellij.openapi.editor.event.EditorMouseEvent
@@ -31,7 +30,6 @@ import com.intellij.openapi.wm.IdeFocusManager
 import com.intellij.ui.EditorTextField
 import com.intellij.util.ui.JBFont
 import com.intellij.util.ui.JBUI
-import com.intellij.util.ui.UIUtil
 import java.awt.BorderLayout
 import java.awt.Color
 import java.awt.Component
@@ -125,7 +123,7 @@ class CommentInlays(private val project: Project) : Disposable {
         blocks.remove(editor)?.forEach(Disposer::dispose)
         val ex = editor as? EditorEx ?: return
         val change = changeIn(editor) ?: return
-        val drafts = ReviewService.of(project).drafts(change).groupBy { it.line }
+        val drafts = ReviewDrafts.of(project).on(change).groupBy { it.line }
         val open = box?.takeIf { it.path == change.path }
         val lines = (drafts.keys + listOfNotNull(open?.line)).filter { it in 1..editor.document.lineCount }.sorted()
         blocks[editor] = lines.mapNotNull { line ->
@@ -136,18 +134,18 @@ class CommentInlays(private val project: Project) : Disposable {
     }
 
     private fun block(editor: Editor, change: FileChange, line: Int, drafts: List<Draft>, open: Box?): JComponent {
-        val service = ReviewService.of(project)
+        val comments = ReviewDrafts.of(project)
         val parts = drafts.filter { it != open?.editing }.map { draft -> // the draft being edited shows as the box instead
             val state = if (draft.posted) mutedLabel("on GitHub") else Pill("Pending", ReviewColors.review, ReviewColors.reviewFg)
             val who = JPanel(BorderLayout()).apply {
                 isOpaque = false
-                add(row(JBLabel("You").apply { font = JBFont.label().asBold() }, state), BorderLayout.WEST)
+                add(row(JBLabel("You").apply { font = JBFont.label().asBold(); foreground = ReviewColors.editorText }, state), BorderLayout.WEST)
                 if (!draft.posted) add(row(
                     ActionLink("Edit") { open(editor, line, draft) }.apply { font = JBFont.small() },
-                    ActionLink("Delete") { service.deleteDraft(draft) }.apply { font = JBFont.small() },
+                    ActionLink("Delete") { comments.delete(draft) }.apply { font = JBFont.small() },
                 ), BorderLayout.EAST)
             }
-            stack(who, vgap(2), text(draft.body)).apply { border = JBUI.Borders.empty(8, 12) }
+            stack(who, vgap(2), text(draft.body).apply { foreground = ReviewColors.editorText }).apply { border = JBUI.Borders.empty(8, 12) }
         }.toMutableList<JComponent>()
         if (open != null) {
             val add = JButton(if (open.editing != null) "Save" else "Add comment").apply {
@@ -156,13 +154,13 @@ class CommentInlays(private val project: Project) : Disposable {
                     val body = open.text.text.trim()
                     if (body.isEmpty()) return@addActionListener
                     box = null
-                    open.editing?.let { service.editDraft(it, body) } ?: service.addDraft(change, line, body)
+                    open.editing?.let { comments.edit(it, body) } ?: comments.add(change, line, body)
                 }
             }
             val cancel = JButton("Cancel").apply { addActionListener { close() } }
             listOf(add, cancel).forEach { it.cursor = Cursor.getPredefinedCursor(Cursor.HAND_CURSOR) }
             val actions = JPanel(BorderLayout(JBUI.scale(8), 0)).apply {
-                background = UIUtil.getPanelBackground()
+                background = ReviewColors.surface
                 border = JBUI.Borders.compound(JBUI.Borders.customLineTop(ReviewColors.line), JBUI.Borders.empty(6, 10))
                 add(mutedLabel("Posted when you finish the review"))
                 add(row(cancel, add, gap = 8), BorderLayout.EAST)
@@ -172,7 +170,7 @@ class CommentInlays(private val project: Project) : Disposable {
         parts.drop(1).forEach { it.border = JBUI.Borders.compound(JBUI.Borders.customLineTop(ReviewColors.line), it.border) }
         val card = stack(*parts.toTypedArray()).apply {
             isOpaque = true
-            background = EditorColorsManager.getInstance().globalScheme.defaultBackground
+            background = ReviewColors.editorBackground
             border = RoundedLineBorder(ReviewColors.line, JBUI.scale(8))
         }
         card.preferredSize = Dimension(WIDTH, card.preferredSize.height)
