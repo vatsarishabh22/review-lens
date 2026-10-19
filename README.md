@@ -20,6 +20,8 @@
   <!-- when VS Code ships, turn its badge green -->
 </p>
 
+<p align="center"><img src="docs/images/demo.gif" alt="Review Lens in under 30 seconds: pick a PR, your work is parked, reply to a thread, tick each file, approve, and you're back on your branch with your work restored"></p>
+
 ## Why
 
 A diff page shows the lines that changed. To judge them, you need the code around them: the caller, the test, the
