@@ -10,7 +10,9 @@ Review GitHub pull requests in **IntelliJ IDEA, PyCharm, WebStorm, GoLand** or a
 ## Install
 
 **Marketplace (recommended):** go to **Settings → Plugins → Marketplace**, search **Review Lens**, and click **Install**.
-<!-- TODO after the Marketplace release: link the listing -->
+Or open [Review Lens on JetBrains Marketplace](https://plugins.jetbrains.com/plugin/35225-review-lens) and click **Install to IDE**.
+
+<a href="https://plugins.jetbrains.com/plugin/35225-review-lens"><img src="https://img.shields.io/jetbrains/plugin/v/35225?label=JetBrains%20Marketplace" alt="JetBrains Marketplace version"></a>
 
 <details>
 <summary><b>Or from the command line</b> (quit the IDE first)</summary>

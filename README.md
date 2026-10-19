@@ -15,7 +15,9 @@
   <br>
   <a href="https://github.com/vatsarishabh22/review-lens/actions/workflows/jetbrains.yml"><img src="https://img.shields.io/github/actions/workflow/status/vatsarishabh22/review-lens/jetbrains.yml?branch=main&label=build" alt="Build"></a>
   <a href="LICENSE"><img src="https://img.shields.io/badge/license-Apache_2.0-blue" alt="License: Apache 2.0"></a>
-  <!-- TODO after the Marketplace release: add the JetBrains Marketplace version badge; when VS Code ships, turn its badge green -->
+  <a href="https://plugins.jetbrains.com/plugin/35225-review-lens"><img src="https://img.shields.io/jetbrains/plugin/v/35225?label=JetBrains%20Marketplace" alt="JetBrains Marketplace version"></a>
+  <a href="https://plugins.jetbrains.com/plugin/35225-review-lens"><img src="https://img.shields.io/jetbrains/plugin/d/35225" alt="JetBrains Marketplace downloads"></a>
+  <!-- when VS Code ships, turn its badge green -->
 </p>
 
 ## Why
