@@ -11,8 +11,9 @@
           <li><b>Your work stays safe:</b> uncommitted changes are parked in a named git stash and restored exactly on Exit.</li>
           <li><b>Read the change in context:</b> full files, read-only, with changes marked in the gutter and a diff one click away.</li>
           <li><b>Track progress:</b> &#11088; not viewed, &#9989; viewed, &#128260; changed since viewed, synced with GitHub's Viewed checkboxes.</li>
-          <li><b>Comment, then post once:</b> inline drafts, a summary and a verdict go to GitHub as a single review.</li>
-          <li><b>Review only what's new:</b> all commits, a few, or only those pushed since your last review.</li>
+          <li><b>See the whole conversation:</b> everyone's GitHub comments under their lines, a Comments tab listing them all, and replies in place.</li>
+          <li><b>Comment, then post once:</b> inline drafts, replies, a summary and a verdict go to GitHub as a single review.</li>
+          <li><b>Review only what's new:</b> a reviewed PR shows when new commits arrive, and one click reviews only those.</li>
           <li><b>Works offline:</b> without GitHub it lists branches instead, and viewed ticks sync later.</li>
         </ul>
         <p><b>Requires</b> git and the <a href="https://cli.github.com/">GitHub CLI</a> signed in (<code>gh auth login</code>).
@@ -32,7 +33,9 @@
           <li>Reply to an open thread right there; replies go out with your review. Finish review first checks GitHub,
           and says when a thread you replied to was resolved meanwhile.</li>
           <li>The comment box grows as you type, ⌘↩ / Ctrl+Enter adds the comment, Esc cancels, and a background
-          refresh no longer takes your typing focus.</li>
+          refresh no longer takes your typing focus. Opening another box keeps the text you haven't added.</li>
+          <li>A PR you reviewed shows "New commits since your review" when someone pushes; opening it picks only those
+          commits and the button reads "Review new commits".</li>
           <li>No deprecated platform APIs on 2026.1 through 2026.3.</li>
         </ul>
         <h3>0.1.2</h3>
