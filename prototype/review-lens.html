@@ -11,7 +11,7 @@
   --accent: #3574f0; --accent-soft: #e6eeff; --sel: #d5e1ff; --hover: #eef0f3;
   --review: #fff6e5; --review-line: #f2d9a6; --review-fg: #6b4e00;
   --add: #5fb865; --add-bg: #e9f5e6; --mod: #6c9bd2; --mod-bg: #e7eef9; --del: #a8adbd; --del-bg: #fbe9e9; --del-fg: #b0303b;
-  --star: #e5a50a; --ok: #3b9b46; --warn: #c27c0e;
+  --star: #e5a50a; --ok: #3b9b46; --warn: #c27c0e; --other: #7a5af5; --other-soft: #efeaff; --ok-soft: #e3f3e5;
   --kw: #0033b3; --str: #067d17; --com: #8c8c8c; --num: #1750eb; --dec: #9e880d; --fn: #00627a; --self: #94558d;
   --shadow: 0 6px 24px rgba(20, 24, 36, .14);
   --ui: "Inter", system-ui, -apple-system, "Segoe UI", sans-serif;
@@ -23,7 +23,7 @@
   --accent: #3574f0; --accent-soft: #25324d; --sel: #2e436e; --hover: #34363b;
   --review: #3a3220; --review-line: #5c4b22; --review-fg: #f0d28c;
   --add: #549159; --add-bg: #253a28; --mod: #375fad; --mod-bg: #22304a; --del: #6f737a; --del-bg: #402629; --del-fg: #f08f8f;
-  --star: #f2c55c; --ok: #5fb865; --warn: #e0a63a;
+  --star: #f2c55c; --ok: #5fb865; --warn: #e0a63a; --other: #a78bfa; --other-soft: #2e2747; --ok-soft: #253a28;
   --kw: #cf8e6d; --str: #6aab73; --com: #7a7e85; --num: #2aacb8; --dec: #b3ae60; --fn: #56a8f5; --self: #94558d;
   --shadow: 0 8px 28px rgba(0, 0, 0, .5); color-scheme: dark;
 } }
@@ -33,7 +33,7 @@
   --accent: #3574f0; --accent-soft: #25324d; --sel: #2e436e; --hover: #34363b;
   --review: #3a3220; --review-line: #5c4b22; --review-fg: #f0d28c;
   --add: #549159; --add-bg: #253a28; --mod: #375fad; --mod-bg: #22304a; --del: #6f737a; --del-bg: #402629; --del-fg: #f08f8f;
-  --star: #f2c55c; --ok: #5fb865; --warn: #e0a63a;
+  --star: #f2c55c; --ok: #5fb865; --warn: #e0a63a; --other: #a78bfa; --other-soft: #2e2747; --ok-soft: #253a28;
   --kw: #cf8e6d; --str: #6aab73; --com: #7a7e85; --num: #2aacb8; --dec: #b3ae60; --fn: #56a8f5; --self: #94558d;
   --shadow: 0 8px 28px rgba(0, 0, 0, .5); color-scheme: dark;
 }
@@ -208,6 +208,42 @@ button.mark:hover { background: var(--panel-2); }
 .comment-row textarea { width: 100%; min-height: 64px; border: 0; padding: 10px 12px; background: var(--win); color: var(--fg); font: inherit; resize: vertical; outline: none; }
 .comment-row .actions { display: flex; justify-content: space-between; align-items: center; gap: 8px; padding: 6px 10px; border-top: 1px solid var(--line); background: var(--panel); }
 .comment-row .actions .fineprint { flex: 1; }
+.comment-row.other { border-left: 3px solid var(--other); }
+.comment-row.done { border-left: 3px solid var(--ok); }
+.comment-row .who .pill.open { background: var(--other-soft); color: var(--other); }
+.comment-row .who .pill.res { background: var(--ok-soft); color: var(--ok); }
+.comment-row .who .t { font-weight: 400; }
+.comment-row .who .acts { margin-left: auto; display: flex; gap: 12px; font-weight: 400; font-size: 12px; }
+.comment-row .who .acts button { color: var(--accent); }
+.comment-row .c.reply { padding-left: 28px; background: var(--panel); }
+.comment-row .c.race { color: var(--warn); font-size: 12px; }
+.comment-row .reply-row { padding: 6px 12px; border-top: 1px solid var(--line); }
+.comment-row .reply-row button { color: var(--muted); border: 1px solid var(--line); border-radius: 6px; padding: 4px 10px; width: 100%; text-align: left; background: var(--win); }
+.comment-row .reply-row button:hover { color: var(--fg); }
+.submit-pop .race { color: var(--warn); }
+.comment-row .folded { display: flex; gap: 8px; align-items: center; padding: 6px 12px; width: 100%; text-align: left; color: var(--muted); font-size: 12px; }
+.comment-row .folded .txt1 { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.comment-row textarea { overflow-y: auto; max-height: 260px; }
+.outdated-strip { display: flex; gap: 8px; align-items: center; padding: 4px 12px; font-size: 12px; color: var(--muted); background: var(--panel); border-bottom: 1px solid var(--line); }
+.outdated-strip button { color: var(--accent); }
+.cm-filters { display: flex; gap: 6px; padding: 8px 12px 4px; flex-wrap: wrap; }
+.cm-filters button { border: 1px solid var(--line); border-radius: 12px; padding: 1px 9px; font-size: 12px; background: var(--win); }
+.cm-filters button.on { background: var(--accent); border-color: var(--accent); color: #fff; }
+.cm-file { padding: 8px 12px 2px; font: 11.5px var(--mono); color: var(--muted); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.cm-row { display: grid; grid-template-columns: 10px 1fr; gap: 8px; padding: 6px 12px 6px 18px; width: 100%; text-align: left; }
+.cm-row:hover { background: var(--hover); }
+.cm-row.sel { background: var(--sel); }
+.cm-row .dot { width: 8px; height: 8px; border-radius: 50%; margin-top: 6px; }
+.cm-row .meta { display: flex; gap: 6px; flex-wrap: wrap; align-items: center; font-size: 12px; color: var(--muted); }
+.cm-row .meta b { color: var(--fg); font-weight: 600; }
+.cm-row .body { font-size: 12px; overflow: hidden; display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; }
+.cm-row.resolved .body { color: var(--muted); }
+.pill.open { background: var(--other-soft); color: var(--other); }
+.pill.res { background: var(--ok-soft); color: var(--ok); }
+.pill.out { background: var(--panel-2); color: var(--muted); }
+.pill.mine { background: var(--accent-soft); color: var(--accent); }
+.pill.pend { background: var(--review); color: var(--review-fg); }
+.seg .n { margin-left: 4px; padding: 0 5px; border-radius: 8px; background: var(--panel-2); font-size: 11px; }
 .file-tools { flex: none; display: flex; align-items: center; gap: 8px; padding: 4px 12px; border-bottom: 1px solid var(--line); background: var(--win); min-width: 0; }
 .file-tools .crumb { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; color: var(--muted); font-size: 12px; }
 .file-tools .crumb b { color: var(--fg); font-weight: 500; }
@@ -267,6 +303,8 @@ button.mark:hover { background: var(--panel-2); }
   <div class="controls">
     <label class="chip-btn"><input type="checkbox" id="opt-dirty" checked> Uncommitted work on my branch</label>
     <button class="chip-btn" id="opt-resume">Returning reviewer</button>
+    <button class="chip-btn" id="opt-pushed" title="You finished #147 (approved); then 2 commits were pushed">New commits after my review</button>
+    <button class="chip-btn" id="opt-race" title="On GitHub, Bob resolves his botocore thread while you review">Bob resolves a thread meanwhile</button>
     <button class="chip-btn" id="opt-reset">Reset</button>
   </div>
 </div>
@@ -372,6 +410,14 @@ const PRS = [
   { n: 151, title: "fix(payments): dedupe refund webhooks by refund id", who: "cara", head: "fix/refund-dedupe", base: "main", desc: "", requested: true, ci: "Checks passed", updated: "1 hour ago", files: 4, add: 61, del: 12 },
   { n: 149, title: "feat(search): fuzzy matching for product titles", who: "dan", head: "feat/fuzzy-search", base: "main", desc: "", requested: false, ci: "1 check failing", updated: "yesterday", files: 11, add: 402, del: 37 },
 ];
+const THREADS_AT_LOAD = [
+  { id: 1, path: "src/app/platform/bucket/client.py", line: 15, who: "bob", state: "open", body: "botocore already retries 5 times here. With the retry in the repo on top, one outage means up to 25 attempts. Drop one of them?",
+    replies: [{ who: "alice", text: "Good catch. I'll keep botocore's and remove ours." }, { who: "bob", text: "👍 Then the docstring's \"and retries\" is still right." }] },
+  { id: 2, path: "src/app/modules/invoices/models.py", line: 16, who: "cara", state: "resolved", body: "Is Numeric(12, 2) enough for totals in JPY?",
+    replies: [{ who: "alice", text: "Yes, 12 digits covers our largest invoice by three orders of magnitude." }] },
+  { id: 3, path: "src/app/modules/invoices/repositories/invoice_line_repo.py", line: 25, who: "dan", state: "open", body: "int() raises on \"1,200\". The accounting export prints thousands separators.", replies: [] },
+  { id: 4, path: "src/app/modules/invoices/observability.py", line: null, oldLine: 9, who: "bob", state: "outdated", body: "Keep parse_failures until the Grafana board moves to the new counter.", replies: [] },
+];
 const DIRTY = ["M  src/app/modules/payments/refunds.py", "M  tests/test_refunds.py", "?  notes/refunds.md"];
 
 // ---------- state ----------
@@ -379,7 +425,7 @@ const fresh = () => ({
   mode: "normal", tool: "project", panel: "list", pr: 147, scope: "all", picked: new Set(),
   dirty: document.getElementById("opt-dirty").checked, confirm: false, step: 0,
   filesView: "pr", open: OWN_FILE.path, tabs: [OWN_FILE.path], diff: false, caret: null, hunk: null,
-  viewed: {}, since: {}, comments: {}, draft: null, draftText: "", pop: null, toast: null, flash: false, resume: false, submitted: false, verdict: null,
+  viewed: {}, since: {}, comments: {}, threads: structuredClone(THREADS_AT_LOAD), replies: {}, replyTo: null, remote: false, cmFilter: "all", jump: null, unfold: {}, draft: null, draftText: "", pop: null, toast: null, flash: false, resume: false, submitted: false, verdict: null,
 });
 let S = fresh();
 
@@ -401,7 +447,20 @@ const viewedCount = () => scopedFiles().filter(f => S.viewed[f.path] && !S.since
 const prViewed = () => FILES.filter(f => S.viewed[f.path] && !S.since[f.path]).length;
 const allViewed = () => prViewed() === FILES.length;
 const started = () => Object.keys(S.viewed).length > 0 || !!S.verdict;
-const pendingCount = () => Object.values(S.comments).flatMap(o => Object.values(o)).flat().filter(c => c.pending).length;
+function allComments() {
+  const mine = Object.entries(S.comments).flatMap(([path, o]) => Object.entries(o).flatMap(([line, list]) => list.map(c => ({ path, line: +line, who: "me", state: c.pending ? "pending" : "posted", body: c.text, replies: [] }))));
+  return [...S.threads, ...mine];
+}
+const PILL = { open: '<span class="pill open">open</span>', resolved: '<span class="pill res">resolved</span>', outdated: '<span class="pill out">outdated</span>', posted: '<span class="pill mine">on GitHub</span>', pending: '<span class="pill pend">Pending</span>' };
+const DOT = { open: "var(--other)", resolved: "var(--ok)", outdated: "var(--muted)", posted: "var(--accent)", pending: "var(--warn)" };
+const pendingComments = () => Object.values(S.comments).flatMap(o => Object.values(o)).flat().filter(c => c.pending).length;
+const pendingReplies = () => Object.values(S.replies).flat().length;
+const pendingCount = () => pendingComments() + pendingReplies();
+const plural = (n, one, many) => `${n} ${n === 1 ? one : many}`;
+// "2 comments and 1 reply": what Finish review will post
+const drafts = () => [pendingComments() && plural(pendingComments(), "comment", "comments"), pendingReplies() && plural(pendingReplies(), "reply", "replies")].filter(Boolean).join(" and ");
+// Threads someone resolved on GitHub after you replied, found by the refresh Finish review does when it opens
+const racedThreads = () => S.threads.filter(t => t.resolvedMeanwhile && (S.replies[t.id] || []).length);
 // Rows of the full file as it is at the PR head, with change kinds limited to the scope.
 function rowsOf(f) {
   const rows = []; let delBefore = null;
@@ -504,7 +563,9 @@ function projectTree(highlight) {
 function prList() {
   const item = pr => {
     const mine = pr.n === 147 && S.mode === "normal";
-    const pill = !mine ? "" : started() && allViewed() ? `<span class="pill done">✓ Reviewed · ${S.verdict || `${FILES.length} of ${FILES.length}`}</span>`
+    // a finished review whose PR moved on is not reviewed any more: the list says so (the PR's head differs from the one you reviewed)
+    const pill = !mine ? "" : S.pushed && started() ? '<span class="pill resume">🔄 New commits since your review</span>'
+      : started() && allViewed() ? `<span class="pill done">✓ Reviewed · ${S.verdict || `${FILES.length} of ${FILES.length}`}</span>`
       : started() ? `<span class="pill resume">Resume · ${prViewed()} of ${FILES.length} viewed</span>`
       : S.resume ? '<span class="pill resume">Resume · 4 of 9 viewed</span>' : "";
     const stats = pr.n === 147 ? `${FILES.length} files` : `${pr.files} files`;
@@ -524,7 +585,7 @@ function prDetail() {
   const total = FILES.reduce((s, f) => { const c = counts(f); return { a: s.a + c.a, d: s.d + c.d }; }, { a: 0, d: 0 });
   const scope = `<div class="scope">
     <label><input type="radio" name="scope" data-act="scope-all" ${S.scope === "all" ? "checked" : ""}><span><b>All commits</b><div class="who">The whole PR against main</div></span></label>
-    ${S.resume ? `<label><input type="radio" name="scope" data-act="scope-since" ${S.scope === "since" ? "checked" : ""}><span><b>Since your last review</b><div class="who">2 commits pushed after you last looked</div></span></label>` : ""}
+    ${S.resume || S.pushed ? `<label><input type="radio" name="scope" data-act="scope-since" ${S.scope === "since" ? "checked" : ""}><span><b>Since your last review</b><div class="who">2 commits pushed after you last looked</div></span></label>` : ""}
     ${COMMITS.map((c, i) => `<label><input type="checkbox" data-act="scope-pick" data-i="${i}" ${S.scope === "pick" && S.picked.has(i) ? "checked" : ""}>
       <span><span class="sha">${c.sha}</span> ${esc(c.msg)}<div class="who">${person(c.who).name} · ${c.when}</div></span></label>`).join("")}</div>`;
   let action;
@@ -538,7 +599,7 @@ function prDetail() {
       <span class="fineprint">Review Lens parks them in a stash named after this review and puts them back when you exit. Nothing is committed.</span>
       <div class="btns"><button class="primary" data-act="start-go">Park and start review</button><button class="secondary" data-act="start-cancel">Cancel</button></div></div>`;
   } else {
-    action = `<div style="display:flex;gap:10px;align-items:center;flex-wrap:wrap"><button class="primary" data-act="start">${started() && allViewed() ? "Review again" : S.resume || started() ? "Resume review" : "Start review"}</button>
+    action = `<div style="display:flex;gap:10px;align-items:center;flex-wrap:wrap"><button class="primary" data-act="start">${S.pushed ? "Review new commits" : started() && allViewed() ? "Review again" : S.resume || started() ? "Resume review" : "Start review"}</button>
       <span class="fineprint">Opens the PR in this window, read-only.</span></div>`;
   }
   return `<div class="detail"><button class="secondary" data-act="back" style="justify-self:start">${I.back} All pull requests</button>
@@ -555,13 +616,14 @@ function reviewFiles() {
   const head = `<div class="rv-head"><div class="rv-title"><span class="num">#147</span> ${esc(PRS[0].title)}</div>
     <div class="progress"><i style="width:${files.length ? done / files.length * 100 : 0}%"></i></div>
     <div class="rv-sub"><span>${done} of ${files.length} files viewed</span><span>Synced with GitHub</span></div>
-    <div class="seg" role="tablist"><button class="${S.filesView === "pr" ? "on" : ""}" data-act="files-view" data-v="pr">Changed files</button><button class="${S.filesView === "all" ? "on" : ""}" data-act="files-view" data-v="all">Whole project</button></div></div>`;
+    <div class="seg" role="tablist"><button class="${S.filesView === "pr" ? "on" : ""}" data-act="files-view" data-v="pr">Changed files</button><button class="${S.filesView === "all" ? "on" : ""}" data-act="files-view" data-v="all">Whole project</button><button class="${S.filesView === "comments" ? "on" : ""}" data-act="files-view" data-v="comments">Comments<span class="n">${allComments().length}</span></button></div></div>`;
   if (S.filesView === "all") return head + `<div style="padding:4px 0">${projectTree(true)}</div>`;
+  if (S.filesView === "comments") return head + commentsList();
   const byDir = {};
   files.forEach(f => (byDir[f.path.includes("/") ? f.path.slice(0, f.path.lastIndexOf("/")) : ""] ||= []).push(f));
   const rows = Object.keys(byDir).sort().map(dir => {
     const items = byDir[dir].map(f => {
-      const c = counts(f), n = Object.values(S.comments[f.path] || {}).flat().length;
+      const c = counts(f), n = allComments().filter(t => t.path === f.path).length;
       return `<div class="row ${S.open === f.path ? "sel" : ""} ${f.status === "D" ? "strike" : ""}" style="padding-left:${dir ? 28 : 12}px" data-act="open" data-path="${esc(f.path)}">
         ${markIcon(f.path)}${iconFor(f.path)}<span class="name">${esc(f.path.split("/").pop())}</span>
         <span class="after">${n ? `<span style="display:inline-flex;gap:3px;align-items:center">${I.bubble}${n}</span>` : ""}<span class="counts"><span class="p">+${c.a}</span> <span class="m">−${c.d}</span></span><span class="st st-${f.status}">${f.status}</span></span></div>`;
@@ -569,6 +631,18 @@ function reviewFiles() {
     return (dir ? `<div class="row dir" style="padding-left:12px">${I.folder}<span class="name">${esc(dir)}</span></div>` : "") + items;
   }).join("");
   return head + `<div style="padding:4px 0">${rows}</div>`;
+}
+function commentsList() {
+  const replied = t => (S.replies[t.id] || []).length;
+  const pass = { all: () => true, open: t => t.state === "open", mine: t => t.who === "me" || replied(t), pending: t => t.state === "pending" || replied(t) }[S.cmFilter];
+  const filters = [["all", "All"], ["open", "Open"], ["mine", "Mine"], ["pending", "Pending"]].map(([k, l]) => `<button class="${S.cmFilter === k ? "on" : ""}" data-act="cm-filter" data-v="${k}">${l}</button>`).join("");
+  const byFile = {}; allComments().filter(pass).forEach(t => (byFile[t.path] ||= []).push(t));
+  const rows = Object.entries(byFile).map(([path, ts]) => `<div class="cm-file" title="${esc(path)}">${esc(path)}</div>` + ts.sort((a, b) => (a.state === "resolved") - (b.state === "resolved")).map(t => {
+    const where = t.line ? `line ${t.line}` : `line ${t.oldLine} on an older push`, n = t.replies.length;
+    const at = `${esc(t.path)}:${t.line || ""}`;
+    return `<button class="cm-row ${t.state} ${S.jump === at ? "sel" : ""}" data-act="cm-jump" data-path="${esc(t.path)}" data-line="${t.line || ""}"><i class="dot" style="background:${DOT[t.state]}"></i><span><span class="meta"><b>${t.who === "me" ? "You" : person(t.who).name}</b>${PILL[t.state]}<span>${where}</span>${n ? `<span>· ${n} repl${n > 1 ? "ies" : "y"}</span>` : ""}${(S.replies[t.id] || []).length ? '<span class="pill pend">your reply pending</span>' : ""}</span><span class="body">${esc(t.body)}</span></span></button>`;
+  }).join("")).join("");
+  return `<div class="cm-filters">${filters}</div>${rows || '<p class="fineprint" style="padding:8px 12px">Nothing here.</p>'}`;
 }
 function tool() {
   if (S.tool === "commit") return `<aside class="tool"><div class="tool-head">Commit</div><div class="tool-body" style="padding:8px 12px" class="fineprint">
@@ -602,7 +676,8 @@ function submitPop() {
   const pend = pendingCount();
   return `<div class="pop submit-pop" style="right:70px;top:34px">
     <h3>Finish your review</h3>
-    <span class="fineprint"><span id="posting">${pend ? `${pend} pending comment${pend > 1 ? "s" : ""} will be posted with it.` : "No inline comments yet."}</span> ${viewedCount()} of ${scopedFiles().length} files viewed.</span>
+    <span class="fineprint"><span id="posting">${pend ? `${drafts()} will be posted with it, as one review.` : "No inline comments yet."}</span> ${viewedCount()} of ${scopedFiles().length} files viewed.</span>
+    ${racedThreads().map(t => `<span class="fineprint race">${person(t.resolvedBy).name} resolved a thread you replied to since the review loaded. Your reply still posts; the thread stays resolved.</span>`).join("")}
     <textarea id="summary" placeholder="Leave a summary (optional)">Looks solid. One question on the key layout.</textarea>
     <div class="verdicts" onchange="verdictChanged()">
       <label><input type="radio" name="v" checked> <span>Comment<small>Feedback without a verdict</small></span></label>
@@ -610,7 +685,7 @@ function submitPop() {
       <label><input type="radio" name="v"> <span>Request changes<small>Must be addressed before merging</small></span></label>
       <div class="sep"></div>
       <label><input type="radio" name="v"> <span>Mark as reviewed<small>Nothing is posted to GitHub</small></span></label></div>
-    <span class="keep" id="keep" hidden>${pend ? `Your ${pend} draft comment${pend > 1 ? "s" : ""} won't be posted; ${pend > 1 ? "they're" : "it's"} kept for next time.` : ""}</span>
+    <span class="keep" id="keep" hidden>${pend ? `Your ${drafts()} won't be posted; ${pend > 1 ? "they're" : "it's"} kept for next time.` : ""}</span>
     <div style="display:flex;gap:8px;justify-content:flex-end"><button class="secondary" data-act="pop" data-pop="">Cancel</button><button class="primary" id="finish-go" data-act="submit">Submit to GitHub</button></div></div>`;
 }
 function editor() {
@@ -636,10 +711,26 @@ function fileView(f) {
       <span class="no">${no}</span><span class="bar">${changed ? `<button data-act="hunk" data-line="${no}" aria-label="Show change"></button>` : ""}${r.delBefore ? `<button class="tri" data-act="hunk" data-line="${no}" aria-label="Show deleted lines" style="background:none;border-radius:0"></button>` : ""}</span>
       <span class="txt">${hl(r.text, f.path)}${S.caret === no && r.c != null ? blame(r.c) : ""}</span></div>`;
     if (S.hunk === no) line += hunkPop(r);
+    S.threads.filter(t => t.path === f.path && t.line === no).forEach(t => line += threadBlock(t));
     if (cm.length || (S.draft && S.draft.line === no)) line += commentBlock(f.path, no, cm);
     return line;
   }).join("");
-  return `${fileTools(f)}<div class="editor" tabindex="0" id="ed"><div class="code">${html}</div></div>`;
+  const gone = S.threads.filter(t => t.path === f.path && !t.line).length;
+  const strip = gone ? `<div class="outdated-strip">${I.bubble}<span>${gone > 1 ? `${gone} threads on this file aren't` : "1 thread on this file isn't"} on this version: written on an older push or on removed lines.</span><button data-act="cm-show-outdated">Show in Comments</button></div>` : "";
+  return `${fileTools(f)}${strip}<div class="editor" tabindex="0" id="ed"><div class="code">${html}</div></div>`;
+}
+// Someone else's thread as GitHub has it: open threads show the conversation, resolved ones fold to one line until clicked.
+function threadBlock(t) {
+  const mine = S.replies[t.id] || [];
+  const p = person(t.who), open = t.state === "open" || S.unfold[t.id] || mine.length || S.replyTo === t.id;
+  if (!open) return `<div class="comment-row done"><button class="folded" data-act="unfold" data-id="${t.id}">${PILL[t.state]}<b>${p.name}</b><span class="txt1">${esc(t.body)}</span><span>${t.replies.length ? `+${t.replies.length}` : ""} ▸</span></button></div>`;
+  const reply = r => `<div class="c reply"><div class="who">${person(r.who).name}</div><div>${esc(r.text)}</div></div>`;
+  const pending = mine.map((text, i) => `<div class="c reply"><div class="who">${ME.name} <span class="pill pend">Pending</span><span class="acts"><button data-act="reply-edit" data-id="${t.id}" data-i="${i}">Edit</button><button data-act="reply-del" data-id="${t.id}" data-i="${i}">Delete</button></span></div><div>${esc(text)}</div></div>`).join("");
+  const raced = t.resolvedMeanwhile && mine.length ? `<div class="c reply race">${person(t.resolvedBy).name} resolved this after you replied. Your reply still posts; the thread stays resolved.</div>` : "";
+  const box = S.replyTo === t.id ? `<textarea id="draft" placeholder="Reply to ${p.name}…" aria-label="Reply">${esc(S.draftText)}</textarea>
+    <div class="actions"><span class="fineprint">Posted when you finish the review · <kbd>⌘↩</kbd> reply · <kbd>Esc</kbd> cancel</span><button class="secondary" data-act="reply-cancel">Cancel</button><button class="primary" data-act="reply-save">Reply</button></div>`
+    : t.state === "open" ? `<div class="reply-row"><button data-act="reply" data-id="${t.id}">Reply…</button></div>` : "";
+  return `<div class="comment-row ${t.state === "open" ? "other" : "done"}"><div class="c"><div class="who">${p.name} ${PILL[t.state]}<span class="acts">${t.state === "resolved" && !mine.length ? `<button data-act="unfold" data-id="${t.id}">Fold</button>` : ""}<button title="Opens the thread on GitHub">Open on GitHub ↗</button></span></div><div>${esc(t.body)}</div></div>${t.replies.map(reply).join("")}${pending}${raced}${box}</div>`;
 }
 function blame(ci) {
   const c = COMMITS[ci], p = person(c.who);
@@ -654,7 +745,7 @@ function hunkPop(r) {
 function commentBlock(path, line, list) {
   const items = list.map(c => `<div class="c"><div class="who">${ME.name} ${c.pending ? '<span class="pill">Pending</span>' : '<span class="fineprint">on GitHub</span>'}</div><div>${esc(c.text)}</div></div>`).join("");
   const draft = S.draft && S.draft.path === path && S.draft.line === line ? `<textarea id="draft" placeholder="Comment on line ${line}…" aria-label="Comment">${esc(S.draftText)}</textarea>
-    <div class="actions"><span class="fineprint">Posted when you finish the review</span><button class="secondary" data-act="draft-cancel">Cancel</button><button class="primary" data-act="draft-save">Add comment</button></div>` : "";
+    <div class="actions"><span class="fineprint">Posted when you finish the review · <kbd>⌘↩</kbd> add · <kbd>Esc</kbd> cancel</span><button class="secondary" data-act="draft-cancel">Cancel</button><button class="primary" data-act="draft-save">Add comment</button></div>` : "";
   return `<div class="comment-row">${items}${draft}</div>`;
 }
 function diffView(f) {
@@ -690,9 +781,12 @@ function render() {
   document.getElementById("ide").innerHTML = titlebar() + `<div class="body">${stripe()}${tool()}<main class="editor-area">${tabs()}${reviewbar()}${editor()}</main></div>` + statusbar() + toast();
   const ed2 = document.getElementById("ed"); if (ed2 && keepScroll) ed2.scrollTop = scroll;
   keepScroll = false;
-  const d = document.getElementById("draft"); if (d) { d.focus(); d.setSelectionRange(d.value.length, d.value.length); }
+  const d = document.getElementById("draft"); if (d) { grow(d); d.focus(); d.setSelectionRange(d.value.length, d.value.length); }
+  if (scrollTo) document.querySelector(`.ln[data-line="${scrollTo}"]`)?.scrollIntoView({ block: "center" });
+  scrollTo = null;
 }
-let keepScroll = false;
+let keepScroll = false, scrollTo = null;
+const grow = t => { t.style.height = "auto"; t.style.height = Math.min(t.scrollHeight, 260) + "px"; };
 
 // ---------- behaviour ----------
 let toastTimer, flashTimer;
@@ -714,7 +808,7 @@ function toggleViewed(p) {
   if (!was && p === S.open) nextUnviewed();
 }
 function startReview() {
-  S.confirm = false; S.step = 1; render();
+  S.confirm = false; S.step = 1; S.pushed = false; render();
   const total = S.dirty ? 4 : 3;
   const tick = () => {
     if (S.step < total) { S.step++; render(); setTimeout(tick, 550); return; }
@@ -740,7 +834,7 @@ function finishReview(what) {
 function exitReview() {
   const pend = pendingCount();
   S.mode = "normal"; S.tool = "project"; S.panel = "list"; S.tabs = [OWN_FILE.path]; S.open = OWN_FILE.path; S.pop = null; S.diff = false; S.caret = null; S.resume = started();
-  say("Back on feat/my-work", (allViewed() ? `All ${FILES.length} files reviewed. ` : "") + (S.dirty ? "Your 3 parked changes are restored." : "Nothing to restore.") + (pend ? ` ${pend} draft comment${pend > 1 ? "s" : ""} kept for next time.` : ""));
+  say("Back on feat/my-work", (allViewed() ? `All ${FILES.length} files reviewed. ` : "") + (S.dirty ? "Your 3 parked changes are restored." : "Nothing to restore.") + (pend ? ` Your ${drafts()} kept for next time.` : ""));
 }
 
 document.getElementById("ide").addEventListener("click", e => {
@@ -748,6 +842,8 @@ document.getElementById("ide").addEventListener("click", e => {
   const t = e.target.closest("[data-act]"); if (!t) { if (S.pop && !e.target.closest(".pop")) { S.pop = null; render(); } return; }
   const a = t.dataset.act, p = t.dataset.path;
   if (a !== "pop" && !t.closest(".pop") && S.pop) S.pop = null;
+  const busy = (S.draft || S.replyTo) && S.draftText.trim();
+  if (busy && ["comment", "reply", "reply-edit"].includes(a)) { e.stopPropagation(); say("Finish this comment first", "Add it or cancel it, then start another."); keepScroll = true; render(); return; }
   switch (a) {
     case "tool": S.tool = t.dataset.tool; break;
     case "pick-pr": S.pr = +t.dataset.n; S.panel = "detail"; break;
@@ -761,10 +857,14 @@ document.getElementById("ide").addEventListener("click", e => {
     case "open": openPath(p); if (S.mode === "review" && file(p)) S.diff = file(p).status === "D"; break;
     case "toggle-viewed": e.stopPropagation(); toggleViewed(p); break;
     case "files-view": S.filesView = t.dataset.v; break;
+    case "cm-filter": S.cmFilter = t.dataset.v; break;
+    case "cm-jump": S.jump = `${p}:${t.dataset.line}`; openPath(p); S.diff = false; if (t.dataset.line) { S.caret = +t.dataset.line; scrollTo = S.caret; } break;
+    case "cm-show-outdated": S.filesView = "comments"; S.cmFilter = "all"; break;
+    case "unfold": e.stopPropagation(); S.unfold[t.dataset.id] = !S.unfold[t.dataset.id]; keepScroll = true; break;
     case "diff": S.diff = t.dataset.v === "1"; S.hunk = null; break;
     case "caret": if (e.target.closest(".blame,.plus,.bar button")) return; S.caret = +t.dataset.line; keepScroll = true; break;
     case "hunk": e.stopPropagation(); S.hunk = t.dataset.line ? (S.hunk === +t.dataset.line ? null : +t.dataset.line) : null; keepScroll = true; break;
-    case "comment": e.stopPropagation(); S.draft = { path: S.open, line: +t.dataset.line }; S.draftText = ""; keepScroll = true; break;
+    case "comment": e.stopPropagation(); S.draft = { path: S.open, line: +t.dataset.line }; S.replyTo = null; S.draftText = ""; keepScroll = true; break;
     case "draft-cancel": S.draft = null; keepScroll = true; break;
     case "draft-save": {
       const text = (document.getElementById("draft")?.value || "").trim(); keepScroll = true;
@@ -773,27 +873,42 @@ document.getElementById("ide").addEventListener("click", e => {
     }
     case "next": nextUnviewed(1); break;
     case "prev": nextUnviewed(-1); break;
-    case "pop": S.pop = t.dataset.pop && S.pop !== t.dataset.pop ? t.dataset.pop : null; break;
+    case "pop": S.pop = t.dataset.pop && S.pop !== t.dataset.pop ? t.dataset.pop : null;
+      // opening Finish review reloads the threads from GitHub: a resolve made meanwhile shows up here, before anything posts
+      if (S.pop === "submit" && S.remote) { const th = S.threads.find(x => x.id === 1); th.state = "resolved"; th.resolvedMeanwhile = true; th.resolvedBy = "bob"; S.remote = false; }
+      break;
+    case "reply": e.stopPropagation(); S.replyTo = +t.dataset.id; S.draft = null; S.draftText = ""; keepScroll = true; break;
+    case "reply-cancel": S.replyTo = null; keepScroll = true; break;
+    case "reply-save": {
+      const text = (document.getElementById("draft")?.value || "").trim(); keepScroll = true;
+      if (!text) break;
+      (S.replies[S.replyTo] ||= []).push(text); S.replyTo = null; break;
+    }
+    case "reply-edit": { const id = +t.dataset.id, list = S.replies[id]; S.draftText = list.splice(+t.dataset.i, 1)[0]; if (!list.length) delete S.replies[id]; S.replyTo = id; S.draft = null; keepScroll = true; break; }
+    case "reply-del": { const id = +t.dataset.id, list = S.replies[id]; list.splice(+t.dataset.i, 1); if (!list.length) delete S.replies[id]; keepScroll = true; break; }
     case "set-scope": { const i = t.dataset.i; if (i === "all") { S.scope = "all"; S.picked = new Set(); } else if (i === "since") { S.scope = "since"; S.picked = new Set([3, 4]); } else { S.scope = "pick"; S.picked = new Set([+i]); } S.pop = null; if (!scopedFiles().some(f => f.path === S.open)) nextUnviewed(); break; }
     case "submit": {
-      const pend = pendingCount();
+      const pend = pendingCount(), posting = drafts();
       const picked = [...document.querySelectorAll('.submit-pop input[name="v"]')].findIndex(r => r.checked);
       const mark = picked === 3;
       if (!mark) {
         Object.values(S.comments).forEach(o => Object.values(o).flat().forEach(c => c.pending = false));
+        Object.entries(S.replies).forEach(([id, list]) => S.threads.find(x => x.id === +id).replies.push(...list.map(text => ({ who: "me", text }))));
+        S.replies = {};
         S.verdict = ["commented", "approved", "changes requested"][picked] || "commented"; S.submitted = true;
       }
       finishReview(mark ? "Marked as reviewed. Nothing was posted to GitHub."
-        : `${S.verdict === "approved" ? "Approved" : S.verdict === "commented" ? "Commented" : "Requested changes"} on GitHub${pend ? ` with ${pend} comment${pend > 1 ? "s" : ""}` : ""}.`); break;
+        : `${S.verdict === "approved" ? "Approved" : S.verdict === "commented" ? "Commented" : "Requested changes"} on GitHub${pend ? ` with ${posting}` : ""}.`); break;
     }
     case "exit": exitReview(); break;
     case "branch-info": say("This window shows PR #147", "Read-only. Use Exit in the review bar to go back to feat/my-work."); break;
   }
   render();
 });
-document.getElementById("ide").addEventListener("input", e => { if (e.target.id === "draft") S.draftText = e.target.value; });
+document.getElementById("ide").addEventListener("input", e => { if (e.target.id === "draft") { S.draftText = e.target.value; grow(e.target); } });
 document.addEventListener("keydown", e => {
-  if (e.key === "Escape") { S.pop = null; S.hunk = null; S.draft = null; render(); return; }
+  if (e.key === "Escape") { S.pop = null; S.hunk = null; S.draft = null; S.replyTo = null; render(); return; }
+  if (e.target.id === "draft" && e.key === "Enter" && (e.metaKey || e.ctrlKey)) { e.preventDefault(); document.querySelector('[data-act="draft-save"], [data-act="reply-save"]')?.click(); return; }
   if (S.mode !== "review" || e.target.matches("textarea, input")) return;
   if (e.altKey && e.code === "KeyN") { e.preventDefault(); nextUnviewed(); render(); return; }
   if (e.altKey && e.code === "KeyR" && file(S.open)) { e.preventDefault(); toggleViewed(S.open); render(); return; }
@@ -805,6 +920,12 @@ document.addEventListener("keydown", e => {
 });
 document.getElementById("opt-dirty").addEventListener("change", e => { S.dirty = e.target.checked; render(); });
 document.getElementById("opt-reset").addEventListener("click", () => { S = fresh(); render(); });
+document.getElementById("opt-pushed").addEventListener("click", () => {
+  S = fresh(); FILES.forEach(f => S.viewed[f.path] = true); S.verdict = "approved"; S.submitted = true; S.pushed = true;
+  S.tool = "review"; S.panel = "list"; S.scope = "since"; S.picked = new Set([3, 4]); // the detail offers what's new, chosen
+  render();
+});
+document.getElementById("opt-race").addEventListener("click", () => { S.remote = true; say("Bob resolved his thread on GitHub", "Review Lens notices when you open Finish review, before anything posts."); render(); });
 document.getElementById("opt-resume").addEventListener("click", () => {
   S = fresh(); S.resume = true; S.tool = "review"; S.panel = "detail";
   S.comments = { "src/app/platform/bucket/keys.py": { 14: [{ text: "Should v1 sit before the dataset name, so a layout change doesn't split one dataset across two prefixes?", pending: true }] } };
