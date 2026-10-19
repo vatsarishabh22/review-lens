@@ -59,7 +59,7 @@ class ReviewBanner : EditorNotificationProvider, DumbAware {
             service.nextUnreviewed(change?.path)?.let { openChange(project, it) }
                 ?: notify(project, "Every file is viewed", if (meta.target.prNumber != null) "Finish the review when you're ready." else "Exit the review when you're done.")
         }.apply { toolTipText = "Next unviewed file (⌥N)" }
-        val pending = ReviewDrafts.of(project).pending().size
+        val pending = ReviewDrafts.of(project).outbox().size
         val finish = JButton("Finish review", if (pending > 0) CountIcon(pending) else null).apply {
             putClientProperty(DarculaButtonUI.DEFAULT_STYLE_KEY, true)
             isOpaque = false; isFocusable = false

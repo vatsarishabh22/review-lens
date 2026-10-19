@@ -3,6 +3,7 @@ package io.github.vatsarishabh22.reviewlens
 import com.intellij.diff.DiffManager
 import com.intellij.openapi.fileEditor.FileEditor
 import com.intellij.openapi.fileEditor.FileEditorManager
+import com.intellij.openapi.fileEditor.OpenFileDescriptor
 import com.intellij.openapi.fileEditor.FileEditorPolicy
 import com.intellij.openapi.fileEditor.FileEditorProvider
 import com.intellij.openapi.fileEditor.ex.FileEditorProviderManager
@@ -73,6 +74,6 @@ fun refreshViews(project: Project) {
     val provider = ReviewDiffEditorProvider()
     manager.openFiles.filter { file -> manager.getAllEditors(file).any { it is ReviewDiffEditor } != provider.accept(project, file) }.forEach { file ->
         manager.closeFile(file)
-        manager.openFile(file, false)
+        OpenFileDescriptor(project, file).navigate(false)
     }
 }

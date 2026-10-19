@@ -65,7 +65,8 @@ class PrDetailView(private val project: Project, private val onBack: () -> Unit)
         background(project, "Fetching ${target.target.label}", {
             session.load(target.target).let { it to sinceLastReview(it.head, it.commits, ReviewMeta.load(git, target.target.key)?.seenHead) }
         }, failed = { if (listed === target) { fetchFailed = true; showStart(); showScope() } }) { (result, sinceRange) ->
-            if (listed === target) { loaded = result; since = sinceRange; showStart(); showScope() }
+            // new commits since a finished review: what's new is the scope to review, already chosen
+            if (listed === target) { loaded = result; since = sinceRange; sinceChosen = sinceRange != null && progress?.newCommits == true; showStart(); showScope() }
         }
         target.pr?.let { pr ->
             checksLabel.text = ""
@@ -119,7 +120,7 @@ class PrDetailView(private val project: Project, private val onBack: () -> Unit)
 
     private fun showStart() {
         val ready = loaded != null && loaded!!.commits.isNotEmpty()
-        val start = primaryButton(when { progress?.done == true -> "Review again"; progress != null -> "Resume review"; else -> "Start review" }).apply {
+        val start = primaryButton(progress?.startLabel(since != null) ?: "Start review").apply {
             isEnabled = ready
             addActionListener { checkWorkThenStart() }
         }

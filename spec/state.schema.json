@@ -161,6 +161,13 @@
               },
               "posted": {
                 "type": "boolean"
+              },
+              "replyTo": {
+                "type": [
+                  "string",
+                  "null"
+                ],
+                "description": "A reply: the id of the GitHub review thread it answers. path, line and blob are the thread's, for listing it."
               }
             }
           }
