@@ -13,13 +13,22 @@ class ReviewDrafts(private val project: Project) {
     /** The Finish review summary while it is being written; cleared once the review is posted. */
     @Volatile var summary = ""
 
-    /** Comments on [change]'s file as this scope shows it; posted ones stay visible, marked as on GitHub. */
-    fun on(change: FileChange): List<Draft> = review.meta?.drafts.orEmpty().filter { it.path == change.path && it.blob == change.newBlob }
+    /** Comments on [change]'s file as this scope shows it; posted ones stay visible as "on GitHub" until GitHub's own threads are loaded. */
+    fun on(change: FileChange): List<Draft> = mine().filter { it.path == change.path && it.blob == change.newBlob }
 
-    /** The comments Finish review would post now. */
-    fun pending(): List<Draft> = toPost(review.meta?.drafts.orEmpty(), review.changes)
+    /** Every comment (not reply) of this review the panel lists: pending ones, and posted ones while GitHub's threads aren't loaded. */
+    fun mine(): List<Draft> = review.meta?.drafts.orEmpty().filter { it.replyTo == null && (!it.posted || review.threads == null) }
+
+    /** Your pending replies to [thread], shown inside its card. */
+    fun repliesTo(thread: ReviewThread): List<Draft> = review.meta?.drafts.orEmpty().filter { !it.posted && it.replyTo == thread.id }
+
+    /** What Finish review would post now: comments on the versions this scope shows, and replies to threads GitHub still has. */
+    fun outbox(): Outbox = review.meta?.drafts.orEmpty().let { Outbox(toPost(it, review.changes), repliesToPost(it, review.threads)) }
 
     fun add(change: FileChange, line: Int, body: String) = update { it + Draft(change.path, line, change.newBlob, body) }
+
+    /** A reply to [thread], shown under [change]'s line [line]; posted with the review, into the thread. */
+    fun reply(change: FileChange, line: Int, thread: ReviewThread, body: String) = update { it + Draft(change.path, line, change.newBlob, body, replyTo = thread.id) }
 
     /** Replaces a pending comment's text, keeping its line and its place among the drafts. */
     fun edit(draft: Draft, body: String) = update { drafts -> drafts.map { if (it == draft) it.copy(body = body) else it } }
@@ -27,16 +36,19 @@ class ReviewDrafts(private val project: Project) {
     /** Removes a pending comment; the way out when GitHub refuses one, which would otherwise block every Finish review. */
     fun delete(draft: Draft) = update { it - draft }
 
-    /** Posts the pending comments with [summary] and [verdict] as one GitHub review, remembers [verdict], and returns how many went. Runs gh: call off EDT. */
-    fun submit(summary: String, verdict: Verdict): Int {
+    /**
+     * Posts the pending comments and replies with [summary] and [verdict] as one GitHub review, remembers [verdict], and
+     * returns what went ("1 comment and 1 reply"). Runs gh: call off EDT.
+     */
+    fun submit(summary: String, verdict: Verdict): String {
         val meta = review.meta ?: error("No review in progress")
         val number = meta.target.prNumber ?: error("Only a pull request can be reviewed on GitHub")
-        val sending = toPost(meta.drafts.orEmpty(), review.changes)
-        GhClient(review.git!!.root).submitReview(number, reviewPayload(meta.range.to, summary, verdict, sending))
-        val sent = sending.toSet()
+        val sending = outbox()
+        GhClient(review.git!!.root).submitReview(number, meta.range.to, summary, verdict, sending.comments, sending.replies)
+        val sent = (sending.comments + sending.replies).toSet()
         review.update { m -> m.copy(drafts = m.drafts?.map { if (it in sent) it.copy(posted = true) else it }, verdict = verdict) }
         this.summary = ""
-        return sending.size
+        return sending.text
     }
 
     private fun update(change: (List<Draft>) -> List<Draft>) = review.update { it.copy(drafts = change(it.drafts.orEmpty())) }

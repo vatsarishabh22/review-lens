@@ -44,6 +44,9 @@ object ReviewColors {
     /** The "✓ Reviewed" pill behind [ok] text. */
     val okSoft = JBColor(0xe3f3e5, 0x253a28)
     val star = JBColor(0xe5a50a, 0xf2c55c)
+    /** Someone else's open review thread. */
+    val other = JBColor(0x7a5af5, 0xa78bfa)
+    val otherSoft = JBColor(0xefeaff, 0x2e2747)
     val warn = JBColor(0xc27c0e, 0xe0a63a)
     val chip = JBColor(0xebecf0, 0x393b40)
     val flash = JBColor(0xf8d79a, 0x6b5320)
@@ -156,6 +159,22 @@ class ProgressStrip : JComponent() {
         g2.color = ReviewColors.ok
         g2.fillRoundRect(0, 0, (width * fraction).toInt(), h, h, h)
         g2.dispose()
+    }
+}
+
+/**
+ * How a comment reads wherever it is drawn (its card in the editor, its row in the Comments tab): someone's thread by
+ * its GitHub state, or one of your drafts. The one place a state gets its words and colours.
+ */
+enum class CommentLook(val label: String, val fill: Color, val fg: Color, val stripe: Color) {
+    OPEN("open", ReviewColors.otherSoft, ReviewColors.other, ReviewColors.other),
+    RESOLVED("resolved", ReviewColors.okSoft, ReviewColors.ok, ReviewColors.ok),
+    OUTDATED("outdated", ReviewColors.chip, ReviewColors.muted, ReviewColors.line),
+    POSTED("on GitHub", ReviewColors.accentSoft, ReviewColors.accent, ReviewColors.accent),
+    PENDING("Pending", ReviewColors.review, ReviewColors.reviewFg, ReviewColors.reviewLine);
+
+    companion object {
+        fun of(state: ThreadState): CommentLook = when (state) { ThreadState.OPEN -> OPEN; ThreadState.RESOLVED -> RESOLVED; ThreadState.OUTDATED -> OUTDATED }
     }
 }
 

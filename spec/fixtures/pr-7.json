@@ -33,6 +33,14 @@
       "blob": "5ae8f8ca4d381cc3e2ee0ea2441406e0d291097c",
       "body": "Cap the backoff?",
       "posted": true
+    },
+    {
+      "path": "invoices/export.py",
+      "line": 23,
+      "blob": "14d6ed33afe668fd14bca587acaf79544436afb1",
+      "body": "Agreed, the attempt number is enough.",
+      "posted": false,
+      "replyTo": "PRRT_kwDOdemo23"
     }
   ],
   "verdict": "APPROVE"

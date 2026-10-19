@@ -5,7 +5,7 @@ import { join } from "node:path";
 
 export interface ReviewTarget { key: string; label: string; prNumber?: number | null; head: string; base: string }
 export interface ActiveReview { target: ReviewTarget; head: string; reviewBranch: string; originalRef: string; stashMessage?: string | null }
-export interface Draft { path: string; line: number; blob: string; body: string; posted?: boolean }
+export interface Draft { path: string; line: number; blob: string; body: string; posted?: boolean; replyTo?: string | null }
 export interface ReviewMeta {
   target: ReviewTarget;
   range: { from: string; to: string };
@@ -34,7 +34,7 @@ export function parseMeta(o: Json): ReviewMeta {
   const meta = pick<ReviewMeta>(o, ["scopeLabel", "reviewed", "seenHead", "unsent", "verdict"]);
   meta.target = target(o.target);
   meta.range = pick(o.range, ["from", "to"]);
-  if ("drafts" in o) meta.drafts = o.drafts && o.drafts.map((d: Json) => pick<Draft>(d, ["path", "line", "blob", "body", "posted"]));
+  if ("drafts" in o) meta.drafts = o.drafts && o.drafts.map((d: Json) => pick<Draft>(d, ["path", "line", "blob", "body", "posted", "replyTo"]));
   return meta;
 }
 

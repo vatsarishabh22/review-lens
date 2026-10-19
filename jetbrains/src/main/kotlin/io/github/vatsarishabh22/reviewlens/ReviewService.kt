@@ -27,6 +27,8 @@ class ReviewService(private val project: Project) : Disposable {
     @Volatile var active: ActiveReview? = null; private set
     @Volatile var meta: ReviewMeta? = null; private set
     @Volatile var changes: List<FileChange> = emptyList(); private set
+    /** Everyone's review threads on the PR, read at load; null for a branch review or when GitHub didn't answer. */
+    @Volatile var threads: List<ReviewThread>? = null; private set
     /** Every tracked path at the review's checkout, for the panel's whole-project view. */
     @Volatile var trackedFiles: List<String> = emptyList(); private set
 
@@ -53,6 +55,7 @@ class ReviewService(private val project: Project) : Disposable {
         changes = loaded?.let { git.changes(it.range) }.orEmpty()
         val fresh = loaded?.let { withGitHubViewed(git, it) }
         trackedFiles = if (fresh != null) git.trackedFiles() else emptyList()
+        threads = fresh?.target?.prNumber?.let { fetchThreads(git, it) }
         active = review
         meta = fresh
         fireChanged()
@@ -93,6 +96,22 @@ class ReviewService(private val project: Project) : Disposable {
         null -> Badge.TODO
         change.newBlob -> Badge.REVIEWED
         else -> Badge.CHANGED_SINCE
+    }
+
+    /** Reads the threads again (Finish review does, so a thread resolved or deleted meanwhile is said before anything posts). Runs gh: call off EDT. */
+    fun reloadThreads() {
+        val number = meta?.target?.prNumber ?: return
+        fetchThreads(git ?: return, number)?.let { threads = it; fireChanged() } // a failed reload keeps the threads already shown
+    }
+
+    /** The PR's threads from GitHub, or null (logged) when GitHub didn't answer. */
+    private fun fetchThreads(git: GitClient, number: Int): List<ReviewThread>? =
+        runCatching { GhClient(git.root).reviewThreads(number) }.onFailure { thisLogger().info("GitHub review threads not loaded", it) }.getOrNull()
+
+    /** [change]'s threads, each with the line it sits under in the file shown, or null when it is only listed. */
+    fun threadsOn(change: FileChange): List<Pair<ReviewThread, Int?>> {
+        val end = meta?.range?.to ?: return emptyList()
+        return threads.orEmpty().filter { it.path == change.path }.map { it to it.lineAt(end) }
     }
 
     fun reviewedCount() = changes.count { badge(it) == Badge.REVIEWED }

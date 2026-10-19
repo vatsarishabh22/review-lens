@@ -68,13 +68,30 @@ fun syncViewed(meta: ReviewMeta, github: Map<String, ViewedState>, changes: List
     return meta.copy(reviewed = mergeViewed(meta.reviewed, github, changes, queued), unsent = unsent.ifEmpty { null })
 }
 
-/** How far a started review got: files viewed (at their current version) out of the files in its scope, and the last posted [verdict]. */
-data class ReviewProgress(val viewed: Int, val total: Int, val verdict: Verdict? = null) {
-    /** Every file viewed at its current version: new commits to a viewed file make it partial again. */
-    val done get() = total > 0 && viewed == total
+/**
+ * How far a started review got: files viewed (at their current version) out of the files in its scope, the last posted
+ * [verdict], and whether the PR has [newCommits] since the head you last reviewed.
+ */
+data class ReviewProgress(val viewed: Int, val total: Int, val verdict: Verdict? = null, val newCommits: Boolean = false) {
+    /** Every file viewed at its current version, and nothing pushed since. */
+    val done get() = total > 0 && viewed == total && !newCommits
+
+    /** The detail view's button; "new commits" only when they can be offered on their own (a force-push can rewrite the commit you reviewed). */
+    fun startLabel(sinceOffered: Boolean) = when {
+        newCommits && sinceOffered -> "Review new commits"
+        done || newCommits -> "Review again"
+        else -> "Resume review"
+    }
 
     /** The PR list's pill. */
-    val label get() = if (done) "✓ Reviewed · ${verdict?.done ?: "$viewed of $total"}" else "Resume · $viewed of $total viewed"
+    val label get() = when {
+        newCommits -> "🔄 New commits since your review"
+        done -> "✓ Reviewed · ${verdict?.done ?: "$viewed of $total"}"
+        else -> "Resume · $viewed of $total viewed"
+    }
 }
+
+/** True when the PR's [head] on GitHub is not the one this review last saw; unknown heads (no gh, a branch) never claim it. */
+fun ReviewMeta.headMoved(head: String?): Boolean = !head.isNullOrEmpty() && head != (seenHead ?: range.to)
 
 enum class Badge(val symbol: String) { TODO("⭐"), REVIEWED("✅"), CHANGED_SINCE("🔄") }

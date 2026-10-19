@@ -21,11 +21,11 @@ class ReviewTargets(private val git: GitClient, private val gh: GhClient = GhCli
         }, branchesOnly = false)
     }
 
-    /** Progress of a review this reviewer started before, counted in its own saved scope; null when never started. */
-    fun progress(target: ReviewTarget): ReviewProgress? {
-        val meta = ReviewMeta.load(git, target.key)?.takeIf { it.reviewed.isNotEmpty() } ?: return null
+    /** Progress of a review this reviewer started before, counted in its own saved scope and against the PR's head now; null when never started. */
+    fun progress(listed: ListedTarget): ReviewProgress? {
+        val meta = ReviewMeta.load(git, listed.target.key)?.takeIf { it.reviewed.isNotEmpty() } ?: return null
         val changes = runCatching { git.changes(meta.range) }.getOrNull() ?: return null
-        return ReviewProgress(changes.count { meta.reviewed[it.path] == it.newBlob }, changes.size, meta.verdict)
+        return ReviewProgress(changes.count { meta.reviewed[it.path] == it.newBlob }, changes.size, meta.verdict, meta.headMoved(listed.pr?.headRefOid))
     }
 
     private fun branches(): List<ListedTarget> {

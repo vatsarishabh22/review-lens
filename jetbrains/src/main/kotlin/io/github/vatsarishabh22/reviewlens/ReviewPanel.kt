@@ -57,7 +57,7 @@ class ReviewPanel(private val project: Project, private val toolWindow: ToolWind
             val git = git ?: GitClient.forProject(project.basePath!!)
             val source = ReviewTargets(git)
             val listing = source.list()
-            Triple(git, listing, listing.targets.mapNotNull { t -> source.progress(t.target)?.let { t.target.key to it } }.toMap())
+            Triple(git, listing, listing.targets.mapNotNull { t -> source.progress(t)?.let { t.target.key to it } }.toMap())
         }, failed = list::failed) { (git, listing, progress) ->
             this.git = git
             this.progress = progress

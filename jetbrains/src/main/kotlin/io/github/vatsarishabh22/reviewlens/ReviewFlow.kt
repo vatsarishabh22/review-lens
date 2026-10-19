@@ -13,6 +13,8 @@ import com.intellij.openapi.application.ApplicationManager
 import com.intellij.openapi.application.ModalityState
 import com.intellij.openapi.application.ReadAction
 import com.intellij.openapi.fileEditor.FileEditorManager
+import com.intellij.openapi.fileEditor.OpenFileDescriptor
+import com.intellij.openapi.editor.ScrollType
 import com.intellij.openapi.fileTypes.FileTypeManager
 import com.intellij.openapi.progress.ProgressIndicator
 import com.intellij.openapi.progress.Task
@@ -80,8 +82,7 @@ fun finishReview(project: Project, summary: String, verdict: Verdict?) {
     background(project, "Posting your review", {
         runCatching { ReviewDrafts.of(project).submit(summary, verdict) }.getOrElse { throw IllegalStateException("${it.message}. Your comments are kept as drafts.", it) }
     }) { sent ->
-        val with = if (sent > 0) " with $sent comment${if (sent > 1) "s" else ""}" else ""
-        endReview(project, "Finished #$number", "${verdict.posted} on GitHub$with.")
+        endReview(project, "Finished #$number", "${verdict.posted} on GitHub${if (sent.isEmpty()) "" else " with $sent"}.")
     }
 }
 
@@ -100,8 +101,7 @@ private fun endReview(project: Project, finished: String?, said: String) {
     val service = ReviewService.of(project)
     val git = service.git ?: return
     val branch = service.active?.originalRef ?: return
-    val drafts = service.meta?.drafts.orEmpty().count { !it.posted }
-    val kept = if (drafts > 0) " $drafts draft comment${if (drafts > 1) "s" else ""} kept for next time." else ""
+    val kept = keptText(service.meta?.drafts.orEmpty())
     background(project, "Exiting review", { ReviewLifecycle(git).exit().also { afterCheckout(project, git) } }) { restored ->
         refreshViews(project)
         // The "Reviewing…" balloons offer Exit, which no longer applies.
@@ -133,14 +133,15 @@ fun openChange(project: Project, change: FileChange) {
     openPath(project, change.path, missing = { showDiff(project, change) })
 }
 
-/** Opens the repository file at [path], the one way every view opens a file; [missing] runs when it isn't on disk. */
-fun openPath(project: Project, path: String, missing: () -> Unit = {}) {
+/** Opens the repository file at [path], the one way every view opens a file, at [line] (1-based) when given; [missing] runs when it isn't on disk. */
+fun openPath(project: Project, path: String, missing: () -> Unit = {}, line: Int? = null) {
     val file = ReviewService.of(project).git?.root?.resolve(path) ?: return
     // A VFS lookup can hit disk, which is not allowed on EDT: find the file in the background, open it on EDT.
     ReadAction.nonBlocking<VirtualFile?> { LocalFileSystem.getInstance().findFileByNioFile(file) }
         .finishOnUiThread(ModalityState.defaultModalityState()) { found ->
             if (found == null) return@finishOnUiThread missing()
-            FileEditorManager.getInstance(project).openFile(found, true)
+            // no line: the caret stays where the reviewer left it
+            (if (line == null) OpenFileDescriptor(project, found) else OpenFileDescriptor(project, found, line - 1, 0).apply { setScrollType(ScrollType.CENTER) }).navigate(true)
             ReviewBlame.of(project).blameText(found, 0) // starts the blame early so it is ready when the editor paints
         }
         .expireWith(ReviewService.of(project))

@@ -26,11 +26,32 @@ import javax.swing.event.DocumentEvent
 /**
  * Finish review: summary and verdict go to GitHub as one review, or "Mark as reviewed" posts nothing; either way the
  * review then ends. Shown under [anchor], or centred in the window when there is none (the "All files viewed" balloon).
+ * The threads are read again first, so a thread resolved or deleted since the review loaded is said before anything posts.
  */
 fun showFinishReview(project: Project, anchor: JComponent?) {
+    if (ReviewService.of(project).meta?.target?.prNumber == null) return openFinishReview(project, anchor)
+    background(project, "Checking GitHub for new comments", { ReviewService.of(project).reloadThreads() }) { openFinishReview(project, anchor) }
+}
+
+/** What changed on GitHub under your pending replies: a thread resolved meanwhile (the reply still posts), or one deleted (it waits). */
+fun replyNotes(replies: List<Draft>, threads: List<ReviewThread>?): List<String> {
+    if (threads == null) return emptyList()
+    val byId = threads.associateBy { it.id }
+    val replied = replies.filter { !it.posted && it.replyTo != null }
+    val resolved = replied.mapNotNull { byId[it.replyTo] }.filter { it.resolved }.distinct().map {
+        "${it.resolvedBy ?: "Someone"} resolved a thread you replied to since the review loaded. Your reply still posts; the thread stays resolved."
+    }
+    val gone = replied.count { it.replyTo !in byId }
+    return resolved + listOfNotNull(gone.takeIf { it > 0 }?.let {
+        if (it == 1) "1 reply is on a thread that's gone from GitHub. It won't post and stays as a draft."
+        else "$it replies are on threads that are gone from GitHub. They won't post and stay as drafts."
+    })
+}
+
+private fun openFinishReview(project: Project, anchor: JComponent?) {
     val service = ReviewService.of(project)
     val drafts = ReviewDrafts.of(project)
-    val pending = drafts.pending().size
+    val outbox = drafts.outbox()
     val summary = JBTextArea(drafts.summary, 4, 0).apply {
         lineWrap = true; wrapStyleWord = true; font = JBFont.label(); emptyText.text = "Leave a summary (optional)"
     }
@@ -53,21 +74,24 @@ fun showFinishReview(project: Project, anchor: JComponent?) {
         addActionListener { popup?.cancel(); finishReview(project, summary.text.trim(), verdict()) }
     }
     // drafts written on another scope's version of a file go out only from that scope: say so, never skip them silently
-    val waiting = service.meta?.drafts.orEmpty().count { !it.posted } - pending
-    val posting = if (pending > 0) "$pending pending comment${if (pending > 1) "s" else ""} will be posted with it." else "No inline comments yet."
+    val waiting = service.meta?.drafts.orEmpty().count { !it.posted && it.replyTo == null } - outbox.comments.size
+    val posting = if (outbox.size > 0) "${outbox.text} will be posted with it, as one review." else "No inline comments yet."
     val later = if (waiting > 0) " $waiting more ${if (waiting == 1) "waits for the scope it was" else "wait for the scopes they were"} written in." else ""
     val viewed = "${service.reviewedCount()} of ${service.changes.size} files viewed."
     val fineprint = wrappingText("", JBFont.small()).apply { foreground = ReviewColors.muted }
-    val keep = wrappingText("Your $pending draft comment${if (pending > 1) "s" else ""} won't be posted; ${if (pending > 1) "they're" else "it's"} kept for next time.", JBFont.small())
+    val keep = wrappingText("Your ${outbox.text} won't be posted; ${if (outbox.size > 1) "they're" else "it's"} kept for next time.", JBFont.small())
         .apply { foreground = ReviewColors.warn }
+    val notes = replyNotes(service.meta?.drafts.orEmpty(), service.threads).map { note ->
+        wrappingText(note, JBFont.small()).apply { foreground = ReviewColors.warn; setSize(JBUI.scale(356), Short.MAX_VALUE.toInt()) }
+    }
     val update = {
         val v = verdict()
-        val blocker = v?.let { submitBlocker(it, summary.text, pending, service.ownPullRequest) }
+        val blocker = v?.let { submitBlocker(it, summary.text, outbox.size, service.ownPullRequest) }
         submit.isEnabled = blocker == null
         submit.toolTipText = blocker // a greyed-out Submit says why on hover
         submit.text = if (v == null) "Finish review" else "Submit to GitHub"
         summary.isEnabled = v != null // nothing is posted, so a summary has nowhere to go
-        keep.isVisible = v == null && pending > 0
+        keep.isVisible = v == null && outbox.size > 0
         // the warning says what happens to the drafts instead of "will be posted"
         fineprint.text = (if (keep.isVisible) "" else "$posting$later ") + viewed
         listOf(fineprint, keep).forEach { it.setSize(JBUI.scale(356), Short.MAX_VALUE.toInt()) }
@@ -83,7 +107,8 @@ fun showFinishReview(project: Project, anchor: JComponent?) {
     fun option(v: Verdict?, radio: JRadioButton) = listOf(radio, mutedLabel(v?.hint ?: "Nothing is posted to GitHub").apply { border = EmptyBorder(0, textIndent(radio), 0, 0) }, vgap(4))
     content = stack(
         JBLabel("Finish your review").apply { font = JBFont.label().asBold() }, vgap(4),
-        fineprint, vgap(10),
+        fineprint, vgap(6),
+        *notes.flatMap { listOf(it, vgap(6)) }.toTypedArray(), vgap(4),
         JBScrollPane(summary), vgap(8),
         *choices.filterKeys { it != null }.flatMap { (v, radio) -> option(v, radio) }.toTypedArray(),
         JSeparator(), vgap(6),
