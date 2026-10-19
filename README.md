@@ -24,7 +24,7 @@ A diff page shows the lines that changed. To judge them, you need the code aroun
 config. Review Lens checks the PR out **in your editor**, so you review full files with every tool you already use.
 Then it puts you back exactly where you were.
 
-![A review in progress: changed files with badges, the review bar, and a draft comment](docs/images/review.png)
+![A review in progress: changed files with badges, the review bar, and GitHub threads under their lines](docs/images/review.png)
 
 ## How it works
 
@@ -39,9 +39,10 @@ flowchart LR
 - **Your work stays safe.** Uncommitted changes are parked and come back exactly on Exit.
 - **Read the change in context.** Full files, changes marked in the gutter, a diff one click away.
 - **Track progress.** ⭐ not viewed · ✅ viewed · 🔄 changed since viewed, synced with GitHub.
-- **Comment, then post once.** Drafts, summary and verdict go to GitHub as a single review, or mark it reviewed without posting.
+- **See the whole conversation.** Everyone's GitHub comments sit under their lines, and the Comments tab lists them all. Reply in place.
+- **Comment, then post once.** Comments, replies, summary and verdict go to GitHub as a single review, or mark it reviewed without posting.
 - **See what's done.** Reviewed PRs turn green in the list with their verdict: ✓ Reviewed · approved.
-- **Review only what's new.** Pick all commits, some commits, or only those since your last review.
+- **Review only what's new.** Someone pushed after your review? The PR shows 🔄 New commits, and one click reviews only those.
 
 ## Get started
 
