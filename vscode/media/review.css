@@ -1,0 +1,475 @@
+:root {
+  color-scheme: light dark;
+  --bg: var(--vscode-sideBar-background, #f7f8fa);
+  --fg: var(--vscode-foreground, #1e1f22);
+  --muted: var(--vscode-descriptionForeground, #6c707e);
+  --line: var(--vscode-widget-border, #dfe1e5);
+  --accent: var(--vscode-button-background, #3574f0);
+  --ok: var(--vscode-testing-iconPassed, #3b9b46);
+  --warn: var(--vscode-list-warningForeground, #c27c0e);
+  --review: color-mix(in srgb, var(--warn) 14%, var(--bg));
+}
+* {
+  box-sizing: border-box;
+}
+body {
+  margin: 0;
+  background: var(--bg);
+  color: var(--fg);
+  font: var(--vscode-font-size, 13px)/1.5 var(--vscode-font-family, system-ui);
+}
+button,
+input,
+textarea {
+  font: inherit;
+}
+button {
+  cursor: pointer;
+  color: inherit;
+  border: 1px solid transparent;
+  background: transparent;
+  border-radius: 5px;
+  padding: 5px 9px;
+}
+button:hover {
+  background: var(--vscode-list-hoverBackground, #e8ebef);
+}
+button:focus-visible,
+input:focus-visible,
+textarea:focus-visible,
+summary:focus-visible {
+  outline: 1px solid var(--vscode-focusBorder, #3574f0);
+  outline-offset: 2px;
+}
+button:disabled {
+  cursor: default;
+  opacity: 0.5;
+}
+.primary {
+  background: var(--accent);
+  color: var(--vscode-button-foreground, white);
+  font-weight: 600;
+}
+.primary:hover {
+  background: var(--vscode-button-hoverBackground, #2865d9);
+}
+.secondary {
+  border-color: var(--line);
+  background: var(--vscode-button-secondaryBackground, transparent);
+  color: var(--vscode-button-secondaryForeground, inherit);
+}
+input[type="search"],
+textarea {
+  width: 100%;
+  border: 1px solid var(--vscode-input-border, var(--line));
+  border-radius: 5px;
+  padding: 6px 9px;
+  background: var(--vscode-input-background, white);
+  color: var(--vscode-input-foreground, #1e1f22);
+}
+input[type="checkbox"],
+input[type="radio"] {
+  accent-color: var(--accent);
+  flex: none;
+  margin: 4px 0 0;
+}
+textarea {
+  min-height: 90px;
+  resize: vertical;
+}
+textarea:disabled {
+  opacity: 0.5;
+}
+.searchbar {
+  display: flex;
+  gap: 4px;
+  padding: 8px 12px;
+}
+.searchbar input {
+  flex: 1;
+  min-width: 0;
+}
+.section {
+  color: var(--muted);
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+  font-size: 11px;
+  font-weight: 600;
+  margin: 16px 14px 6px;
+}
+.target {
+  display: flex;
+  width: 100%;
+  text-align: left;
+  gap: 10px;
+  padding: 10px 14px;
+  border-radius: 0;
+}
+.avatar {
+  width: 25px;
+  height: 25px;
+  display: grid;
+  place-items: center;
+  background: #397d75;
+  color: white;
+  border-radius: 50%;
+  font-weight: 600;
+  font-size: 11px;
+  flex: none;
+  margin-top: 2px;
+}
+.target-copy {
+  min-width: 0;
+  flex: 1;
+}
+.target-title {
+  display: block;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  font-weight: 600;
+}
+.meta,
+.fineprint {
+  color: var(--muted);
+  font-size: 12px;
+}
+.meta {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 4px 8px;
+  align-items: center;
+}
+.pill {
+  border-radius: 12px;
+  padding: 1px 7px;
+  font-size: 11px;
+  background: var(--review);
+  color: var(--warn);
+  display: inline-block;
+}
+.pill.done {
+  background: color-mix(in srgb, var(--ok) 14%, transparent);
+  color: var(--ok);
+}
+.pill.request {
+  color: var(--vscode-textLink-foreground, #3574f0);
+  background: color-mix(in srgb, var(--accent) 12%, transparent);
+}
+.detail,
+.finish {
+  padding: 10px 14px 18px;
+}
+h2 {
+  font-size: 15px;
+  line-height: 1.4;
+  margin: 12px 0 8px;
+}
+h3 {
+  margin: 4px 0 10px;
+  font-size: 14px;
+}
+p {
+  margin: 8px 0;
+}
+.branch {
+  padding: 1px 5px;
+  border-radius: 4px;
+  background: var(--vscode-badge-background, #ebecf0);
+  color: var(--vscode-badge-foreground, #444);
+  font: 11px var(--vscode-editor-font-family, monospace);
+  overflow-wrap: anywhere;
+}
+.description {
+  margin: 12px 0;
+  overflow-wrap: anywhere;
+  max-height: 150px;
+  overflow: hidden;
+  mask-image: linear-gradient(black 70%, transparent);
+}
+.description.expanded {
+  max-height: none;
+  mask-image: none;
+}
+.description pre {
+  white-space: pre-wrap;
+  background: var(--vscode-textCodeBlock-background, #ebecf0);
+  padding: 8px;
+  border-radius: 4px;
+}
+.description h1,
+.description h2,
+.description h3 {
+  font-size: 14px;
+  margin: 8px 0;
+}
+.description a {
+  color: var(--vscode-textLink-foreground, #3574f0);
+}
+.description code {
+  font-family: var(--vscode-editor-font-family, monospace);
+}
+.description ul {
+  padding-left: 20px;
+}
+.link {
+  color: var(--vscode-textLink-foreground, #3574f0);
+  padding: 0;
+}
+.stats {
+  margin: 8px 0 14px;
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  font-size: 12px;
+  color: var(--muted);
+}
+.add {
+  color: var(--ok);
+}
+.del {
+  color: var(--vscode-gitDecoration-deletedResourceForeground, #b0303b);
+}
+.start {
+  margin: 14px 0;
+}
+.start p {
+  margin-bottom: 0;
+}
+.scope {
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  overflow: hidden;
+  margin-top: 6px;
+}
+.scope label {
+  display: flex;
+  gap: 9px;
+  padding: 9px 10px;
+  cursor: pointer;
+}
+.scope label + label {
+  border-top: 1px solid var(--line);
+}
+.scope label:hover {
+  background: var(--vscode-list-hoverBackground, #eef0f3);
+}
+.scope .subject {
+  overflow-wrap: anywhere;
+}
+.sha {
+  font: 11px var(--vscode-editor-font-family, monospace);
+  color: var(--muted);
+}
+.card {
+  background: var(--review);
+  border: 1px solid color-mix(in srgb, var(--warn) 40%, transparent);
+  padding: 12px;
+  border-radius: 8px;
+}
+.card ul {
+  padding-left: 16px;
+  overflow-wrap: anywhere;
+  font: 12px var(--vscode-editor-font-family, monospace);
+}
+.actions {
+  display: flex;
+  gap: 7px;
+  align-items: center;
+  flex-wrap: wrap;
+  margin-top: 10px;
+}
+.error {
+  margin: 8px 12px;
+  padding: 10px;
+  border: 1px solid var(--vscode-inputValidation-errorBorder, #d33);
+  border-radius: 6px;
+  overflow-wrap: anywhere;
+}
+.empty {
+  padding: 24px 16px;
+  color: var(--muted);
+}
+.notice {
+  padding: 6px 14px;
+  color: var(--muted);
+  font-size: 12px;
+}
+.review-head {
+  padding: 12px 14px;
+  border-bottom: 1px solid var(--line);
+}
+.review-head h2 {
+  margin: 0 0 9px;
+}
+.progress {
+  height: 5px;
+  border-radius: 4px;
+  width: 100%;
+  accent-color: var(--ok);
+  margin: 0 0 6px;
+}
+.review-meta {
+  display: flex;
+  justify-content: space-between;
+  flex-wrap: wrap;
+  gap: 4px;
+  color: var(--muted);
+  font-size: 11px;
+}
+.review-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 3px;
+  margin-top: 10px;
+}
+.review-actions button {
+  padding: 4px 7px;
+  font-size: 12px;
+}
+.lock {
+  color: var(--warn);
+  font-size: 11px;
+  margin-top: 6px;
+}
+.segment {
+  display: flex;
+  border: 1px solid var(--line);
+  border-radius: 6px;
+  overflow: hidden;
+  margin-top: 12px;
+  width: fit-content;
+}
+.segment button {
+  border-radius: 0;
+  font-size: 12px;
+}
+.segment .on {
+  background: var(--vscode-list-activeSelectionBackground, #d5e1ff);
+  color: var(--vscode-list-activeSelectionForeground, #1e1f22);
+}
+.folder {
+  color: var(--muted);
+  font-size: 12px;
+  padding: 8px 14px 2px;
+  overflow-wrap: anywhere;
+}
+.file {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  padding: 1px 8px 1px 12px;
+}
+.file.current {
+  background: var(--vscode-list-inactiveSelectionBackground, #d5e1ff);
+}
+.file .mark {
+  width: 26px;
+  height: 26px;
+  padding: 0;
+  flex: none;
+}
+.mark.todo {
+  color: #e5a50a;
+}
+.mark.viewed {
+  color: var(--ok);
+}
+.mark.changed {
+  color: var(--warn);
+}
+.filename {
+  flex: 1;
+  min-width: 0;
+  text-align: left;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  padding: 3px;
+}
+.filename.deleted {
+  text-decoration: line-through;
+  color: var(--muted);
+}
+.file small {
+  font: 10px var(--vscode-editor-font-family, monospace);
+  white-space: nowrap;
+}
+.file .diff {
+  color: var(--muted);
+  padding: 3px;
+}
+.unchanged {
+  color: var(--muted);
+}
+.file .status {
+  width: 12px;
+  font-size: 11px;
+  color: var(--vscode-gitDecoration-modifiedResourceForeground, #6c9bd2);
+}
+.drafts {
+  padding: 0 14px 16px;
+}
+.draft {
+  border: 1px solid var(--line);
+  padding: 9px;
+  border-radius: 6px;
+  margin: 6px 0;
+}
+.draft-body {
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+  margin: 5px 0;
+}
+.draft button {
+  font-size: 11px;
+}
+.finish {
+  border-bottom: 1px solid var(--line);
+  background: var(--vscode-editorWidget-background, var(--bg));
+}
+.finish label {
+  display: flex;
+  gap: 9px;
+  padding: 6px 0;
+}
+.finish label small {
+  display: block;
+  color: var(--muted);
+}
+.finish hr {
+  border: none;
+  border-top: 1px solid var(--line);
+}
+.warning {
+  color: var(--warn);
+  font-size: 12px;
+}
+.busy {
+  padding: 6px 14px;
+  font-size: 12px;
+  color: var(--muted);
+}
+.spin {
+  display: inline-block;
+  width: 10px;
+  height: 10px;
+  border: 2px solid var(--line);
+  border-top-color: var(--accent);
+  border-radius: 50%;
+  margin-right: 5px;
+  animation: spin 1s linear infinite;
+}
+@keyframes spin {
+  to {
+    transform: rotate(360deg);
+  }
+}
+@media (prefers-reduced-motion: reduce) {
+  .spin {
+    animation: none;
+  }
+}
+.scope-heading {
+  margin-left: 0;
+}

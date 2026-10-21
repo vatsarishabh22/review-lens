@@ -4,3 +4,14 @@ out/test/**
 tsconfig.json
 .gitignore
 CONTRIBUTING.md
+.npm-cache/**
+.vscode-test/**
+.test-data/**
+.artifacts/**
+.vscode/**
+scripts/**
+test/**
+test-results/**
+playwright-report/**
+playwright.config.cjs
+package-lock.json

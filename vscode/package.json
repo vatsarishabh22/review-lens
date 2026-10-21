@@ -18,27 +18,209 @@
   ],
   "icon": "images/icon.png",
   "main": "./out/extension.js",
+  "activationEvents": [
+    "onStartupFinished",
+    "onView:reviewLens.review"
+  ],
+  "extensionKind": [
+    "workspace"
+  ],
+  "capabilities": {
+    "untrustedWorkspaces": {
+      "supported": false
+    },
+    "virtualWorkspaces": false
+  },
   "contributes": {
     "commands": [
       {
         "command": "reviewLens.reviewPr",
         "title": "Review PR…",
+        "category": "Review Lens",
+        "icon": "$(git-pull-request)"
+      },
+      {
+        "command": "reviewLens.selectRepository",
+        "title": "Select Repository",
         "category": "Review Lens"
+      },
+      {
+        "command": "reviewLens.refresh",
+        "title": "Refresh",
+        "category": "Review Lens",
+        "icon": "$(refresh)"
+      },
+      {
+        "command": "reviewLens.nextFile",
+        "title": "Next Unviewed File",
+        "category": "Review Lens",
+        "icon": "$(arrow-right)",
+        "enablement": "reviewLens.active"
+      },
+      {
+        "command": "reviewLens.previousFile",
+        "title": "Previous File",
+        "category": "Review Lens",
+        "enablement": "reviewLens.active"
+      },
+      {
+        "command": "reviewLens.markViewed",
+        "title": "Mark Viewed",
+        "category": "Review Lens",
+        "icon": "$(check)",
+        "enablement": "reviewLens.active"
+      },
+      {
+        "command": "reviewLens.diff",
+        "title": "File / Diff",
+        "category": "Review Lens",
+        "icon": "$(diff)",
+        "enablement": "reviewLens.active"
+      },
+      {
+        "command": "reviewLens.scope",
+        "title": "Change Review Scope",
+        "category": "Review Lens",
+        "enablement": "reviewLens.active"
+      },
+      {
+        "command": "reviewLens.finish",
+        "title": "Finish Review…",
+        "category": "Review Lens",
+        "enablement": "reviewLens.active"
+      },
+      {
+        "command": "reviewLens.exit",
+        "title": "Exit Review",
+        "category": "Review Lens",
+        "icon": "$(sign-out)",
+        "enablement": "reviewLens.active"
+      },
+      {
+        "command": "reviewLens.addComment",
+        "title": "Add draft comment",
+        "category": "Review Lens"
+      },
+      {
+        "command": "reviewLens.editComment",
+        "title": "Edit draft",
+        "category": "Review Lens",
+        "icon": "$(edit)"
+      },
+      {
+        "command": "reviewLens.deleteComment",
+        "title": "Delete draft",
+        "category": "Review Lens",
+        "icon": "$(trash)"
       }
-    ]
+    ],
+    "viewsContainers": {
+      "activitybar": [
+        {
+          "id": "reviewLens",
+          "title": "Review Lens",
+          "icon": "media/review.svg"
+        }
+      ]
+    },
+    "views": {
+      "reviewLens": [
+        {
+          "id": "reviewLens.review",
+          "name": "Pull requests",
+          "type": "webview"
+        }
+      ]
+    },
+    "viewsWelcome": [
+      {
+        "view": "reviewLens.review",
+        "contents": "Review pull requests in this window.\n[Open Review Lens](command:reviewLens.reviewPr)\nOpen a Git repository folder first.",
+        "when": "!workspaceFolderCount"
+      }
+    ],
+    "keybindings": [
+      {
+        "command": "reviewLens.markViewed",
+        "key": "alt+r",
+        "when": "reviewLens.active && editorTextFocus"
+      },
+      {
+        "command": "reviewLens.nextFile",
+        "key": "alt+n",
+        "when": "reviewLens.active && editorTextFocus"
+      },
+      {
+        "command": "reviewLens.diff",
+        "key": "alt+d",
+        "when": "reviewLens.active && editorTextFocus"
+      }
+    ],
+    "menus": {
+      "view/title": [
+        {
+          "command": "reviewLens.refresh",
+          "when": "view == reviewLens.review",
+          "group": "navigation"
+        }
+      ],
+      "editor/title": [
+        {
+          "command": "reviewLens.diff",
+          "when": "reviewLens.active",
+          "group": "navigation@1"
+        },
+        {
+          "command": "reviewLens.markViewed",
+          "when": "reviewLens.active",
+          "group": "navigation@2"
+        },
+        {
+          "command": "reviewLens.exit",
+          "when": "reviewLens.active",
+          "group": "navigation@3"
+        }
+      ],
+      "comments/commentThread/context": [
+        {
+          "command": "reviewLens.addComment",
+          "when": "commentController == review-lens",
+          "group": "inline"
+        }
+      ],
+      "comments/comment/title": [
+        {
+          "command": "reviewLens.editComment",
+          "when": "commentController == review-lens && comment == draft",
+          "group": "inline"
+        },
+        {
+          "command": "reviewLens.deleteComment",
+          "when": "commentController == review-lens && comment == draft",
+          "group": "inline"
+        }
+      ]
+    }
   },
   "scripts": {
     "vscode:prepublish": "tsc -p .",
     "compile": "tsc -p .",
+    "format": "prettier --write \"src/**/*.ts\" \"media/*.{js,css}\" \"scripts/*.cjs\" \"test/**/*.cjs\" \".vscode/*.json\" package.json tsconfig.json playwright.config.cjs",
+    "format:check": "prettier --check \"src/**/*.ts\" \"media/*.{js,css}\" \"scripts/*.cjs\" \"test/**/*.cjs\" \".vscode/*.json\" package.json tsconfig.json playwright.config.cjs",
     "test": "tsc -p . && node --test \"out/test/**/*.test.js\"",
+    "test:integration": "tsc -p . && node scripts/integration.cjs",
+    "test:ui": "playwright test",
     "package": "vsce package --skip-license --baseContentUrl https://github.com/vatsarishabh22/review-lens/blob/HEAD/vscode/ --baseImagesUrl https://github.com/vatsarishabh22/review-lens/raw/HEAD/vscode/"
   },
   "devDependencies": {
+    "@playwright/test": "^1.64.1",
     "@types/node": "^22.0.0",
     "@types/vscode": "~1.95.0",
+    "@vscode/test-electron": "^3.1.0",
     "@vscode/vsce": "^4.0.0",
     "ajv": "^8.20.0",
     "ovsx": "^1.3.0",
+    "prettier": "^3.9.10",
     "typescript": "^5.6.0"
   }
 }
