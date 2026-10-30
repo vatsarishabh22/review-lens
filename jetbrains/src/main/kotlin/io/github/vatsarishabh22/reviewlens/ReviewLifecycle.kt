@@ -19,6 +19,9 @@ enum class StartStep { PARK, CHECKOUT }
 /** What exit did with the reviewer's own work. */
 enum class Restored { NOTHING_TO_RESTORE, RESTORED, KEPT_IN_STASH, STASH_MISSING }
 
+/** How a review ended: the reviewer's work, and tracked files written during the review, parked under [changedStash]. */
+data class Exited(val restored: Restored, val changedDuringReview: List<String> = emptyList(), val changedStash: String? = null)
+
 /**
  * Same-window review: park the reviewer's work, check the PR out on a local `review/…` branch, and on exit go back to
  * the original branch and restore the work. State lives in `.git/review-lens/active.json`, outside the working tree,
@@ -52,12 +55,14 @@ class ReviewLifecycle(private val git: GitClient) {
     /** Moves an active review to a new head (new commits pushed, or a fresh fetch) without touching the parked work. */
     fun moveTo(head: String): ActiveReview {
         val review = active() ?: error("No review in progress")
+        parkChangedDuringReview(review, head)
         git.checkoutBranchAt(review.reviewBranch, head)
         return review.copy(head = head).also(::save)
     }
 
-    fun exit(): Restored {
-        val review = active() ?: return Restored.NOTHING_TO_RESTORE
+    fun exit(): Exited {
+        val review = active() ?: return Exited(Restored.NOTHING_TO_RESTORE)
+        val changed = parkChangedDuringReview(review, review.originalRef)
         git.checkout(review.originalRef)
         val restored = when (review.stashMessage?.let(git::restoreStash)) {
             null -> if (review.stashMessage == null) Restored.NOTHING_TO_RESTORE else Restored.STASH_MISSING
@@ -65,8 +70,17 @@ class ReviewLifecycle(private val git: GitClient) {
             false -> Restored.KEPT_IN_STASH
         }
         Files.deleteIfExists(stateFile)
-        return restored
+        return Exited(restored, changed, changedStashName(review).takeIf { changed.isNotEmpty() })
     }
+
+    /**
+     * Tracked files written during the (read-only) review that would block the checkout to [target], the IDE rewriting
+     * its settings for one. Not the reviewer's work, but never discarded: parked under their own name, never applied.
+     */
+    private fun parkChangedDuringReview(review: ActiveReview, target: String): List<String> =
+        git.blockingCheckout(target).also { if (it.isNotEmpty()) git.stashPaths(changedStashName(review), it) }
+
+    private fun changedStashName(review: ActiveReview) = "review-lens: changed during review of ${review.target.label}"
 
     private fun save(review: ActiveReview) {
         Files.createDirectories(stateFile.parent)

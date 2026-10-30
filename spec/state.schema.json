@@ -148,6 +148,14 @@
               "path": {
                 "type": "string"
               },
+              "startLine": {
+                "type": [
+                  "integer",
+                  "null"
+                ],
+                "minimum": 1,
+                "description": "A comment on several lines: the first one (line is the last). Absent or null: the comment is on line alone. Every line from startLine to line sits in one block of the PR's diff (a changed line or the 3 around it); a reply never has one."
+              },
               "line": {
                 "type": "integer",
                 "minimum": 1
@@ -184,6 +192,33 @@
             "REQUEST_CHANGES",
             null
           ]
+        },
+        "checked": {
+          "type": [
+            "object",
+            "null"
+          ],
+          "description": "the impact map's ticks (spec/impact.md): function key <path>#<qualified name> -> the places outside the PR the reviewer checked, while the function's text hashes to hash",
+          "additionalProperties": {
+            "type": "object",
+            "additionalProperties": false,
+            "required": [
+              "hash",
+              "places"
+            ],
+            "properties": {
+              "hash": {
+                "type": "string",
+                "pattern": "^[0-9a-f]{40}$"
+              },
+              "places": {
+                "type": "array",
+                "items": {
+                  "type": "string"
+                }
+              }
+            }
+          }
         }
       }
     }

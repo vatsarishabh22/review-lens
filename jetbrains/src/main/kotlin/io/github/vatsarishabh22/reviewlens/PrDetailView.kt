@@ -70,7 +70,7 @@ class PrDetailView(private val project: Project, private val onBack: () -> Unit)
         }
         target.pr?.let { pr ->
             checksLabel.text = ""
-            background(project, "Loading checks for #${pr.number}", { GhClient(git.root).checks(pr.number) }) { checks ->
+            background(project, "Loading checks for ${ReviewTarget.refOf(pr.number)}", { ReviewHosts.of(git)?.checks(pr.number) ?: Checks(ChecksState.NONE) }) { checks ->
                 if (listed !== target) return@background
                 checksLabel.text = checks.text
                 checksLabel.foreground = when (checks.state) {
@@ -88,11 +88,11 @@ class PrDetailView(private val project: Project, private val onBack: () -> Unit)
         content.removeAll()
         content.add(JButton("All pull requests", AllIcons.Actions.Back).apply { addActionListener { onBack() } }.let { row(it) })
         content.gap(10)
-        content.add(titleText(target.title, pr?.let { "#${it.number}" }, JBFont.label().biggerOn(2f)))
+        content.add(titleText(target.title, pr?.let { ReviewTarget.refOf(it.number) }, JBFont.label().biggerOn(2f)))
         content.gap(6)
         val base = target.target.base.removePrefix("${GitClient.REMOTE}/")
         if (pr != null) {
-            content.add(row(JBLabel(pr.author.displayName, AvatarIcon(pr.author.displayName, pr.author.login, 18), SwingConstants.LEFT)
+            content.add(row(JBLabel(pr.author.name, AvatarIcon(pr.author.name, pr.author.login, 18), SwingConstants.LEFT)
                 .apply { foreground = ReviewColors.muted; font = JBFont.small() }, mutedLabel("wants to merge"), gap = 4))
             content.gap(4)
         }
@@ -126,8 +126,8 @@ class PrDetailView(private val project: Project, private val onBack: () -> Unit)
         }
         // while greyed out, the button says why: on hover, and beside it while the fetch runs
         val (status, hint) = when {
-            fetchFailed -> null to "Couldn't fetch the PR from GitHub."
-            loaded == null -> JBLabel("Fetching the PR from GitHub…", AnimatedIcon.Default.INSTANCE, SwingConstants.LEFT)
+            fetchFailed -> null to "Couldn't fetch the PR from ${ReviewHosts.nameOf(session?.git)}."
+            loaded == null -> JBLabel("Fetching the PR from ${ReviewHosts.nameOf(session?.git)}…", AnimatedIcon.Default.INSTANCE, SwingConstants.LEFT)
                 .apply { foreground = ReviewColors.muted; font = JBFont.small() } to null
             loaded!!.commits.isEmpty() -> null to "Nothing to review: no commits beyond ${listed!!.target.base}."
             else -> null to "Opens the PR in this window, read-only."
@@ -172,7 +172,7 @@ class PrDetailView(private val project: Project, private val onBack: () -> Unit)
         val loaded = loaded ?: return
         val pr = listed!!.target.prNumber
         val steps = listOfNotNull(
-            if (pr != null) "Fetching PR #$pr" else "Fetching ${listed!!.target.head}",
+            if (pr != null) "Fetching PR ${ReviewTarget.refOf(pr)}" else "Fetching ${listed!!.target.head}",
             if (dirty.isNotEmpty()) "Parking your ${dirty.size} ${if (dirty.size == 1) "change" else "changes"} on $branch" else null,
             "Checking out the PR head",
             "Opening the first file",

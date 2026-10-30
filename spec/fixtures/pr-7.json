@@ -41,7 +41,24 @@
       "body": "Agreed, the attempt number is enough.",
       "posted": false,
       "replyTo": "PRRT_kwDOdemo23"
+    },
+    {
+      "path": "invoices/export.py",
+      "startLine": 30,
+      "line": 32,
+      "blob": "14d6ed33afe668fd14bca587acaf79544436afb1",
+      "body": "Split this:\n```suggestion\nrows = parse(raw)\nreturn [r for r in rows if r.total]\n```",
+      "posted": false
     }
   ],
-  "verdict": "APPROVE"
+  "verdict": "APPROVE",
+  "checked": {
+    "invoices/retry.py#retry": {
+      "hash": "3f786850e387550fdab836ed7e6dc881de23001b",
+      "places": [
+        "invoices/export.py#export_batch",
+        "tests/test_retry.py#test_gives_up"
+      ]
+    }
+  }
 }

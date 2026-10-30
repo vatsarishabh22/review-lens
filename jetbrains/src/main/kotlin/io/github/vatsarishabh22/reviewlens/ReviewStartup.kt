@@ -15,6 +15,7 @@ class ReviewStartup : ProjectActivity {
         val service = ReviewService.of(project)
         ReviewGutter.of(project) // listens before the first reload, so marks appear as soon as a review is active
         CommentInlays.of(project)
+        ImpactInlays.of(project) // starts the impact search once a review is active
         service.reload()
         val review = service.active ?: return
         withContext(Dispatchers.EDT) {

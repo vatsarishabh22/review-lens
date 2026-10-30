@@ -1,0 +1,122 @@
+{
+  "rule": "github/checks",
+  "about": "`gh pr view --json statusCheckRollup` mixes check runs (status + conclusion) and commit statuses (state): any failure wins over running, running over passed.",
+  "cases": [
+    {
+      "name": "no checks says nothing",
+      "given": {
+        "json": {
+          "statusCheckRollup": []
+        }
+      },
+      "expect": ""
+    },
+    {
+      "name": "all green passes, skipped included",
+      "given": {
+        "json": {
+          "statusCheckRollup": [
+            {
+              "__typename": "CheckRun",
+              "status": "COMPLETED",
+              "conclusion": "SUCCESS"
+            },
+            {
+              "__typename": "CheckRun",
+              "status": "COMPLETED",
+              "conclusion": "SKIPPED"
+            },
+            {
+              "__typename": "StatusContext",
+              "state": "SUCCESS"
+            }
+          ]
+        }
+      },
+      "expect": "Checks passed"
+    },
+    {
+      "name": "a running check run is running",
+      "given": {
+        "json": {
+          "statusCheckRollup": [
+            {
+              "__typename": "CheckRun",
+              "status": "COMPLETED",
+              "conclusion": "SUCCESS"
+            },
+            {
+              "__typename": "CheckRun",
+              "status": "IN_PROGRESS",
+              "conclusion": ""
+            }
+          ]
+        }
+      },
+      "expect": "Checks running"
+    },
+    {
+      "name": "a pending status is running",
+      "given": {
+        "json": {
+          "statusCheckRollup": [
+            {
+              "__typename": "CheckRun",
+              "status": "COMPLETED",
+              "conclusion": "SUCCESS"
+            },
+            {
+              "__typename": "StatusContext",
+              "state": "PENDING"
+            }
+          ]
+        }
+      },
+      "expect": "Checks running"
+    },
+    {
+      "name": "failures win over running and are counted",
+      "given": {
+        "json": {
+          "statusCheckRollup": [
+            {
+              "__typename": "CheckRun",
+              "status": "COMPLETED",
+              "conclusion": "FAILURE"
+            },
+            {
+              "__typename": "CheckRun",
+              "status": "IN_PROGRESS",
+              "conclusion": ""
+            },
+            {
+              "__typename": "StatusContext",
+              "state": "ERROR"
+            }
+          ]
+        }
+      },
+      "expect": "2 checks failing"
+    },
+    {
+      "name": "one failure is singular",
+      "given": {
+        "json": {
+          "statusCheckRollup": [
+            {
+              "__typename": "CheckRun",
+              "status": "COMPLETED",
+              "conclusion": "SUCCESS"
+            },
+            {
+              "__typename": "CheckRun",
+              "status": "COMPLETED",
+              "conclusion": "FAILURE"
+            }
+          ]
+        }
+      },
+      "expect": "1 check failing"
+    }
+  ]
+}

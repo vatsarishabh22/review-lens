@@ -1,0 +1,6 @@
+<!-- Loaded only where Java support is (IntelliJ IDEA): the impact map for Java files. -->
+<idea-plugin>
+    <extensions defaultExtensionNs="io.github.vatsarishabh22.reviewlens">
+        <impactLanguage implementation="io.github.vatsarishabh22.reviewlens.JavaImpact"/>
+    </extensions>
+</idea-plugin>

@@ -41,7 +41,7 @@ class PrListView(private val onPick: (ListedTarget) -> Unit, onRefresh: () -> Un
     private var all: List<ListedTarget> = emptyList()
     private var progress: Map<String, ReviewProgress> = emptyMap()
     /** Branches stand in when `gh` could not list PRs (not installed, signed out, offline, not a GitHub repo): say so. */
-    private val fallbackNote = mutedLabel("Couldn't get pull requests from GitHub · showing branches").apply {
+    private val fallbackNote = mutedLabel("").apply {
         border = JBUI.Borders.empty(0, 12, 4, 12); isVisible = false
     }
 
@@ -83,13 +83,14 @@ class PrListView(private val onPick: (ListedTarget) -> Unit, onRefresh: () -> Un
     fun show(listing: Listing, progress: Map<String, ReviewProgress>) {
         all = listing.targets; this.progress = progress
         fallbackNote.isVisible = listing.branchesOnly
+        fallbackNote.text = "Couldn't get pull requests from ${listing.hostName} · showing branches"
         list.emptyText.text = if (listing.branchesOnly) "No branches to review" else "No open pull requests"
         rebuild()
     }
 
     private fun rebuild() {
         val query = search.text.trim().lowercase()
-        val shown = all.filter { query.isEmpty() || query in "#${it.target.prNumber} ${it.title} ${it.pr?.author?.displayName}".lowercase() }
+        val shown = all.filter { query.isEmpty() || query in "${it.target.ref.orEmpty()} ${it.title} ${it.pr?.author?.name}".lowercase() }
         model.clear()
         fun section(title: String, rows: List<ListedTarget>) {
             if (rows.isEmpty()) return
@@ -120,7 +121,7 @@ class PrListView(private val onPick: (ListedTarget) -> Unit, onRefresh: () -> Un
             val title = JBLabel(row.listed.title).apply { font = JBFont.label().asBold() }
             val meta = mutableListOf<JComponent>()
             if (pr != null) {
-                meta += mutedLabel("#${pr.number}"); meta += mutedLabel(pr.author.displayName); meta += mutedLabel(files(pr.changedFiles))
+                meta += mutedLabel(ReviewTarget.refOf(pr.number)); meta += mutedLabel(pr.author.name); meta += mutedLabel(files(pr.changedFiles))
             }
             val progress = row.progress
             when {
@@ -133,7 +134,7 @@ class PrListView(private val onPick: (ListedTarget) -> Unit, onRefresh: () -> Un
                 add(title, BorderLayout.NORTH)
                 if (meta.isNotEmpty()) add(row(*meta.toTypedArray()))
             }
-            val avatar = JBLabel(if (pr != null) AvatarIcon(pr.author.displayName, pr.author.login) else AllIcons.Vcs.Branch).apply {
+            val avatar = JBLabel(if (pr != null) AvatarIcon(pr.author.name, pr.author.login) else AllIcons.Vcs.Branch).apply {
                 verticalAlignment = JBLabel.TOP
                 border = JBUI.Borders.emptyTop(2)
             }

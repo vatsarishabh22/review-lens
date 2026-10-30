@@ -24,7 +24,8 @@ A review started in one editor must resume, or exit cleanly, in any other. That 
 1. runs the same git and `gh` steps ([spec/README.md](spec/README.md)),
 2. reads and writes the same files in `.git/review-lens/` ([spec/state.schema.json](spec/state.schema.json)), and
 3. proves it in its test suite: every file in `spec/fixtures/` goes through the editor's **real** state reader, and the
-   test fails if a field is lost.
+   test fails if a field is lost; every case in `spec/cases/` goes through the editor's **real** function for that rule,
+   and must give the expected answer.
 
 **Changing the state?** Change `spec/` first (the README, the schema and a fixture), then every editor, in the
 **same PR**. Both test suites read the fixtures, so CI catches an editor that falls behind.
@@ -33,7 +34,8 @@ A review started in one editor must resume, or exit cleanly, in any other. That 
 
 1. Create a folder named after the editor, with its own `README.md` (users) and `CONTRIBUTING.md` (developers).
 2. Implement [spec/README.md](spec/README.md), using the prototype for the UI.
-3. Add the fixtures test, modelled on `jetbrains/…/SpecFixturesTest.kt` or `vscode/src/test/state.test.ts`.
+3. Add the fixtures test, modelled on `jetbrains/…/SpecFixturesTest.kt` or `vscode/src/test/state.test.ts`, and a
+   runner for `spec/cases/`, modelled on `jetbrains/…/SpecCasesTest.kt`.
 4. Copy the CI pattern below for `.github/workflows/<editor>.yml` and `release-<editor>.yml`, and add its checks
    to `main`'s required checks.
 5. Add a row to the editors table in the [README](README.md).

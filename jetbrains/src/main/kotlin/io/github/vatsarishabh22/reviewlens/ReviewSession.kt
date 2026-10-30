@@ -9,7 +9,10 @@ class ReviewSession(val git: GitClient) {
     val lifecycle = ReviewLifecycle(git)
 
     fun load(target: ReviewTarget): LoadedTarget {
-        val ref = target.prNumber?.let { git.fetchPr(it, target.base.removePrefix("${GitClient.REMOTE}/")) }
+        val ref = target.prNumber?.let { n ->
+            val host = ReviewHosts.required(git)
+            git.fetchReview(host.headRef(n), target.key, target.base.removePrefix("${GitClient.REMOTE}/"))
+        }
             ?: target.head.also { git.fetchAll() }
         return local(target, git.revParse(ref))
     }

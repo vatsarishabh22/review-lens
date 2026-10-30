@@ -1,0 +1,97 @@
+{
+  "rule": "viewed-sync",
+  "about": "Re-send queued ticks (`accepts`: the paths the host takes), then merge the answer read before the re-send. `tried`: what was sent, in order.",
+  "cases": [
+    {
+      "name": "a tick sent on reconnect is kept, not erased by the answer read before it went out",
+      "given": {
+        "reviewed": {
+          "a.kt": "a2",
+          "b.kt": "b2"
+        },
+        "unsent": {
+          "a.kt": true,
+          "b.kt": true
+        },
+        "host": {
+          "a.kt": "UNVIEWED",
+          "b.kt": "UNVIEWED"
+        },
+        "changes": [
+          {
+            "path": "a.kt",
+            "newBlob": "a2"
+          },
+          {
+            "path": "b.kt",
+            "newBlob": "b2"
+          }
+        ],
+        "accepts": [
+          "a.kt"
+        ]
+      },
+      "expect": {
+        "reviewed": {
+          "a.kt": "a2",
+          "b.kt": "b2"
+        },
+        "unsent": {
+          "b.kt": true
+        },
+        "tried": [
+          "a.kt",
+          "b.kt"
+        ]
+      }
+    },
+    {
+      "name": "a queued tick for a file outside the PR on the host is dropped, never re-sent, and stays ticked here",
+      "given": {
+        "reviewed": {
+          "a.kt": "a2",
+          "b.kt": "b2",
+          "c.kt": "c2"
+        },
+        "unsent": {
+          "a.kt": true,
+          "c.kt": true
+        },
+        "host": {
+          "a.kt": "UNVIEWED",
+          "b.kt": "VIEWED"
+        },
+        "changes": [
+          {
+            "path": "a.kt",
+            "newBlob": "a2"
+          },
+          {
+            "path": "b.kt",
+            "newBlob": "b2"
+          },
+          {
+            "path": "c.kt",
+            "newBlob": "c2"
+          }
+        ],
+        "accepts": [
+          "a.kt",
+          "b.kt",
+          "c.kt"
+        ]
+      },
+      "expect": {
+        "reviewed": {
+          "a.kt": "a2",
+          "b.kt": "b2",
+          "c.kt": "c2"
+        },
+        "unsent": null,
+        "tried": [
+          "a.kt"
+        ]
+      }
+    }
+  ]
+}

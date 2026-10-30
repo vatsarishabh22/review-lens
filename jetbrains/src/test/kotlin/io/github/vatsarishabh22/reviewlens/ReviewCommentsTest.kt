@@ -1,18 +1,12 @@
 package io.github.vatsarishabh22.reviewlens
 
-import com.google.gson.Gson
-import com.google.gson.JsonObject
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
-import org.junit.Assert.assertNull
 import org.junit.Assert.assertTrue
 import org.junit.Test
 
-/** What Finish review sends to GitHub, and how GitHub's refusals read. Bodies below are GitHub's real 422 shapes (PR #1 probe). */
+/** Drafts, the outbox Finish review posts, and the words around them; what GitHub is sent is GitHubWireTest's. */
 class ReviewCommentsTest {
-
-    private fun change(path: String, blob: String) = FileChange(path, null, 'M', blob, 1, 1)
-    private val scope = listOf(change("a.py", "a2"), change("b.py", "b2"))
 
     @Test
     fun `the PR list says reviewed only when every file is viewed, with the last posted verdict`() {
@@ -52,29 +46,8 @@ class ReviewCommentsTest {
         assertEquals(0, Outbox(emptyList(), emptyList()).size)
     }
 
-    @Test
-    fun `only pending comments on the version this scope shows are posted`() {
-        val now = Draft("a.py", 7, "a2", "now")
-        val posted = Draft("a.py", 9, "a2", "sent before", posted = true)
-        val otherScope = Draft("b.py", 3, "b1", "written on an older version")
-        val notInScope = Draft("c.py", 1, "c1", "file not in this scope")
-        val reply = Draft("a.py", 7, "a2", "a reply goes with its thread", replyTo = "T1")
-        assertEquals(listOf(now), toPost(listOf(now, posted, otherScope, notInScope, reply), scope))
-    }
-
-    private fun thread(id: String, resolved: Boolean = false, by: String? = null) =
-        ReviewThread(id, "a.py", 7, 7, false, "abc", resolved, by, "u$id", false, listOf(ThreadComment("lee", "why?")))
-
-    @Test
-    fun `every pending reply posts while its thread exists, whatever scope or blob, resolved or not`() {
-        val open = Draft("a.py", 7, "a1", "on an older blob still posts", replyTo = "T1")
-        val toResolved = Draft("a.py", 7, "a2", "resolved since", replyTo = "T2")
-        val gone = Draft("a.py", 7, "a2", "thread deleted", replyTo = "T3")
-        val sent = Draft("a.py", 7, "a2", "sent", posted = true, replyTo = "T1")
-        val drafts = listOf(open, toResolved, gone, sent, Draft("a.py", 7, "a2", "a comment"))
-        assertEquals(listOf(open, toResolved), repliesToPost(drafts, listOf(thread("T1"), thread("T2", resolved = true))))
-        assertEquals("threads unknown: try, GitHub refuses a missing one", listOf(open, toResolved, gone), repliesToPost(drafts, null))
-    }
+    private fun thread(id: String, resolved: Boolean = false, by: String? = null, byMe: Boolean = false) =
+        ReviewThread(id, "a.py", 7, 7, false, "abc", resolved, by, "u$id", false, listOf(ThreadComment("lee", "why?")), resolvedByMe = byMe)
 
     @Test
     fun `Finish review says what changed under your replies since the review loaded`() {
@@ -82,9 +55,10 @@ class ReviewCommentsTest {
         assertEquals(listOf(
             "lee resolved a thread you replied to since the review loaded. Your reply still posts; the thread stays resolved.",
             "1 reply is on a thread that's gone from GitHub. It won't post and stays as a draft.",
-        ), replyNotes(drafts, listOf(thread("T2", resolved = true, by = "lee"))))
-        assertEquals(emptyList<String>(), replyNotes(drafts.take(1), listOf(thread("T2"))))
-        assertEquals("threads unknown: nothing to say", emptyList<String>(), replyNotes(drafts, null))
+        ), replyNotes(drafts, listOf(thread("T2", resolved = true, by = "lee")), "GitHub"))
+        assertEquals(emptyList<String>(), replyNotes(drafts.take(1), listOf(thread("T2")), "GitHub"))
+        assertEquals("threads unknown: nothing to say", emptyList<String>(), replyNotes(drafts, null, "GitHub"))
+        assertEquals("you resolved it yourself: no news", emptyList<String>(), replyNotes(drafts.take(1), listOf(thread("T2", resolved = true, by = "me", byMe = true)), "GitHub"))
     }
 
     @Test
@@ -103,52 +77,17 @@ class ReviewCommentsTest {
         assertEquals("", keptText(listOf(comment.copy(posted = true))))
     }
 
-    private fun vars(body: String) = Gson().fromJson(body, JsonObject::class.java).also { assertTrue(it["query"].asString.startsWith("mutation")) }["variables"].asJsonObject
-
     @Test
-    fun `the pending review starts at the scope's end with every new comment on the new side`() {
-        val v = vars(startReviewBody("PR_1", "abc", listOf(Draft("a.py", 7, "a2", "why?"))))
-        assertEquals(listOf("PR_1", "abc"), listOf(v["pr"].asString, v["commit"].asString))
-        val comment = v["threads"].asJsonArray.single().asJsonObject
-        assertEquals(listOf("a.py", "7", "RIGHT", "why?"), listOf("path", "line", "side", "body").map { comment[it].asString })
+    fun `several lines are one block of the diff when each is within 3 of a changed line`() {
+        val changed = setOf(10, 11, 20)
+        assertTrue("the changes and 3 lines around them", inOneDiffBlock(changed, 7, 14))
+        assertTrue(!inOneDiffBlock(changed, 14, 17)) // 15 and 16 are 4+ lines from every change: two blocks
+        assertTrue(!inOneDiffBlock(changed, 22, 24)) // beyond the last change's 3 lines
+        assertTrue("changes 6 apart share their context lines: one block", inOneDiffBlock(setOf(10, 16), 7, 19))
     }
 
     @Test
-    fun `a reply goes into the pending review, on its thread`() {
-        val v = vars(replyBody("PRR_1", Draft("a.py", 7, "a2", "agreed", replyTo = "PRRT_9")))
-        assertEquals(listOf("PRR_1", "PRRT_9", "agreed"), listOf("review", "thread", "body").map { v[it].asString })
-    }
+    fun `Suggest a change writes the block the suggestion cases read back`() =
+        assertEquals("```suggestion\n    a = 1\n    b = 2\n```", suggestionBlock(listOf("    a = 1", "    b = 2")))
 
-    @Test
-    fun `submit carries the verdict, and a blank summary is sent as none rather than empty`() {
-        val v = vars(submitBody("PRR_1", Verdict.REQUEST_CHANGES, "Looks good"))
-        assertEquals(listOf("PRR_1", "REQUEST_CHANGES", "Looks good"), listOf("review", "event", "body").map { v[it].asString })
-        assertFalse(vars(submitBody("PRR_1", Verdict.COMMENT, "  ")).has("body")) // Gson drops nulls
-        assertEquals("PRR_1", vars(deleteReviewBody("PRR_1"))["review"].asString)
-    }
-
-    @Test
-    fun `an empty Comment or Request changes is held back with its reason, an empty Approve is not`() {
-        assertEquals("Add a summary or an inline comment to post a comment review.", submitBlocker(Verdict.COMMENT, " ", 0, false))
-        assertEquals("Add a summary or an inline comment to post a request changes review.", submitBlocker(Verdict.REQUEST_CHANGES, "", 0, false))
-        assertNull(submitBlocker(Verdict.COMMENT, "", 1, false)) // PR #1 probe: comments alone are accepted
-        assertNull(submitBlocker(Verdict.COMMENT, "Looks good", 0, false))
-        assertNull(submitBlocker(Verdict.APPROVE, "", 0, false))
-    }
-
-    @Test
-    fun `on your own pull request only a comment review goes`() {
-        val own = "GitHub doesn't let you approve or request changes on your own pull request."
-        assertEquals(own, submitBlocker(Verdict.APPROVE, "LGTM", 2, true))
-        assertEquals(own, submitBlocker(Verdict.REQUEST_CHANGES, "x", 0, true))
-        assertNull(submitBlocker(Verdict.COMMENT, "x", 0, true))
-    }
-
-    @Test
-    fun `GitHub's reasons are read from its error body`() {
-        assertEquals("Path could not be resolved", githubRefusal("""{"message":"Unprocessable Entity","errors":["Path could not be resolved"],"status":"422"}"""))
-        assertEquals("Line could not be resolved", githubRefusal("""{"message":"Validation Failed","errors":[{"message":"Line could not be resolved"}]}"""))
-        assertEquals("Not Found", githubRefusal("""{"message":"Not Found","status":"404"}"""))
-        assertNull(githubRefusal("error connecting to api.github.com"))
-    }
 }

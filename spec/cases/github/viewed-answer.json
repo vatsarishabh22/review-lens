@@ -1,0 +1,29 @@
+{
+  "rule": "github/viewed-answer",
+  "about": "GitHub's Viewed answer as GhClient's jq prints it (gh's real shape, PR #579): `#id` lines repeat per page; states it does not know are skipped.",
+  "cases": [
+    {
+      "name": "pages joined, unknown states skipped",
+      "given": {
+        "text": "#id\tPR_1\n.github/a.yml\tVIEWED\n.github/b.yml\tUNVIEWED\n#id\tPR_1\nsrc/c.kt\tDISMISSED\nsrc/d.kt\tSOMETHING_NEW\n"
+      },
+      "expect": {
+        "pullRequestId": "PR_1",
+        "files": {
+          ".github/a.yml": "VIEWED",
+          ".github/b.yml": "UNVIEWED",
+          "src/c.kt": "DISMISSED"
+        }
+      }
+    },
+    {
+      "name": "an answer without the pull request is refused",
+      "given": {
+        "text": "a.yml\tVIEWED\n"
+      },
+      "expect": {
+        "error": true
+      }
+    }
+  ]
+}

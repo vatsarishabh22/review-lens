@@ -1,0 +1,93 @@
+{
+  "rule": "viewed-merge",
+  "about": "This laptop's ticks + the host's Viewed answer -> one checklist (README, Viewed sync).",
+  "cases": [
+    {
+      "name": "the host wins for its files",
+      "given": {
+        "local": {
+          "b.kt": "b2",
+          "d.kt": "d1"
+        },
+        "host": {
+          "a.kt": "VIEWED",
+          "b.kt": "UNVIEWED",
+          "c.kt": "DISMISSED",
+          "d.kt": "DISMISSED"
+        },
+        "changes": [
+          {
+            "path": "a.kt",
+            "newBlob": "a2"
+          },
+          {
+            "path": "b.kt",
+            "newBlob": "b2"
+          },
+          {
+            "path": "c.kt",
+            "newBlob": "c2"
+          },
+          {
+            "path": "d.kt",
+            "newBlob": "d2"
+          }
+        ],
+        "unsent": {}
+      },
+      "expect": {
+        "a.kt": "a2",
+        "c.kt": "dismissed",
+        "d.kt": "d1"
+      }
+    },
+    {
+      "name": "a tick the host has not confirmed is never erased",
+      "given": {
+        "local": {
+          "a.kt": "a2"
+        },
+        "host": {
+          "a.kt": "UNVIEWED",
+          "b.kt": "VIEWED"
+        },
+        "changes": [
+          {
+            "path": "a.kt",
+            "newBlob": "a2"
+          },
+          {
+            "path": "b.kt",
+            "newBlob": "b2"
+          }
+        ],
+        "unsent": {
+          "a.kt": true,
+          "b.kt": false
+        }
+      },
+      "expect": {
+        "a.kt": "a2"
+      }
+    },
+    {
+      "name": "files the host does not list keep this laptop's answer",
+      "given": {
+        "local": {
+          "x.kt": "x1"
+        },
+        "host": {},
+        "changes": [
+          {
+            "path": "x.kt",
+            "newBlob": "x2"
+          }
+        ],
+        "unsent": {}
+      },
+      "expect": {
+        "x.kt": "x1"
+      }
+    }
+  ]
+}

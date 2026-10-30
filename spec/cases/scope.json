@@ -1,0 +1,94 @@
+{
+  "rule": "scope",
+  "about": "Commits picked in the scope list -> the range and its label. `commits` newest first, as git log lists them.",
+  "cases": [
+    {
+      "name": "no pick is the whole PR",
+      "given": {
+        "mergeBase": "base",
+        "commits": [
+          "c3",
+          "c2",
+          "c1"
+        ],
+        "picked": []
+      },
+      "expect": {
+        "from": "base",
+        "to": "c3",
+        "label": "All commits (3)"
+      }
+    },
+    {
+      "name": "every commit is the whole PR",
+      "given": {
+        "mergeBase": "base",
+        "commits": [
+          "c3",
+          "c2",
+          "c1"
+        ],
+        "picked": [
+          "c3",
+          "c2",
+          "c1"
+        ]
+      },
+      "expect": {
+        "from": "base",
+        "to": "c3",
+        "label": "All commits (3)"
+      }
+    },
+    {
+      "name": "one commit is its own diff",
+      "given": {
+        "mergeBase": "base",
+        "commits": [
+          "c3",
+          "c2",
+          "c1"
+        ],
+        "picked": [
+          "c2"
+        ]
+      },
+      "expect": {
+        "from": "c2^",
+        "to": "c2",
+        "label": "Commit c2"
+      }
+    },
+    {
+      "name": "a range spans oldest parent to newest",
+      "given": {
+        "mergeBase": "base",
+        "commits": [
+          "c3",
+          "c2",
+          "c1"
+        ],
+        "picked": [
+          "c2",
+          "c1"
+        ]
+      },
+      "expect": {
+        "from": "c1^",
+        "to": "c2",
+        "label": "2 of 3 commits"
+      }
+    },
+    {
+      "name": "a branch with no commits beyond its base has nothing to review",
+      "given": {
+        "mergeBase": "base",
+        "commits": [],
+        "picked": []
+      },
+      "expect": {
+        "error": true
+      }
+    }
+  ]
+}

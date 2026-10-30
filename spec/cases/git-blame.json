@@ -1,0 +1,59 @@
+{
+  "rule": "git-blame",
+  "about": "`git blame --porcelain` -> each 1-based line's commit, and each commit's details from its first occurrence (real git 2.x output).",
+  "cases": [
+    {
+      "name": "each line maps to its commit; details come from the first occurrence",
+      "given": {
+        "porcelain": "ca9f384e109382e731a3c180be2c661fe2471040 1 1 1\nauthor t\nauthor-time 1792142140\nsummary base\nboundary\nfilename app.py\n\ta\n75d1157b6605b905252e9cb255f54ee927c75e0d 2 2 2\nauthor Alice Chen\nauthor-time 1792142141\nsummary c1\nfilename app.py\n\ta2\n75d1157b6605b905252e9cb255f54ee927c75e0d 3 3\n\ta3"
+      },
+      "expect": {
+        "lines": {
+          "1": "ca9f384e109382e731a3c180be2c661fe2471040",
+          "2": "75d1157b6605b905252e9cb255f54ee927c75e0d",
+          "3": "75d1157b6605b905252e9cb255f54ee927c75e0d"
+        },
+        "commits": {
+          "ca9f384e109382e731a3c180be2c661fe2471040": {
+            "author": "t",
+            "time": 1792142140,
+            "summary": "base"
+          },
+          "75d1157b6605b905252e9cb255f54ee927c75e0d": {
+            "author": "Alice Chen",
+            "time": 1792142141,
+            "summary": "c1"
+          }
+        }
+      }
+    },
+    {
+      "name": "lines are numbered as the file is now, and a commit seen again carries no details",
+      "given": {
+        "porcelain": "62713f033e6cdb282d8411154253aafbe9275eee 1 1 1\nauthor Alice Chen\nauthor-mail <b@example.com>\nauthor-time 1792142141\nauthor-tz +0000\ncommitter Alice Chen\ncommitter-mail <b@example.com>\ncommitter-time 1792142141\ncommitter-tz +0000\nsummary c1\nprevious af33862d78888ccc8008a169a18ad390c136523d app.py\nfilename app.py\n\timport os\naf33862d78888ccc8008a169a18ad390c136523d 1 2 4\nauthor Base Author\nauthor-mail <b@example.com>\nauthor-time 1792142140\nauthor-tz +0000\ncommitter Base Author\ncommitter-mail <b@example.com>\ncommitter-time 1792142140\ncommitter-tz +0000\nsummary base\nboundary\nfilename app.py\n\tdef a():\naf33862d78888ccc8008a169a18ad390c136523d 2 3\n\t    return 1\naf33862d78888ccc8008a169a18ad390c136523d 3 4\n\t\naf33862d78888ccc8008a169a18ad390c136523d 4 5\n\tdef b():\n62713f033e6cdb282d8411154253aafbe9275eee 6 6 1\n\t    return 3\n"
+      },
+      "expect": {
+        "lines": {
+          "1": "62713f033e6cdb282d8411154253aafbe9275eee",
+          "2": "af33862d78888ccc8008a169a18ad390c136523d",
+          "3": "af33862d78888ccc8008a169a18ad390c136523d",
+          "4": "af33862d78888ccc8008a169a18ad390c136523d",
+          "5": "af33862d78888ccc8008a169a18ad390c136523d",
+          "6": "62713f033e6cdb282d8411154253aafbe9275eee"
+        },
+        "commits": {
+          "62713f033e6cdb282d8411154253aafbe9275eee": {
+            "author": "Alice Chen",
+            "time": 1792142141,
+            "summary": "c1"
+          },
+          "af33862d78888ccc8008a169a18ad390c136523d": {
+            "author": "Base Author",
+            "time": 1792142140,
+            "summary": "base"
+          }
+        }
+      }
+    }
+  ]
+}

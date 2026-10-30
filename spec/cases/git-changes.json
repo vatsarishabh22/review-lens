@@ -1,0 +1,55 @@
+{
+  "rule": "git-changes",
+  "about": "`git diff --raw -z --no-abbrev -M` joined with `git diff --numstat -z -M` (real git 2.x output; NUL separated), sorted by path.",
+  "cases": [
+    {
+      "name": "status, blob and line counts per file, renames and binaries included",
+      "given": {
+        "raw": ":100644 100644 789819226 e3990a77 M\u0000app.py\u0000:000000 100644 0000000 b3c5a95f A\u0000helpers.py\u0000:000000 100644 0000000 bdc955b7 A\u0000img.bin\u0000:100644 100644 3e757656 3e757656 R100\u0000new.py\u0000fresh.py\u0000:100644 000000 286c5f57 0000000 D\u0000old.py\u0000",
+        "numstat": "2\t0\tapp.py\u00005\t0\thelpers.py\u0000-\t-\timg.bin\u00000\t0\t\u0000new.py\u0000fresh.py\u00000\t1\told.py\u0000"
+      },
+      "expect": [
+        {
+          "path": "app.py",
+          "oldPath": null,
+          "status": "M",
+          "newBlob": "e3990a77",
+          "added": 2,
+          "deleted": 0
+        },
+        {
+          "path": "fresh.py",
+          "oldPath": "new.py",
+          "status": "R",
+          "newBlob": "3e757656",
+          "added": 0,
+          "deleted": 0
+        },
+        {
+          "path": "helpers.py",
+          "oldPath": null,
+          "status": "A",
+          "newBlob": "b3c5a95f",
+          "added": 5,
+          "deleted": 0
+        },
+        {
+          "path": "img.bin",
+          "oldPath": null,
+          "status": "A",
+          "newBlob": "bdc955b7",
+          "added": null,
+          "deleted": null
+        },
+        {
+          "path": "old.py",
+          "oldPath": null,
+          "status": "D",
+          "newBlob": "0000000",
+          "added": 0,
+          "deleted": 1
+        }
+      ]
+    }
+  ]
+}

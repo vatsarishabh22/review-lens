@@ -1,0 +1,6 @@
+<!-- Loaded only where Kotlin support is: the impact map for Kotlin files. Its K2 support is declared in plugin.xml, the only place the platform reads it. -->
+<idea-plugin>
+    <extensions defaultExtensionNs="io.github.vatsarishabh22.reviewlens">
+        <impactLanguage implementation="io.github.vatsarishabh22.reviewlens.KotlinImpact"/>
+    </extensions>
+</idea-plugin>

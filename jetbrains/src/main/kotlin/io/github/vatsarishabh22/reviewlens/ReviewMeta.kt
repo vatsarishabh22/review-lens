@@ -11,6 +11,8 @@ import java.nio.file.Path
  * [unsent] holds ticks GitHub has not confirmed yet (path → viewed); they are re-sent first and win until confirmed.
  * [drafts] are the reviewer's inline comments, kept here (across exit) until Finish review posts them.
  * [verdict] is the last verdict GitHub accepted from this reviewer (Mark as reviewed leaves it), for the PR list.
+ * [checked] holds the impact map's ticks: per changed function (`path#Class.method`), the places outside the PR the
+ * reviewer checked, kept with a hash of the function's text so a later change to it clears them (spec/impact.md).
  */
 data class ReviewMeta(
     val target: ReviewTarget,
@@ -21,7 +23,20 @@ data class ReviewMeta(
     val unsent: Map<String, Boolean>? = null,
     val drafts: List<Draft>? = null,
     val verdict: Verdict? = null,
+    val checked: Map<String, CheckedFunction>? = null,
 ) {
+    /** The places ticked for [function], only while its text still hashes to [hash]: a changed function starts over. */
+    fun checkedPlaces(function: String, hash: String): Set<String> = checked?.get(function)?.takeIf { it.hash == hash }?.places.orEmpty().toSet()
+
+    /** Ticks or unticks [place] for [function] as it is now ([hash]); ticks from an earlier version of it are dropped. */
+    fun tick(function: String, hash: String, place: String, on: Boolean): ReviewMeta {
+        val places = checkedPlaces(function, hash).let { if (on) it + place else it - place }
+        return copy(checked = (checked.orEmpty() + (function to CheckedFunction(hash, places.sorted()))).ifEmpty { null })
+    }
+
+    /** At Exit: keeps the ticks of [functions] (the scope's changed functions) and drops the rest. */
+    fun keepChecked(functions: Set<String>): ReviewMeta = copy(checked = checked?.filterKeys { it in functions }?.ifEmpty { null })
+
     companion object {
         private val gson = GsonBuilder().setPrettyPrinting().create()
 
@@ -60,9 +75,13 @@ fun mergeViewed(local: Map<String, String>, github: Map<String, ViewedState>, ch
     return merged
 }
 
-/** Re-sends the queued ticks ([send] says whether GitHub took one), then folds in GitHub's answer. */
+/**
+ * Re-sends the queued ticks ([send] says whether GitHub took one), then folds in GitHub's answer. [github] lists every
+ * file of the PR on GitHub; a queued tick for any other path (a scope file whose change the PR undoes, or one that came
+ * in with a merge from the base) has no Viewed box there and is refused, so it is dropped from the queue, kept here.
+ */
 fun syncViewed(meta: ReviewMeta, github: Map<String, ViewedState>, changes: List<FileChange>, send: (String, Boolean) -> Boolean): ReviewMeta {
-    val queued = meta.unsent.orEmpty()
+    val queued = meta.unsent.orEmpty().filterKeys { it in github }
     val unsent = queued.filterNot { (path, viewed) -> send(path, viewed) }
     // every queued tick keeps the laptop's value: [github] was read before the re-send, so it is stale for them
     return meta.copy(reviewed = mergeViewed(meta.reviewed, github, changes, queued), unsent = unsent.ifEmpty { null })
@@ -95,3 +114,14 @@ data class ReviewProgress(val viewed: Int, val total: Int, val verdict: Verdict?
 fun ReviewMeta.headMoved(head: String?): Boolean = !head.isNullOrEmpty() && head != (seenHead ?: range.to)
 
 enum class Badge(val symbol: String) { TODO("⭐"), REVIEWED("✅"), CHANGED_SINCE("🔄") }
+
+/** A file's badge from the ticks: never ticked ⭐, ticked at its current blob ✅, else (an older blob, or "dismissed") 🔄. */
+fun badgeOf(reviewed: Map<String, String>, change: FileChange): Badge = when (reviewed[change.path]) {
+    null -> Badge.TODO
+    change.newBlob -> Badge.REVIEWED
+    else -> Badge.CHANGED_SINCE
+}
+
+/** The impact map's ticks on one function: the [places] checked (each `path#name`), while its text hashed to [hash]. */
+data class CheckedFunction(val hash: String, val places: List<String>)
+

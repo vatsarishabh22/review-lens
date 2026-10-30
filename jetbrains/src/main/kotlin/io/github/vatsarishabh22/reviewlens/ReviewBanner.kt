@@ -5,11 +5,13 @@ import com.intellij.ide.ui.laf.darcula.ui.DarculaButtonUI
 import com.intellij.openapi.util.Disposer
 import com.intellij.openapi.util.Key
 import com.intellij.openapi.fileEditor.FileEditor
+import com.intellij.openapi.fileEditor.FileEditorManager
 import com.intellij.openapi.project.DumbAware
 import com.intellij.openapi.project.Project
 import com.intellij.openapi.ui.popup.JBPopupFactory
 import com.intellij.openapi.vfs.VirtualFile
 import com.intellij.ui.EditorNotificationProvider
+import com.intellij.ui.EditorNotifications
 import com.intellij.ui.SimpleColoredComponent
 import com.intellij.ui.SimpleListCellRenderer
 import com.intellij.ui.SimpleTextAttributes
@@ -43,21 +45,30 @@ class ReviewBanner : EditorNotificationProvider, DumbAware {
         val meta = service.meta ?: return null
         val path = service.relativePath(file) ?: return null // IDE pages, scratches, files outside the repo
         val change = service.changeFor(file)
-        return Function { editor -> stack(reviewBar(project, meta, change), fileBar(project, editor, file, path, change)) }
+        return Function { editor ->
+            // The bars belong to the tab. The platform also hands over a text editor nested in another (a Markdown or
+            // AsciiDoc split view) when it finishes loading, and a nested editor's bar is never shown; when that comes
+            // first, the tab's own editor is never asked. So skip it, and ask again now that its tab has loaded.
+            if (editor !in FileEditorManager.getInstance(project).getAllEditors(file)) {
+                EditorNotifications.getInstance(project).updateNotifications(file)
+                return@Function null
+            }
+            stack(reviewBar(project, meta, change), fileBar(project, editor, file, path, change))
+        }
     }
 
     private fun reviewBar(project: Project, meta: ReviewMeta, change: FileChange?): JComponent {
         val service = ReviewService.of(project)
-        val what = JBLabel("Reviewing ${meta.target.prNumber?.let { "#$it" } ?: meta.target.label}").apply {
+        val what = JBLabel("Reviewing ${meta.target.ref ?: meta.target.label}").apply {
             font = JBFont.label().asBold(); foreground = ReviewColors.reviewFg
         }
         val scope = flat(meta.scopeLabel, AllIcons.General.ArrowDown, iconRight = true) { scopeMenu(project, meta, it) }
-        val lock = JBLabel(if (service.flashing) "Read-only while reviewing. Exit review to edit." else "Read-only", AllIcons.Diff.Lock, SwingConstants.LEFT)
+        val lock = JBLabel(if (ReadOnlyFlash.of(project).on) "Read-only while reviewing. Exit review to edit." else "Read-only", AllIcons.Diff.Lock, SwingConstants.LEFT)
             .apply { font = JBFont.small(); foreground = ReviewColors.reviewFg }
         val prev = flat("Prev", AllIcons.Actions.Back) { service.previous(change?.path)?.let { openChange(project, it) } }
         val next = flat("Next unviewed", AllIcons.Actions.Forward, iconRight = true) {
             service.nextUnreviewed(change?.path)?.let { openChange(project, it) }
-                ?: notify(project, "Every file is viewed", if (meta.target.prNumber != null) "Finish the review when you're ready." else "Exit the review when you're done.")
+                ?: notify(project, "Every file is viewed", if (meta.target.reviewable) "Finish the review when you're ready." else "Exit the review when you're done.")
         }.apply { toolTipText = "Next unviewed file (⌥N)" }
         val pending = ReviewDrafts.of(project).outbox().size
         val finish = JButton("Finish review", if (pending > 0) CountIcon(pending) else null).apply {
@@ -65,10 +76,10 @@ class ReviewBanner : EditorNotificationProvider, DumbAware {
             isOpaque = false; isFocusable = false
             horizontalTextPosition = SwingConstants.LEFT
             addActionListener { showFinishReview(project, this) }
-        }.takeIf { meta.target.prNumber != null } // a branch has nowhere to post a review
+        }.takeIf { meta.target.reviewable } // a branch has nowhere to post a review
         val exit = flat("Exit", AllIcons.Actions.Exit) { exitReview(project) }.apply { toolTipText = "Back to ${service.active?.originalRef}" }
         return JPanel(BorderLayout()).apply {
-            background = if (service.flashing) ReviewColors.flash else ReviewColors.review
+            background = if (ReadOnlyFlash.of(project).on) ReviewColors.flash else ReviewColors.review
             border = JBUI.Borders.compound(JBUI.Borders.customLineBottom(ReviewColors.reviewLine), JBUI.Borders.empty(3, 12, 3, 8))
             add(row(what, scope, gap = 6), BorderLayout.WEST)
             add(lock.apply { border = JBUI.Borders.emptyLeft(6) }) // centre: a long flash message truncates, never overlaps Prev
@@ -109,7 +120,8 @@ class ReviewBanner : EditorNotificationProvider, DumbAware {
         fun show() {
             val viewed = service.badge(change) == Badge.REVIEWED
             toggle.icon = if (viewed) BadgeIcon(Badge.REVIEWED) else BOX
-            toggle.toolTipText = if (viewed) "Viewed — click to unmark (⌥R)" else "Mark viewed (⌥R)"
+            toggle.toolTipText = (if (viewed) "Viewed — click to unmark (⌥R)" else "Mark viewed (⌥R)") +
+                if (service.meta?.target?.reviewable == true && !HostViewed.of(project).sends(service.meta, change)) ". Not in the PR's files on ${service.hostName} (its net change is empty), so it's ticked here only." else ""
             toggle.foreground = if (viewed) ReviewColors.ok else ReviewColors.text
         }
         show()
@@ -134,7 +146,7 @@ class ReviewBanner : EditorNotificationProvider, DumbAware {
         val git = service.git ?: return
         val head = service.active?.head ?: return
         val session = ReviewSession(git)
-        background(project, if (fetch) "Checking GitHub for new commits" else "Listing commits", {
+        background(project, if (fetch) "Checking ${service.hostName} for new commits" else "Listing commits", {
             if (fetch) session.load(meta.target) else session.local(meta.target, head)
         }) { loaded ->
             fun scope(range: ScopeRange, label: String) = beginReview(project, session, loaded, range, label)
@@ -148,7 +160,7 @@ class ReviewBanner : EditorNotificationProvider, DumbAware {
                     val label = scopeLabel(loaded.commits, listOf(c))
                     add(ScopeItem(c.label, meta.scopeLabel == label) { scope(resolveScope(loaded.mergeBase, loaded.commits, listOf(c)), label) })
                 }
-                add(ScopeItem("Check GitHub for new commits…", false) { scopeMenu(project, meta, anchor, fetch = true) })
+                add(ScopeItem("Check ${ReviewService.of(project).hostName} for new commits…", false) { scopeMenu(project, meta, anchor, fetch = true) })
             }
             if (fetch && loaded.head == head) notify(project, "No new commits", "${meta.target.label} has nothing newer than what you're reviewing.")
             JBPopupFactory.getInstance().createPopupChooserBuilder(items)

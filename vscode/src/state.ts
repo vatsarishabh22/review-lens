@@ -5,7 +5,8 @@ import { join } from "node:path";
 
 export interface ReviewTarget { key: string; label: string; prNumber?: number | null; head: string; base: string }
 export interface ActiveReview { target: ReviewTarget; head: string; reviewBranch: string; originalRef: string; stashMessage?: string | null }
-export interface Draft { path: string; line: number; blob: string; body: string; posted?: boolean; replyTo?: string | null }
+/** A pending comment on `line`, or on `startLine`..`line` when lines were selected (spec/README.md, Comment). */
+export interface Draft { path: string; startLine?: number | null; line: number; blob: string; body: string; posted?: boolean; replyTo?: string | null }
 export interface ReviewMeta {
   target: ReviewTarget;
   range: { from: string; to: string };
@@ -15,6 +16,8 @@ export interface ReviewMeta {
   unsent?: Record<string, boolean> | null;
   drafts?: Draft[] | null;
   verdict?: "COMMENT" | "APPROVE" | "REQUEST_CHANGES" | null;
+  /** The impact map's ticks: function key -> the places checked while its text hashed to [hash] (spec/impact.md). */
+  checked?: Record<string, { hash: string; places: string[] }> | null;
 }
 
 type Json = Record<string, any>;
@@ -34,7 +37,8 @@ export function parseMeta(o: Json): ReviewMeta {
   const meta = pick<ReviewMeta>(o, ["scopeLabel", "reviewed", "seenHead", "unsent", "verdict"]);
   meta.target = target(o.target);
   meta.range = pick(o.range, ["from", "to"]);
-  if ("drafts" in o) meta.drafts = o.drafts && o.drafts.map((d: Json) => pick<Draft>(d, ["path", "line", "blob", "body", "posted", "replyTo"]));
+  if ("checked" in o) meta.checked = o.checked && Object.fromEntries(Object.entries(o.checked as Json).map(([k, v]: [string, any]) => [k, pick(v, ["hash", "places"])]));
+  if ("drafts" in o) meta.drafts = o.drafts && o.drafts.map((d: Json) => pick<Draft>(d, ["path", "startLine", "line", "blob", "body", "posted", "replyTo"]));
   return meta;
 }
 

@@ -181,6 +181,12 @@ button.mark:hover { background: var(--panel-2); }
 .ln { display: grid; grid-template-columns: 22px 44px 10px 1fr; align-items: stretch; min-height: 20px; position: relative; }
 .ln:hover .plus { opacity: 1; }
 .ln.caret { background: var(--hover); }
+.ln.sel { background: var(--accent-soft); }
+.sugg { margin: 6px 0 2px; border: 1px solid var(--line); border-radius: 6px; overflow: hidden; font: 12px/1.5 var(--mono); }
+.sugg .h { padding: 3px 8px; font: 11px var(--ui); color: var(--muted); background: var(--panel); border-bottom: 1px solid var(--line); }
+.sugg pre { margin: 0; padding: 0 8px; white-space: pre; overflow: hidden; }
+.sugg .del { background: var(--del-bg); }
+.sugg .add { background: var(--add-bg); }
 .ln .plus { opacity: 0; width: 18px; height: 18px; margin: 1px 2px; border-radius: 4px; background: var(--accent); color: #fff; display: grid; place-items: center; }
 .ln .no { text-align: right; padding-right: 8px; color: var(--muted); user-select: none; }
 .ln .bar { position: relative; }
@@ -200,6 +206,30 @@ button.mark:hover { background: var(--panel-2); }
 .hunk-pop .hp-head .grow { flex: 1; }
 .hunk-pop pre { margin: 0; padding: 4px 10px; font: 13px/20px var(--mono); background: var(--del-bg); color: var(--fg); white-space: pre; overflow-x: auto; }
 .hunk-pop .hp-none { padding: 6px 10px; font: 12px var(--ui); color: var(--muted); }
+.impact-chip { margin-left: 18px; padding: 0 8px; border: 1px solid var(--line); border-radius: 10px; font: 12px/18px var(--ui); color: var(--muted); background: var(--panel); white-space: nowrap; }
+.impact-chip:hover { border-color: var(--accent); color: var(--fg); }
+.impact-chip .dots { letter-spacing: 1px; color: var(--accent); margin-right: 4px; }
+.impact-chip.done { color: var(--muted); opacity: .75; }
+.impact-chip.done .dots { color: var(--ok); }
+.impact-chip.busy { opacity: .6; }
+.impact-peek { margin: 2px 0 6px 76px; max-width: 620px; border: 1px solid var(--line); border-radius: 8px; background: var(--win); box-shadow: var(--shadow); font: 13px/1.45 var(--ui); overflow: hidden; }
+.impact-peek .head { display: flex; justify-content: space-between; padding: 6px 12px; background: var(--panel); border-bottom: 1px solid var(--line); font-size: 12px; color: var(--muted); }
+.impact-peek .head b { color: var(--fg); font-weight: 600; }
+.impact-peek .group { padding: 6px 12px 0; font-size: 11px; font-weight: 600; color: var(--muted); text-transform: uppercase; letter-spacing: .04em; }
+.impact-peek .place { display: grid; grid-template-columns: 18px 1fr; gap: 4px 6px; padding: 4px 12px 6px; }
+.impact-peek .place.focus { background: var(--accent-soft); }
+.impact-peek .place input { margin: 3px 0 0; }
+.impact-peek .where { font: 12px var(--mono); }
+.impact-peek .where button { color: var(--accent); margin-left: 6px; }
+.impact-peek pre { grid-column: 2; margin: 0; font: 12px/1.5 var(--mono); color: var(--fg); white-space: pre; overflow: hidden; }
+.impact-peek pre mark { background: var(--accent-soft); color: inherit; border-radius: 2px; }
+.impact-peek .wide { padding: 4px 12px 8px; font-size: 12px; color: var(--muted); }
+.impact-peek .wide button { color: var(--accent); margin-left: 6px; }
+.impact-strip { display: flex; align-items: center; padding: 4px 12px; font-size: 12px; color: var(--muted); background: var(--panel); border-bottom: 1px solid var(--line); }
+.impact-strip .impact-chip { margin-left: 0; }
+.impact-chip .link { color: var(--accent); }
+.impact-peek.top { margin: 6px 12px; }
+.impact-peek .note { padding: 6px 12px; border-top: 1px solid var(--line); font-size: 12px; color: var(--muted); }
 .comment-row { margin: 2px 0 6px 76px; max-width: 620px; border: 1px solid var(--line); border-radius: 8px; background: var(--win); box-shadow: var(--shadow); font: 13px/1.45 var(--ui); overflow: hidden; }
 .comment-row .c { padding: 8px 12px; display: grid; gap: 2px; }
 .comment-row .c + .c { border-top: 1px solid var(--line); }
@@ -214,6 +244,8 @@ button.mark:hover { background: var(--panel-2); }
 .comment-row .who .pill.res { background: var(--ok-soft); color: var(--ok); }
 .comment-row .who .t { font-weight: 400; }
 .comment-row .who .acts { margin-left: auto; display: flex; gap: 12px; font-weight: 400; font-size: 12px; }
+.comment-row .confirm { display: flex; align-items: center; gap: 12px; }
+.comment-row .confirm .acts { margin-left: auto; display: flex; gap: 12px; font-size: 12px; }
 .comment-row .who .acts button { color: var(--accent); }
 .comment-row .c.reply { padding-left: 28px; background: var(--panel); }
 .comment-row .c.race { color: var(--warn); font-size: 12px; }
@@ -238,6 +270,18 @@ button.mark:hover { background: var(--panel-2); }
 .cm-row .meta b { color: var(--fg); font-weight: 600; }
 .cm-row .body { font-size: 12px; overflow: hidden; display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; }
 .cm-row.resolved .body { color: var(--muted); }
+.cm-sub { position: relative; display: grid; gap: 2px; padding: 4px 12px 6px 36px; border-left: 2px solid var(--warn); margin-left: 22px; }
+.cm-sub .meta { display: flex; gap: 6px; align-items: center; font-size: 12px; color: var(--muted); }
+.cm-sub .meta b { color: var(--fg); font-weight: 600; }
+.cm-sub .body { font-size: 12px; overflow: hidden; display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; }
+.cm-acts { margin-left: auto; display: flex; gap: 8px; }
+div.cm-row { cursor: default; }
+div.cm-row .jump { text-align: left; }
+.cm-acts button { color: var(--accent); font-size: 12px; }
+.pop.cm-edit-pop { position: static; margin-top: 6px; display: grid; gap: 8px; padding: 10px; }
+.pop.cm-edit-pop textarea { width: 100%; min-height: 64px; border: 1px solid var(--accent); border-radius: 6px; padding: 8px; background: var(--win); color: var(--fg); font: inherit; resize: vertical; }
+.pop.cm-edit-pop .actions { display: flex; gap: 8px; align-items: center; justify-content: flex-end; }
+.pop.cm-edit-pop .actions .fineprint { margin-right: auto; }
 .pill.open { background: var(--other-soft); color: var(--other); }
 .pill.res { background: var(--ok-soft); color: var(--ok); }
 .pill.out { background: var(--panel-2); color: var(--muted); }
@@ -299,12 +343,16 @@ button.mark:hover { background: var(--panel-2); }
 
 <div class="scenario">
   <h1>Review Lens prototype</h1>
-  <div class="hint">Click the <b>Review</b> icon on the left stripe, open <b>#147</b>, and start a review. Sample data. In review: <kbd>⌥N</kbd> next file, <kbd>⌥R</kbd> mark viewed, <kbd>⌥D</kbd> diff, <kbd>Esc</kbd> close.</div>
+  <div class="hint">Click the <b>Review</b> icon on the left stripe, open <b>#147</b>, and start a review. Sample data. In review: <kbd>⌥N</kbd> next file, <kbd>⌥R</kbd> mark viewed, <kbd>⌥D</kbd> diff, <kbd>⌥I</kbd> next place to check, <kbd>Esc</kbd> close.</div>
   <div class="controls">
     <label class="chip-btn"><input type="checkbox" id="opt-dirty" checked> Uncommitted work on my branch</label>
     <button class="chip-btn" id="opt-resume">Returning reviewer</button>
     <button class="chip-btn" id="opt-pushed" title="You finished #147 (approved); then 2 commits were pushed">New commits after my review</button>
     <button class="chip-btn" id="opt-race" title="On GitHub, Bob resolves his botocore thread while you review">Bob resolves a thread meanwhile</button>
+    <button class="chip-btn" id="opt-moved" title="You replied to Bob's thread; then a push moved it off its line">My reply's thread moved</button>
+    <button class="chip-btn" id="opt-wide" title="The changed function is used in 8 tests">Impact: widely used</button>
+    <button class="chip-btn" id="opt-slow" title="The search for record_parse passes 3 s and stops">Impact: too many places</button>
+    <button class="chip-btn" id="opt-noimpact" title="The same review in an IDE that can't read Python, such as WebStorm">Impact: IDE without Python</button>
     <button class="chip-btn" id="opt-reset">Reset</button>
   </div>
 </div>
@@ -366,7 +414,8 @@ const FILES = [
     ["c", "orders_parsed = meter.create_counter(\"invoices.orders.parsed\")"],
     ["d", ["parse_failures = meter.create_counter(\"invoices.parse.failures\")"], 4],
     ["a", "invoice_lines_saved = meter.create_counter(", 2], ["a", "    \"invoices.lines.saved\", description=\"Invoice lines written to the bucket\"", 2], ["a", ")", 2],
-    ["c", ""], ["c", ""], ["c", "def record_parse(order_ref: str, ok: bool) -> None:"], ["c", "    orders_parsed.add(1, {\"order_ref\": order_ref, \"ok\": ok})"] ] },
+    ["c", ""], ["c", ""], ["c", "def record_parse(order_ref: str, ok: bool) -> None:"], ["m", "    orders_parsed.add(1, {\"ok\": ok})", "    orders_parsed.add(1, {\"order_ref\": order_ref, \"ok\": ok})", 4],
+    ["d", ["", "", "def record_failure(order_ref: str) -> None:", "    parse_failures.add(1, {\"order_ref\": order_ref})"], 4] ] },
   { path: "src/app/modules/invoices/repositories/invoice_line_repo.py", status: "A", lines: [
     "\"\"\"Persists parsed invoice exports: the raw JSON to the bucket, the rows to Postgres.\"\"\"", "import json", "from datetime import date", "",
     "from sqlalchemy.orm import Session", "", "from app.modules.invoices.export.vocabulary import InvoiceField", "from app.modules.invoices.models import InvoiceLine",
@@ -394,6 +443,20 @@ const FILES = [
     "    def __str__(self) -> str:", "        return f\"{self.domain}/{self.dataset}/v1/{self.as_of:%Y/%m/%d}/{self.name}\"",
   ].map(t => ["a", t, 0]) },
 ];
+// Impact map: the places outside the PR that use a function the scope changed (spec/impact.md). The reference line
+// and the line after it; [hl] marks the reference.
+const IMPACT = { "src/app/modules/invoices/observability.py": [{ name: "record_parse", decl: "def record_parse(", kind: "logic changed", c: 4, groups: [
+  { label: "Code", places: [
+    { id: "api", path: "src/app/modules/invoices/api.py", line: 41, lines: ["    record_parse(order.order_ref, ok=result.ok)", "    return result"] },
+    { id: "job", path: "src/app/jobs/nightly_import.py", line: 88, lines: ["        record_parse(row.order_ref, ok=False)", "        failures += 1"] } ] },
+  { label: "Tests", places: [
+    { id: "test", path: "tests/invoices/test_observability.py", line: 12, lines: ["    record_parse(\"ORD-1\", ok=True)", "    assert counter.value(ok=True) == 1"] } ],
+    wide: 8 } ] },
+  // removed by the PR, still called outside it: no line of its own, so it sits in a strip above line 1
+  { name: "record_failure", removed: true, kind: "removed", c: 4, groups: [
+  { label: "Code", places: [
+    { id: "retry", path: "src/app/jobs/retry_failed.py", line: 23, lines: ["            record_failure(item.order_ref)", "            continue"] } ] },
+  { label: "Tests", places: [] } ] }] };
 const OWN_FILE = { path: "src/app/modules/payments/refunds.py", lines: [
   "\"\"\"Applies refund webhooks to payments; one refund id applies exactly once.\"\"\"", "from decimal import Decimal", "",
   "from app.modules.payments.models import Payment, Refund", "from app.platform.db import session_scope", "", "",
@@ -415,7 +478,7 @@ const THREADS_AT_LOAD = [
     replies: [{ who: "alice", text: "Good catch. I'll keep botocore's and remove ours." }, { who: "bob", text: "👍 Then the docstring's \"and retries\" is still right." }] },
   { id: 2, path: "src/app/modules/invoices/models.py", line: 16, who: "cara", state: "resolved", body: "Is Numeric(12, 2) enough for totals in JPY?",
     replies: [{ who: "alice", text: "Yes, 12 digits covers our largest invoice by three orders of magnitude." }] },
-  { id: 3, path: "src/app/modules/invoices/repositories/invoice_line_repo.py", line: 25, who: "dan", state: "open", body: "int() raises on \"1,200\". The accounting export prints thousands separators.", replies: [] },
+  { id: 3, path: "src/app/modules/invoices/repositories/invoice_line_repo.py", line: 25, who: "dan", state: "open", body: "int() raises on \"1,200\". The accounting export prints thousands separators.\n```suggestion\n                quantity=int(row[InvoiceField.QUANTITY].replace(\",\", \"\")),\n```", replies: [] },
   { id: 4, path: "src/app/modules/invoices/observability.py", line: null, oldLine: 9, who: "bob", state: "outdated", body: "Keep parse_failures until the Grafana board moves to the new counter.", replies: [] },
 ];
 const DIRTY = ["M  src/app/modules/payments/refunds.py", "M  tests/test_refunds.py", "?  notes/refunds.md"];
@@ -425,7 +488,7 @@ const fresh = () => ({
   mode: "normal", tool: "project", panel: "list", pr: 147, scope: "all", picked: new Set(),
   dirty: document.getElementById("opt-dirty").checked, confirm: false, step: 0,
   filesView: "pr", open: OWN_FILE.path, tabs: [OWN_FILE.path], diff: false, caret: null, hunk: null,
-  viewed: {}, since: {}, comments: {}, threads: structuredClone(THREADS_AT_LOAD), replies: {}, replyTo: null, remote: false, cmFilter: "all", jump: null, unfold: {}, draft: null, draftText: "", pop: null, toast: null, flash: false, resume: false, submitted: false, verdict: null,
+  viewed: {}, since: {}, comments: {}, sel: null, threads: structuredClone(THREADS_AT_LOAD), replies: {}, replyTo: null, impactTicks: {}, resolving: {}, postedEdit: null, postedDelete: null, postedWrite: {}, peek: {}, impactWide: false, impactSlow: false, noImpact: false, impactBusy: false, dynNote: null, placeFocus: null, remote: false, cmFilter: "all", jump: null, unfold: {}, draft: null, draftText: "", pop: null, toast: null, flash: false, resume: false, submitted: false, verdict: null,
 });
 let S = fresh();
 
@@ -448,7 +511,7 @@ const prViewed = () => FILES.filter(f => S.viewed[f.path] && !S.since[f.path]).l
 const allViewed = () => prViewed() === FILES.length;
 const started = () => Object.keys(S.viewed).length > 0 || !!S.verdict;
 function allComments() {
-  const mine = Object.entries(S.comments).flatMap(([path, o]) => Object.entries(o).flatMap(([line, list]) => list.map(c => ({ path, line: +line, who: "me", state: c.pending ? "pending" : "posted", body: c.text, replies: [] }))));
+  const mine = Object.entries(S.comments).flatMap(([path, o]) => Object.entries(o).flatMap(([line, list]) => list.map((c, i) => ({ path, line: +line, idx: i, who: "me", state: c.pending ? "pending" : "posted", body: c.text, replies: [] }))));
   return [...S.threads, ...mine];
 }
 const PILL = { open: '<span class="pill open">open</span>', resolved: '<span class="pill res">resolved</span>', outdated: '<span class="pill out">outdated</span>', posted: '<span class="pill mine">on GitHub</span>', pending: '<span class="pill pend">Pending</span>' };
@@ -632,6 +695,20 @@ function reviewFiles() {
   }).join("");
   return head + `<div style="padding:4px 0">${rows}</div>`;
 }
+// Your pending comment in the Comments tab: click the text to jump to it, Edit / Delete from the row.
+function cmPendingRow(t, at) {
+  const key = JSON.stringify({ kind: "comment", path: t.path, line: t.line, i: t.idx });
+  return `<div class="cm-row pending ${S.jump === at ? "sel" : ""}"><i class="dot" style="background:${DOT.pending}"></i><span><span class="meta"><b>You</b>${PILL.pending}<span>line ${t.line}</span>${cmActs(key)}</span>
+    <button class="jump body" data-act="cm-jump" data-path="${esc(t.path)}" data-line="${t.line}">${esc(t.body)}</button>${cmEditor(key)}</span></div>`;
+}
+const cmActs = key => `<span class="cm-acts"><button data-act="cm-edit" data-at='${esc(key)}'>Edit</button><button data-act="cm-del" data-at='${esc(key)}'>Delete</button></span>`;
+const cmEditor = key => S.cmEdit && JSON.stringify(S.cmEdit) === key ? `<div class="pop cm-edit-pop"><textarea id="cm-draft" aria-label="Edit">${esc(S.cmText)}</textarea>
+    <div class="actions"><span class="fineprint"><kbd>⌘↩</kbd> save · <kbd>Esc</kbd> cancel</span><button class="secondary" data-act="cm-cancel">Cancel</button><button class="primary" data-act="cm-save">Save</button></div></div>` : "";
+// A pending reply in the Comments tab, under its thread: editable here whether or not the editor can show it (its thread may have lost its line).
+function cmSub(who, pill, what, text, at) {
+  const key = JSON.stringify(at);
+  return `<div class="cm-sub"><span class="meta"><b>${who}</b><span class="pill pend">${pill}</span><span>${what}</span>${cmActs(key)}</span><span class="body">${esc(text)}</span>${cmEditor(key)}</div>`;
+}
 function commentsList() {
   const replied = t => (S.replies[t.id] || []).length;
   const pass = { all: () => true, open: t => t.state === "open", mine: t => t.who === "me" || replied(t), pending: t => t.state === "pending" || replied(t) }[S.cmFilter];
@@ -640,7 +717,9 @@ function commentsList() {
   const rows = Object.entries(byFile).map(([path, ts]) => `<div class="cm-file" title="${esc(path)}">${esc(path)}</div>` + ts.sort((a, b) => (a.state === "resolved") - (b.state === "resolved")).map(t => {
     const where = t.line ? `line ${t.line}` : `line ${t.oldLine} on an older push`, n = t.replies.length;
     const at = `${esc(t.path)}:${t.line || ""}`;
-    return `<button class="cm-row ${t.state} ${S.jump === at ? "sel" : ""}" data-act="cm-jump" data-path="${esc(t.path)}" data-line="${t.line || ""}"><i class="dot" style="background:${DOT[t.state]}"></i><span><span class="meta"><b>${t.who === "me" ? "You" : person(t.who).name}</b>${PILL[t.state]}<span>${where}</span>${n ? `<span>· ${n} repl${n > 1 ? "ies" : "y"}</span>` : ""}${(S.replies[t.id] || []).length ? '<span class="pill pend">your reply pending</span>' : ""}</span><span class="body">${esc(t.body)}</span></span></button>`;
+    if (t.state === "pending") return cmPendingRow(t, at);
+    return `<button class="cm-row ${t.state} ${S.jump === at ? "sel" : ""}" data-act="cm-jump" data-path="${esc(t.path)}" data-line="${t.line || ""}"><i class="dot" style="background:${DOT[t.state]}"></i><span><span class="meta"><b>${t.who === "me" ? "You" : person(t.who).name}</b>${PILL[t.state]}<span>${where}</span>${n ? `<span>· ${n} repl${n > 1 ? "ies" : "y"}</span>` : ""}${(S.replies[t.id] || []).length ? '<span class="pill pend">your reply pending</span>' : ""}</span><span class="body">${esc(t.body)}</span></span></button>`
+      + (S.replies[t.id] || []).map((text, i) => cmSub("You", "Pending", "reply", text, { kind: "reply", id: t.id, i })).join("");
   }).join("")).join("");
   return `<div class="cm-filters">${filters}</div>${rows || '<p class="fineprint" style="padding:8px 12px">Nothing here.</p>'}`;
 }
@@ -702,35 +781,88 @@ function fileTools(f) {
   return `<div class="file-tools"><span class="crumb">${esc(dir)}<b>${esc(f.path.split("/").pop())}</b></span><div class="seg"><button class="${S.diff ? "" : "on"}" data-act="diff" data-v="0">File</button><button class="${S.diff ? "on" : ""}" data-act="diff" data-v="1" title="⌥D">Diff</button></div>
     <button class="viewed-toggle ${v ? "on" : ""}" data-act="toggle-viewed" data-path="${esc(f.path)}" title="⌥R">${v ? I.check : I.box} Viewed</button></div>`;
 }
+// The impact entries for a declaration on this row, only when the scope changed the function.
+function impactAt(f, r) { return S.noImpact ? null : (IMPACT[f.path] || []).find(fn => !fn.removed && r.text.startsWith(fn.decl) && inScope(fn.c)); }
+const placesUse = (n, removed) => removed ? (n === 1 ? "1 place still uses it" : `${n} places still use it`) : (n === 1 ? "1 place uses this" : `${n} places use this`);
+const impactKey = (f, fn) => `${f.path}#${fn.name}`;
+// The checklist: every group with 5 places or fewer (the impact-wide scenario turns Tests into a summary).
+const listed = fn => fn.groups.filter(g => !(S.impactWide && g.wide)).flatMap(g => g.places);
+function impactChip(f, fn) {
+  if (S.impactBusy) return `<button class="impact-chip busy" disabled>Finding places…</button>`;
+  if (S.impactSlow && !fn.removed) return `<button class="impact-chip" title="The search stopped after 3 s">Many places · <span class="link">Open Find Usages</span></button>`;
+  const key = impactKey(f, fn), ticks = S.impactTicks[key] || [], all = listed(fn), done = all.filter(p => ticks.includes(p.id)).length;
+  const wide = S.impactWide ? fn.groups.filter(g => g.wide).map(g => g.wide).reduce((a, b) => a + b, 0) : 0;
+  const n = all.length + wide, dots = all.map(p => ticks.includes(p.id) ? "●" : "○").join("");
+  // a removed function has no line of its own, so its strip always names it
+  const checked = all.length === 1 ? "1 place checked" : `All ${all.length} places checked`;
+  const text = all.length && done === all.length ? (fn.removed ? `${fn.name} removed · ${checked.toLowerCase()}` : checked)
+    : fn.removed ? `${fn.name} removed · ${placesUse(n, true)}` : `${placesUse(n)} · ${fn.kind}`;
+  return `<button class="impact-chip ${all.length && done === all.length ? "done" : ""}" data-act="impact-toggle" data-key="${esc(key)}" title="Outside this PR · ⌥I next place"><span class="dots">${dots}</span>${text} ${S.peek[key] ? "⌃" : "⌄"}</button>`;
+}
+// The snippet without the indent its lines share, so the code starts at the left edge.
+const dedent = lines => { const n = Math.min(...lines.filter(l => l.trim()).map(l => l.match(/^ */)[0].length)); return lines.map(l => l.slice(n)); };
+function impactPeek(f, fn, top) {
+  const key = impactKey(f, fn), ticks = S.impactTicks[key] || [], all = listed(fn), done = all.filter(p => ticks.includes(p.id)).length;
+  const mark = t => esc(t).replace(fn.name, `<mark>${fn.name}</mark>`);
+  const groups = fn.groups.filter(g => g.places.length || (S.impactWide && g.wide)).map(g => {
+    if (S.impactWide && g.wide) return `<div class="group">${g.label}</div><div class="wide">Widely used: ${g.wide} ${g.label.toLowerCase()}<button>Open Find Usages</button></div>`;
+    return `<div class="group">${g.label}</div>` + g.places.map(p => `<div class="place ${S.placeFocus === p.id ? "focus" : ""}"><input type="checkbox" data-act="impact-tick" data-key="${esc(key)}" data-id="${p.id}" ${ticks.includes(p.id) ? "checked" : ""} aria-label="Checked">
+      <span class="where">${esc(p.path)}:${p.line}<button data-act="impact-open" data-path="${esc(p.path)}" data-line="${p.line}" title="Open, read-only">↗</button></span><pre>${dedent(p.lines).map(mark).join("\n")}</pre></div>`).join("");
+  }).join("");
+  const note = S.dynNote === key ? `<div class="note">Calls made dynamically may not show</div>` : "";
+  return `<div class="impact-peek ${top ? "top" : ""}"><div class="head"><span><b>Outside this PR</b> · ${done} of ${all.length} checked</span><span>⌥I next place</span></div>${groups}${note}</div>`;
+}
+// ⌥I: the next unticked place of the first changed function in this file; its peek opens on it.
+function nextPlace() {
+  const f = file(S.open); if (!f) return;
+  for (const fn of (IMPACT[f.path] || []).filter(x => inScope(x.c) && !S.noImpact && !(S.impactSlow && !x.removed))) {
+    const key = impactKey(f, fn), ticks = S.impactTicks[key] || [], next = listed(fn).find(p => !ticks.includes(p.id));
+    if (next) { S.peek[key] = true; if (S.dynNote == null) S.dynNote = key; S.placeFocus = next.id; return; }
+  }
+  say("Every place is checked", "Nothing left to check in this file.");
+}
 function fileView(f) {
   const rows = rowsOf(f);
   const html = rows.map((r, i) => {
     const no = i + 1, changed = r.kind !== "ctx", cm = (S.comments[f.path] || {})[no] || [];
-    let line = `<div class="ln k-${r.kind} ${S.caret === no ? "caret" : ""}" data-act="caret" data-line="${no}">
+    let line = `<div class="ln k-${r.kind} ${S.caret === no ? "caret" : ""} ${S.sel && no >= S.sel.from && no <= S.sel.to ? "sel" : ""}" data-act="caret" data-line="${no}">
       <span>${changed ? `<button class="plus" data-act="comment" data-line="${no}" title="Comment on line ${no}">${I.plus}</button>` : ""}</span>
       <span class="no">${no}</span><span class="bar">${changed ? `<button data-act="hunk" data-line="${no}" aria-label="Show change"></button>` : ""}${r.delBefore ? `<button class="tri" data-act="hunk" data-line="${no}" aria-label="Show deleted lines" style="background:none;border-radius:0"></button>` : ""}</span>
-      <span class="txt">${hl(r.text, f.path)}${S.caret === no && r.c != null ? blame(r.c) : ""}</span></div>`;
+      <span class="txt">${hl(r.text, f.path)}${impactAt(f, r) ? impactChip(f, impactAt(f, r)) : ""}${S.caret === no && r.c != null ? blame(r.c) : ""}</span></div>`;
     if (S.hunk === no) line += hunkPop(r);
+    const fn = impactAt(f, r); if (fn && S.peek[impactKey(f, fn)] && !S.impactBusy) line += impactPeek(f, fn);
     S.threads.filter(t => t.path === f.path && t.line === no).forEach(t => line += threadBlock(t));
     if (cm.length || (S.draft && S.draft.line === no)) line += commentBlock(f.path, no, cm);
     return line;
   }).join("");
   const gone = S.threads.filter(t => t.path === f.path && !t.line).length;
   const strip = gone ? `<div class="outdated-strip">${I.bubble}<span>${gone > 1 ? `${gone} threads on this file aren't` : "1 thread on this file isn't"} on this version: written on an older push or on removed lines.</span><button data-act="cm-show-outdated">Show in Comments</button></div>` : "";
-  return `${fileTools(f)}${strip}<div class="editor" tabindex="0" id="ed"><div class="code">${html}</div></div>`;
+  // above line 1: "not available" when the IDE can't read the language, else the removed functions still in use
+  const removed = (IMPACT[f.path] || []).filter(fn => fn.removed && inScope(fn.c));
+  const impactTop = S.noImpact ? (f.path.endsWith(".py") ? `<div class="impact-strip muted">Impact not available for Python in this IDE</div>` : "")
+    : removed.map(fn => `<div class="impact-strip">${impactChip(f, fn)}</div>${S.peek[impactKey(f, fn)] && !S.impactBusy ? impactPeek(f, fn, true) : ""}`).join("");
+  return `${fileTools(f)}${strip}${impactTop}<div class="editor" tabindex="0" id="ed"><div class="code">${html}</div></div>`;
 }
 // Someone else's thread as GitHub has it: open threads show the conversation, resolved ones fold to one line until clicked.
+// Resolve / Unresolve go to GitHub at once, as on github.com; shown only when GitHub lets this viewer do it.
+function resolveButton(t) {
+  if (S.resolving[t.id]) return `<button disabled>${t.state === "resolved" ? "Unresolving…" : "Resolving…"}</button>`;
+  if (t.state === "open") return `<button data-act="resolve" data-id="${t.id}" title="Resolves the conversation on GitHub now">Resolve</button>`;
+  if (t.state === "resolved") return `<button data-act="unresolve" data-id="${t.id}" title="Reopens the conversation on GitHub now">Unresolve</button>`;
+  return "";
+}
 function threadBlock(t) {
   const mine = S.replies[t.id] || [];
   const p = person(t.who), open = t.state === "open" || S.unfold[t.id] || mine.length || S.replyTo === t.id;
   if (!open) return `<div class="comment-row done"><button class="folded" data-act="unfold" data-id="${t.id}">${PILL[t.state]}<b>${p.name}</b><span class="txt1">${esc(t.body)}</span><span>${t.replies.length ? `+${t.replies.length}` : ""} ▸</span></button></div>`;
-  const reply = r => `<div class="c reply"><div class="who">${person(r.who).name}</div><div>${esc(r.text)}</div></div>`;
+  const reply = (r, i) => r.who === "me" ? postedComment(`r:${t.id}:${i}`, ME.name, r.text, "Delete this reply on GitHub?", t.path, t.start, t.line)
+    : `<div class="c reply"><div class="who">${person(r.who).name}</div><div>${esc(r.text)}</div></div>`;
   const pending = mine.map((text, i) => `<div class="c reply"><div class="who">${ME.name} <span class="pill pend">Pending</span><span class="acts"><button data-act="reply-edit" data-id="${t.id}" data-i="${i}">Edit</button><button data-act="reply-del" data-id="${t.id}" data-i="${i}">Delete</button></span></div><div>${esc(text)}</div></div>`).join("");
   const raced = t.resolvedMeanwhile && mine.length ? `<div class="c reply race">${person(t.resolvedBy).name} resolved this after you replied. Your reply still posts; the thread stays resolved.</div>` : "";
   const box = S.replyTo === t.id ? `<textarea id="draft" placeholder="Reply to ${p.name}…" aria-label="Reply">${esc(S.draftText)}</textarea>
     <div class="actions"><span class="fineprint">Posted when you finish the review · <kbd>⌘↩</kbd> reply · <kbd>Esc</kbd> cancel</span><button class="secondary" data-act="reply-cancel">Cancel</button><button class="primary" data-act="reply-save">Reply</button></div>`
     : t.state === "open" ? `<div class="reply-row"><button data-act="reply" data-id="${t.id}">Reply…</button></div>` : "";
-  return `<div class="comment-row ${t.state === "open" ? "other" : "done"}"><div class="c"><div class="who">${p.name} ${PILL[t.state]}<span class="acts">${t.state === "resolved" && !mine.length ? `<button data-act="unfold" data-id="${t.id}">Fold</button>` : ""}<button title="Opens the thread on GitHub">Open on GitHub ↗</button></span></div><div>${esc(t.body)}</div></div>${t.replies.map(reply).join("")}${pending}${raced}${box}</div>`;
+  return `<div class="comment-row ${t.state === "open" ? "other" : "done"}"><div class="c"><div class="who">${p.name} ${PILL[t.state]}<span class="acts">${t.state === "resolved" && !mine.length ? `<button data-act="unfold" data-id="${t.id}">Fold</button>` : ""}${resolveButton(t)}<button title="Opens the thread on GitHub">Open on GitHub ↗</button></span></div>${renderBody(t.body, t.path, t.start, t.line)}</div>${t.replies.map(reply).join("")}${pending}${raced}${box}</div>`;
 }
 function blame(ci) {
   const c = COMMITS[ci], p = person(c.who);
@@ -742,10 +874,35 @@ function hunkPop(r) {
     <button class="secondary" data-act="diff" data-v="1" style="padding:1px 8px;font-size:12px">Open diff</button><button class="icon-btn" data-act="hunk" data-line="">${I.x}</button></div>
     ${old ? `<pre>${old.map(esc).join("\n")}</pre>` : '<div class="hp-none">No earlier version: these lines are new.</div>'}</div>`;
 }
+// One of your comments already on GitHub, by its key: Edit and Delete go to GitHub at once (an edit box in place, a delete confirmed in place).
+function postedComment(key, who, text, deleteText, path, start, line) {
+  if (S.postedWrite[key]) return `<div class="c reply"><div class="who">${who} <span class="fineprint">${S.postedWrite[key]}</span></div><div>${esc(text)}</div></div>`;
+  if (S.postedEdit === key) return `<div class="c reply"><div class="who">${who} <span class="fineprint">on GitHub</span></div><textarea id="posted-edit" aria-label="Edit comment">${esc(text)}</textarea>
+    <div class="actions"><span class="fineprint">Saved on GitHub at once · <kbd>⌘↩</kbd> save · <kbd>Esc</kbd> cancel</span><button class="secondary" data-act="posted-cancel">Cancel</button><button class="primary" data-act="posted-save" data-key="${key}">Save</button></div></div>`;
+  const confirm = S.postedDelete === key ? `<div class="c reply race confirm"><span>${deleteText}</span><span class="acts"><button data-act="posted-cancel">Cancel</button><button data-act="posted-delete" data-key="${key}">Delete</button></span></div>` : "";
+  return `<div class="c reply"><div class="who">${who} <span class="fineprint">on GitHub</span><span class="acts"><button data-act="posted-edit" data-key="${key}">Edit</button><button data-act="posted-ask-delete" data-key="${key}">Delete</button></span></div>${renderBody(text, path, start, line)}</div>${confirm}`;
+}
+// GitHub's rule for a comment on several lines: every line within 3 of a line the scope changed.
+function inOneBlock(f, from, to) {
+  const changed = rowsOf(f).map((r, i) => r.kind !== "ctx" ? i + 1 : 0).filter(Boolean);
+  for (let n = from; n <= to; n++) if (!changed.some(c => Math.abs(c - n) <= 3)) return false;
+  return true;
+}
+const span = (start, line) => start ? `lines ${start}–${line}` : `line ${line}`;
+// A comment's text with every ```suggestion block shown as the covered lines removed and the block's lines added.
+function renderBody(text, path, start, line) {
+  const rows = file(path) ? rowsOf(file(path)) : [];
+  return text.split(/```suggestion\n([\s\S]*?)\n?```/).map((part, i) => {
+    if (i % 2 === 0) return part.trim() ? `<div>${esc(part.trim())}</div>` : "";
+    const old = rows.slice((start || line) - 1, line).map(r => r.text);
+    return `<div class="sugg"><div class="h">Suggested change · ${span(start, line)}</div>${old.map(o => `<pre class="del">- ${esc(o)}</pre>`).join("")}${part.split("\n").map(n => `<pre class="add">+ ${esc(n)}</pre>`).join("")}</div>`;
+  }).join("");
+}
 function commentBlock(path, line, list) {
-  const items = list.map(c => `<div class="c"><div class="who">${ME.name} ${c.pending ? '<span class="pill">Pending</span>' : '<span class="fineprint">on GitHub</span>'}</div><div>${esc(c.text)}</div></div>`).join("");
-  const draft = S.draft && S.draft.path === path && S.draft.line === line ? `<textarea id="draft" placeholder="Comment on line ${line}…" aria-label="Comment">${esc(S.draftText)}</textarea>
-    <div class="actions"><span class="fineprint">Posted when you finish the review · <kbd>⌘↩</kbd> add · <kbd>Esc</kbd> cancel</span><button class="secondary" data-act="draft-cancel">Cancel</button><button class="primary" data-act="draft-save">Add comment</button></div>` : "";
+  const items = list.map((c, i) => c.pending ? `<div class="c"><div class="who">${ME.name} <span class="pill">Pending</span>${c.start ? `<span class="fineprint">${span(c.start, line)}</span>` : ""}</div>${renderBody(c.text, path, c.start, line)}</div>`
+    : postedComment(`c:${path}:${line}:${i}`, ME.name, c.text, "Delete this comment on GitHub?", path, c.start, line)).join("");
+  const draft = S.draft && S.draft.path === path && S.draft.line === line ? `<textarea id="draft" placeholder="Comment on ${span(S.draft.start, line)}…" aria-label="Comment">${esc(S.draftText)}</textarea>
+    <div class="actions"><button class="secondary" data-act="suggest" title="Puts the ${S.draft.start ? "lines" : "line"} into a suggestion block to edit: the author commits it from GitHub">Suggest a change</button><span class="fineprint">Posted when you finish the review · <kbd>⌘↩</kbd> add · <kbd>Esc</kbd> cancel</span><button class="secondary" data-act="draft-cancel">Cancel</button><button class="primary" data-act="draft-save">Add comment</button></div>` : "";
   return `<div class="comment-row">${items}${draft}</div>`;
 }
 function diffView(f) {
@@ -813,6 +970,7 @@ function startReview() {
   const tick = () => {
     if (S.step < total) { S.step++; render(); setTimeout(tick, 550); return; }
     S.mode = "review"; S.step = 0; S.tool = "review"; S.tabs = []; S.diff = false;
+    S.impactBusy = true; setTimeout(() => { S.impactBusy = false; keepScroll = true; render(); }, 1200); // the open file's functions are searched first
     // Returning reviewer: 6 files viewed earlier; the 2 new commits touched config.py and observability.py.
     if (S.resume && !started()) {
       ["requirements.txt", "src/app/modules/invoices/export/vocabulary.py", "src/app/modules/invoices/models.py", "src/app/platform/bucket/keys.py",
@@ -859,17 +1017,73 @@ document.getElementById("ide").addEventListener("click", e => {
     case "files-view": S.filesView = t.dataset.v; break;
     case "cm-filter": S.cmFilter = t.dataset.v; break;
     case "cm-jump": S.jump = `${p}:${t.dataset.line}`; openPath(p); S.diff = false; if (t.dataset.line) { S.caret = +t.dataset.line; scrollTo = S.caret; } break;
+    case "cm-edit": { const at = JSON.parse(t.dataset.at); S.cmEdit = at; S.cmText = at.kind === "reply" ? S.replies[at.id][at.i] : S.comments[at.path][at.line][at.i].text; keepScroll = true; break; }
+    case "cm-cancel": S.cmEdit = null; keepScroll = true; break;
+    case "cm-save": {
+      const text = (document.getElementById("cm-draft")?.value || "").trim(), at = S.cmEdit; keepScroll = true;
+      if (!text) break;
+      if (at.kind === "reply") S.replies[at.id][at.i] = text; else S.comments[at.path][at.line][at.i].text = text;
+      S.cmEdit = null; break;
+    }
+    case "cm-del": { const at = JSON.parse(t.dataset.at); keepScroll = true; S.cmEdit = null;
+      const list = at.kind === "reply" ? S.replies[at.id] : S.comments[at.path][at.line]; list.splice(at.i, 1);
+      if (!list.length) { if (at.kind === "reply") delete S.replies[at.id]; else delete S.comments[at.path][at.line]; }
+      break; }
+    case "impact-toggle": { e.stopPropagation(); const k = t.dataset.key; S.peek[k] = !S.peek[k]; if (S.peek[k] && S.dynNote == null) S.dynNote = k; S.placeFocus = null; keepScroll = true; break; }
+    case "impact-tick": { e.stopPropagation(); const k = t.dataset.key, list = (S.impactTicks[k] ||= []), i = list.indexOf(t.dataset.id); i < 0 ? list.push(t.dataset.id) : list.splice(i, 1); keepScroll = true; break; }
+    case "impact-open": e.stopPropagation(); openPath(p); S.caret = +t.dataset.line; break;
     case "cm-show-outdated": S.filesView = "comments"; S.cmFilter = "all"; break;
+    case "resolve": case "unresolve": {
+      e.stopPropagation(); keepScroll = true;
+      const id = +t.dataset.id, th = S.threads.find(x => x.id === id), to = t.dataset.act === "resolve" ? "resolved" : "open";
+      S.resolving[id] = true;
+      // the call goes to GitHub; the card then shows what GitHub answered (threads are read again)
+      setTimeout(() => { delete S.resolving[id]; th.state = to; th.resolvedBy = to === "resolved" ? "me" : null; S.unfold[id] = false; keepScroll = true; render(); }, 700);
+      break;
+    }
     case "unfold": e.stopPropagation(); S.unfold[t.dataset.id] = !S.unfold[t.dataset.id]; keepScroll = true; break;
     case "diff": S.diff = t.dataset.v === "1"; S.hunk = null; break;
-    case "caret": if (e.target.closest(".blame,.plus,.bar button")) return; S.caret = +t.dataset.line; keepScroll = true; break;
+    case "caret": if (e.target.closest(".blame,.plus,.bar button")) return;
+      // shift-click selects lines from the caret, as in the IDE; a "+" inside the selection comments on all of them
+      S.sel = e.shiftKey && S.caret ? { from: Math.min(S.caret, +t.dataset.line), to: Math.max(S.caret, +t.dataset.line) } : null;
+      if (!e.shiftKey) S.caret = +t.dataset.line; keepScroll = true; break;
     case "hunk": e.stopPropagation(); S.hunk = t.dataset.line ? (S.hunk === +t.dataset.line ? null : +t.dataset.line) : null; keepScroll = true; break;
-    case "comment": e.stopPropagation(); S.draft = { path: S.open, line: +t.dataset.line }; S.replyTo = null; S.draftText = ""; keepScroll = true; break;
+    case "comment": {
+      e.stopPropagation(); keepScroll = true; S.replyTo = null; S.draftText = "";
+      const line = +t.dataset.line, sel = S.sel && line >= S.sel.from && line <= S.sel.to ? S.sel : null;
+      if (sel && !inOneBlock(file(S.open), sel.from, sel.to)) say("Commenting on line " + line, "GitHub takes a comment on several lines only inside one block of the diff: changed lines and the 3 around them.");
+      S.draft = sel && inOneBlock(file(S.open), sel.from, sel.to) ? { path: S.open, start: sel.from, line: sel.to } : { path: S.open, line };
+      S.sel = null; break;
+    }
+    case "suggest": {
+      e.stopPropagation(); keepScroll = true;
+      const ta = document.getElementById("draft"), rows = rowsOf(file(S.open)), d = S.draft;
+      const old = rows.slice((d.start || d.line) - 1, d.line).map(r => r.text).join("\n");
+      S.draftText = (ta ? ta.value : S.draftText).replace(/\s*$/, "") + (ta && ta.value.trim() ? "\n" : "") + "```suggestion\n" + old + "\n```";
+      break;
+    }
     case "draft-cancel": S.draft = null; keepScroll = true; break;
+    case "posted-edit": e.stopPropagation(); S.postedEdit = t.dataset.key; S.postedDelete = null; keepScroll = true; break;
+    case "posted-ask-delete": e.stopPropagation(); S.postedDelete = t.dataset.key; S.postedEdit = null; keepScroll = true; break;
+    case "posted-cancel": e.stopPropagation(); S.postedEdit = S.postedDelete = null; keepScroll = true; break;
+    case "posted-save": case "posted-delete": {
+      e.stopPropagation(); keepScroll = true;
+      const key = t.dataset.key, del = t.dataset.act === "posted-delete", text = (document.getElementById("posted-edit")?.value || "").trim();
+      if (!del && !text) break;
+      S.postedWrite[key] = del ? "Deleting…" : "Saving…"; S.postedEdit = S.postedDelete = null;
+      // the call goes to GitHub; the card then shows what GitHub answered (threads are read again)
+      setTimeout(() => {
+        delete S.postedWrite[key]; const [kind, a, b, c] = key.split(":");
+        if (kind === "c") { const list = S.comments[a][+b]; if (del) list.splice(+c, 1); else list[+c].text = text; }
+        else { const list = S.threads.find(x => x.id === +a).replies; if (del) list.splice(+b, 1); else list[+b].text = text; }
+        keepScroll = true; render();
+      }, 700);
+      break;
+    }
     case "draft-save": {
       const text = (document.getElementById("draft")?.value || "").trim(); keepScroll = true;
       if (!text) break;
-      const m = (S.comments[S.draft.path] ||= {}); (m[S.draft.line] ||= []).push({ text, pending: true }); S.draft = null; break;
+      const m = (S.comments[S.draft.path] ||= {}); (m[S.draft.line] ||= []).push({ text, pending: true, start: S.draft.start }); S.draft = null; break;
     }
     case "next": nextUnviewed(1); break;
     case "prev": nextUnviewed(-1); break;
@@ -905,13 +1119,15 @@ document.getElementById("ide").addEventListener("click", e => {
   }
   render();
 });
-document.getElementById("ide").addEventListener("input", e => { if (e.target.id === "draft") { S.draftText = e.target.value; grow(e.target); } });
+document.getElementById("ide").addEventListener("input", e => { if (e.target.id === "draft") { S.draftText = e.target.value; grow(e.target); } if (e.target.id === "cm-draft") S.cmText = e.target.value; });
 document.addEventListener("keydown", e => {
-  if (e.key === "Escape") { S.pop = null; S.hunk = null; S.draft = null; S.replyTo = null; render(); return; }
+  if (e.key === "Escape") { S.pop = null; S.hunk = null; S.draft = null; S.replyTo = null; S.cmEdit = null; render(); return; }
+  if (e.target.id === "cm-draft" && e.key === "Enter" && (e.metaKey || e.ctrlKey)) { e.preventDefault(); document.querySelector('[data-act="cm-save"]')?.click(); return; }
   if (e.target.id === "draft" && e.key === "Enter" && (e.metaKey || e.ctrlKey)) { e.preventDefault(); document.querySelector('[data-act="draft-save"], [data-act="reply-save"]')?.click(); return; }
   if (S.mode !== "review" || e.target.matches("textarea, input")) return;
   if (e.altKey && e.code === "KeyN") { e.preventDefault(); nextUnviewed(); render(); return; }
   if (e.altKey && e.code === "KeyR" && file(S.open)) { e.preventDefault(); toggleViewed(S.open); render(); return; }
+  if (e.altKey && e.code === "KeyI" && file(S.open)) { e.preventDefault(); nextPlace(); keepScroll = true; render(); return; }
   if (e.altKey && e.code === "KeyD" && file(S.open)) { e.preventDefault(); S.diff = !S.diff; render(); return; }
   if (e.target.id === "ed" && e.key.length === 1 && !e.metaKey && !e.ctrlKey) {
     e.preventDefault(); S.flash = true; keepScroll = true; render(); clearTimeout(flashTimer);
@@ -920,6 +1136,15 @@ document.addEventListener("keydown", e => {
 });
 document.getElementById("opt-dirty").addEventListener("change", e => { S.dirty = e.target.checked; render(); });
 document.getElementById("opt-reset").addEventListener("click", () => { S = fresh(); render(); });
+document.getElementById("opt-wide").addEventListener("click", () => { S.impactWide = !S.impactWide; render(); });
+document.getElementById("opt-slow").addEventListener("click", () => { S.impactSlow = !S.impactSlow; render(); });
+document.getElementById("opt-noimpact").addEventListener("click", () => { S.noImpact = !S.noImpact; render(); });
+document.getElementById("opt-moved").addEventListener("click", () => {
+  S.replies[4] = ["Agreed, I'll keep parse_failures until the board moves."];
+  if (S.mode === "review") { S.tool = "review"; S.filesView = "comments"; S.cmFilter = "all"; }
+  say("A push moved Bob's thread", "Your reply still posts with the review. Edit or delete it from the Comments tab.");
+  render();
+});
 document.getElementById("opt-pushed").addEventListener("click", () => {
   S = fresh(); FILES.forEach(f => S.viewed[f.path] = true); S.verdict = "approved"; S.submitted = true; S.pushed = true;
   S.tool = "review"; S.panel = "list"; S.scope = "since"; S.picked = new Set([3, 4]); // the detail offers what's new, chosen

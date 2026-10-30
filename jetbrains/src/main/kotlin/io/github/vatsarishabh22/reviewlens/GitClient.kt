@@ -5,12 +5,15 @@ import java.nio.file.Path
 /** Git operations on the repository checked out at [root]. */
 class GitClient(val root: Path) {
 
-    /** Fetches PR [number] into a private ref plus its [base] branch; returns the PR's head ref. */
-    fun fetchPr(number: Int, base: String): String {
-        val ref = "refs/review-lens/pr-$number"
-        git("fetch", "--no-tags", REMOTE, "+pull/$number/head:$ref", "+refs/heads/$base:refs/remotes/$REMOTE/$base")
+    /** Fetches a review's [head] (the host's refspec source) into `refs/review-lens/<key>`, plus its [base] branch; returns that ref. */
+    fun fetchReview(head: String, key: String, base: String): String {
+        val ref = "refs/review-lens/$key"
+        git("fetch", "--no-tags", REMOTE, "+$head:$ref", "+refs/heads/$base:refs/remotes/$REMOTE/$base")
         return ref
     }
+
+    /** `origin`'s URL, or null when there is no `origin`. */
+    fun originUrl(): String? = runCatching { git("remote", "get-url", REMOTE) }.getOrNull()?.ifBlank { null }
 
     fun fetchAll() = git("fetch", "--no-tags", REMOTE)
 
@@ -39,6 +42,10 @@ class GitClient(val root: Path) {
 
     fun blame(rev: String, path: String): Blame = parseBlame(git("blame", "--porcelain", rev, "--", path))
 
+    /** Every file's changed lines in [range], for the impact map; paths unquoted, so a non-ASCII name reads as itself. */
+    fun changedLines(range: ScopeRange): Map<String, LineChanges> = parseChangedLines(
+        runCli(root, "git", "-c", "core.quotePath=false", "diff", "-U0", "--no-color", "--no-ext-diff", "--no-prefix", "-M", range.from, range.to, trim = false))
+
     /** File content at [rev], or "" when the file does not exist there (added files have no base). */
     fun show(rev: String, path: String): String = runCatching { runCli(root, "git", "show", "$rev:$path", trim = false) }.getOrDefault("")
 
@@ -52,19 +59,36 @@ class GitClient(val root: Path) {
     fun currentRef(): String = runCatching { git("symbolic-ref", "--short", "-q", "HEAD") }.getOrNull()?.ifBlank { null } ?: git("rev-parse", "HEAD")
 
     /** Tracked changes and untracked files as `git status --short` lines (`M  app.py`), ignoring the IDE's own `.idea/`. */
+    /** The reviewer's work: tracked changes (`.idea/` included) and untracked files, except the IDE's untracked scratch in `.idea/`. */
     fun dirtyFiles(): List<String> =
-        runCli(root, "git", "status", "--porcelain", "--", ".", NOT_IDE, trim = false).lines().filter { it.isNotBlank() }
+        runCli(root, "git", "status", "--porcelain", trim = false).lines().filter { it.isNotBlank() && !it.startsWith("?? $IDE_DIR/") && it != "?? $IDE_DIR" }
 
     fun isDirty(): Boolean = dirtyFiles().isNotEmpty()
+
+    /**
+     * Tracked files changed here (staged or not) that also differ between HEAD and [target]: exactly what makes
+     * `git checkout <target>` refuse. Other changes, a file the IDE just staged for one, are carried across untouched.
+     */
+    fun blockingCheckout(target: String): List<String> {
+        val changed = git("diff", "--name-only", "HEAD").lines().filter { it.isNotBlank() }
+        if (changed.isEmpty()) return changed
+        val moving = git("diff", "--name-only", "HEAD", target).lines().toSet()
+        return changed.filter { it in moving }
+    }
 
     /** Every tracked path at HEAD, for the panel's whole-project view. */
     fun trackedFiles(): List<String> = git("ls-files").lines().filter { it.isNotBlank() }
 
     /**
-     * Stashes the reviewer's work, untracked files included, under [message] so it can be found again by name.
-     * `.idea/` stays put: the open IDE keeps writing to it, which would stop the stash from re-applying.
+     * Stashes the reviewer's work, untracked files included, under [message] so it can be found again by name. Tracked
+     * files in `.idea/` go too: teams commit them and a PR can change them. The IDE's untracked scratch there stays put:
+     * the open IDE keeps rewriting it, which would stop the stash from re-applying.
      */
-    fun stash(message: String) = git("stash", "push", "--include-untracked", "-m", message, "--", ".", NOT_IDE)
+    fun stash(message: String) = git("stash", "push", "--include-untracked", "-m", message, "--", ".",
+        *git("ls-files", "--others", "--exclude-standard", "-z", "--", IDE_DIR).split('\u0000').filter { it.isNotEmpty() }.map { ":(exclude,literal)$it" }.toTypedArray())
+
+    /** Stashes the changes to [paths] only, under [message]; for what was written during a review, which isn't the reviewer's work. */
+    fun stashPaths(message: String, paths: List<String>) = git("stash", "push", "-m", message, "--", *paths.map { ":(literal)$it" }.toTypedArray())
 
     /**
      * Pops the stash saved under [message]. Returns false and keeps the stash when it does not apply cleanly,
@@ -90,9 +114,9 @@ class GitClient(val root: Path) {
     companion object {
         // ponytail: assumes the GitHub remote is "origin"; make it a setting when a fork-based repo needs another.
         const val REMOTE = "origin"
-        // A glob, not ":(exclude).idea": stash re-runs `git add` with the pathspec, and git add refuses a pathspec that
-        // names an ignored path exactly, which a repo ignoring `.idea` while tracking files in it hits (stash saved, tree not cleaned).
-        private const val NOT_IDE = ":(exclude,glob).ide[a]/**"
+        // The IDE's settings folder. Only its untracked files are left out of a park; an ignored `.idea` (the plugin
+        // template's shape) lists none, so no exclude ever names an ignored path, which git add would refuse.
+        private const val IDE_DIR = ".idea"
 
         /**
          * The repo root in the IDE's own spelling of the path. `--show-toplevel` resolves symlinks (macOS /tmp is

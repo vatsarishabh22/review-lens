@@ -42,5 +42,5 @@ class GitClientTest {
 
     @Test
     fun `without GitHub the list says it shows branches, even when there are none`() =
-        assertEquals(Listing(emptyList(), branchesOnly = true), ReviewTargets(GitClient(real)).list())
+        assertEquals(Listing(emptyList(), branchesOnly = true, "your code host"), ReviewTargets(GitClient(real)).list())
 }

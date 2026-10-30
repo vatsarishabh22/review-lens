@@ -12,6 +12,7 @@ import javax.swing.JEditorPane
 import java.awt.event.MouseAdapter
 import java.awt.event.MouseEvent
 import com.intellij.openapi.Disposable
+import com.intellij.notification.NotificationType
 import com.intellij.openapi.actionSystem.AnAction
 import com.intellij.openapi.components.Service
 import com.intellij.openapi.components.service
@@ -30,14 +31,15 @@ import com.intellij.openapi.editor.impl.EditorEmbeddedComponentManager
 import com.intellij.openapi.editor.markup.GutterIconRenderer
 import com.intellij.openapi.editor.markup.HighlighterLayer
 import com.intellij.openapi.editor.markup.RangeHighlighter
+import com.intellij.openapi.editor.colors.EditorFontType
 import com.intellij.openapi.fileEditor.FileDocumentManager
+import com.intellij.openapi.util.TextRange
 import com.intellij.openapi.project.DumbAwareAction
 import com.intellij.openapi.project.Project
 import com.intellij.openapi.util.Disposer
 import com.intellij.ui.RoundedLineBorder
 import com.intellij.ui.components.ActionLink
 import com.intellij.ui.components.JBLabel
-import com.intellij.openapi.fileTypes.PlainTextFileType
 import com.intellij.openapi.wm.IdeFocusManager
 import com.intellij.openapi.wm.ToolWindowManager
 import com.intellij.util.ui.UIUtil
@@ -67,18 +69,21 @@ import javax.swing.SwingUtilities
  */
 @Service(Service.Level.PROJECT)
 class CommentInlays(private val project: Project) : Disposable {
+    private val host get() = ReviewService.of(project).hostName
 
     /**
      * The open comment box; its field outlives re-renders so typing survives a refresh. An EditorTextField (a small
      * editor of its own), not a text area: Enter and Backspace then act on it, never on the read-only file around it.
      */
-    private class Box(val change: FileChange, val line: Int, val text: EditorTextField, val editing: Draft? = null, val thread: ReviewThread? = null)
+    private class Box(val change: FileChange, val line: Int, val text: EditorTextField, val editing: Draft? = null, val thread: ReviewThread? = null, val posted: ThreadComment? = null, val startLine: Int? = null)
 
     private var box: Box? = null
     private val plus = HashMap<Editor, RangeHighlighter>()
     private val blocks = HashMap<Editor, List<Inlay<*>>>()
     /** What each editor's blocks were built from: a refresh that changes none of it (a tick, a sync) leaves them, and the box's focus, alone. */
     private val shown = HashMap<Editor, Any>()
+    /** The posted comment whose Delete is waiting for "Delete" in its card. */
+    private var confirming: String? = null
     /** Resolved threads the reviewer unfolded, by URL. */
     private val unfolded = HashSet<String>()
 
@@ -94,6 +99,7 @@ class CommentInlays(private val project: Project) : Disposable {
             }
         }, this)
         ReviewService.of(project).onChanged(this) { editors().forEach(::render) }
+        HostThreads.of(project).onChanged(this) { editors().forEach(::render) }
     }
 
     private fun editors() = EditorFactory.getInstance().allEditors.filter { it.project == project && it.editorKind == EditorKind.MAIN_EDITOR }
@@ -101,7 +107,7 @@ class CommentInlays(private val project: Project) : Disposable {
     /** The PR file [editor] shows, when it is one this review changed; branch reviews have nowhere to post. */
     private fun changeIn(editor: Editor): FileChange? {
         val service = ReviewService.of(project)
-        if (editor.project != project || editor.editorKind != EditorKind.MAIN_EDITOR || service.meta?.target?.prNumber == null) return null
+        if (editor.project != project || editor.editorKind != EditorKind.MAIN_EDITOR || service.meta?.target?.reviewable != true) return null
         return FileDocumentManager.getInstance().getFile(editor.document)?.let(service::changeFor)
     }
 
@@ -115,30 +121,60 @@ class CommentInlays(private val project: Project) : Disposable {
         plus.remove(editor)
         if (target == null) return
         plus[editor] = editor.markupModel.addLineHighlighter(target, HighlighterLayer.LAST, null).apply {
-            gutterIconRenderer = PlusRenderer(target + 1) { open(editor, target + 1) }
+            gutterIconRenderer = PlusRenderer(target + 1) { comment(editor, target + 1) }
         }
     }
 
-    /** Opens the comment box under [line] (1-based), or inside [thread]'s card as a reply, empty or holding the pending [editing] draft; one box at a time. */
-    private fun open(editor: Editor, line: Int, editing: Draft? = null, thread: ReviewThread? = null) {
+    /**
+     * Opens the comment box under [line] (1-based), or inside [thread]'s card as a reply, empty or holding the pending
+     * [editing] draft, or in place of your [posted] comment to edit it on GitHub; [text] when it reopens after a refusal. One box at a time.
+     */
+    private fun open(editor: Editor, line: Int, editing: Draft? = null, thread: ReviewThread? = null, posted: ThreadComment? = null, text: String? = null, startLine: Int? = null) {
         val change = changeIn(editor) ?: return
         if (box?.text?.text?.isNotBlank() == true) return backToBox()
-        val document = EditorFactory.getInstance().createDocument(editing?.body.orEmpty())
-        val field = EditorTextField(document, project, PlainTextFileType.INSTANCE, false, false).apply {
-            setPlaceholder(thread?.let { "Reply to ${it.comments[0].author}…" } ?: "Comment on line $line…")
-            setShowPlaceholderWhenFocused(true)
-            // wraps like prose: no wrap arrows, no hanging indent
-            addSettingsProvider { it.settings.isUseSoftWraps = true; it.settings.isPaintSoftWraps = false; it.settings.isUseCustomSoftWrapIndent = true; it.settings.customSoftWrapIndent = 0; it.setBorder(JBUI.Borders.empty(8, 10))
-                it.setVerticalScrollbarVisible(true) } // past MAX_BOX the text scrolls instead of disappearing
-            preferredSize = Dimension(WIDTH, MIN_BOX)
+        val placeholder = when {
+            posted != null -> "Edit your comment…"
+            thread != null -> "Reply to ${thread.comments[0].author}…"
+            else -> "Comment on ${span(startLine ?: editing?.startLine, line)}…"
         }
+        val field = commentField(project, text ?: editing?.body ?: posted?.body.orEmpty(), placeholder, WIDTH)
         DumbAwareAction.create { save() }.registerCustomShortcutSet(CommonShortcuts.getCtrlEnter(), field)
         DumbAwareAction.create { close() }.registerCustomShortcutSet(CommonShortcuts.ESCAPE, field)
         field.addDocumentListener(object : DocumentListener { override fun documentChanged(event: DocumentEvent) = grow(field) })
-        box = Box(change, line, field, editing, thread)
+        box = Box(change, line, field, editing, thread, posted, startLine)
         editors().forEach(::render)
         SwingUtilities.invokeLater { grow(field) } // an edited draft opens at its full height
         box?.text?.let { SwingUtilities.invokeLater { IdeFocusManager.getInstance(project).requestFocus(it, true) } }
+    }
+
+    /**
+     * The "+" on [line]: a comment on the selected lines when the selection covers several and [line] is one of them,
+     * else on [line]. GitHub takes several lines only inside one block of the diff, so a selection beyond it falls back to
+     * [line] and says why.
+     */
+    private fun comment(editor: Editor, line: Int) {
+        val lines = selectedLines(editor)?.takeIf { line in it && it.first < it.last } ?: return open(editor, line)
+        val file = FileDocumentManager.getInstance().getFile(editor.document) ?: return open(editor, line)
+        val changed = ReviewGutter.of(project).changedLines(file).map { it + 1 }.toSet()
+        if (!inOneDiffBlock(changed, lines.first, lines.last)) {
+            notify(project, "Commenting on line $line", "GitHub takes a comment on several lines only inside one block of the diff: changed lines and the 3 around them.")
+            return open(editor, line)
+        }
+        open(editor, lines.last, startLine = lines.first)
+    }
+
+    /** The lines (1-based) the editor's selection covers; a selection ending at a line's start doesn't take that line. */
+    private fun selectedLines(editor: Editor): IntRange? {
+        val selection = editor.selectionModel.takeIf { it.hasSelection() } ?: return null
+        val document = editor.document
+        val end = selection.selectionEnd.let { if (it > selection.selectionStart && document.getLineStartOffset(document.getLineNumber(it)) == it) it - 1 else it }
+        return document.getLineNumber(selection.selectionStart) + 1..document.getLineNumber(end) + 1
+    }
+
+    /** Lines [from]..[to] (1-based) of [change] as the open editor shows them: what a suggestion replaces. */
+    private fun linesOf(change: FileChange, from: Int, to: Int): List<String> {
+        val document = editors().firstOrNull { changeIn(it)?.path == change.path }?.document ?: return emptyList()
+        return (from..to).filter { it in 1..document.lineCount }.map { document.getText(TextRange(document.getLineStartOffset(it - 1), document.getLineEndOffset(it - 1))) }
     }
 
     /** One box at a time, never by throwing away what is typed in it: show the open box again, focused, and say why. */
@@ -166,17 +202,18 @@ class CommentInlays(private val project: Project) : Disposable {
         box = null
         val comments = ReviewDrafts.of(project)
         when {
+            open.posted != null -> HostThreads.of(project).edit(open.posted, body) { refused(it, "Couldn't save the edit"); reopen(open, body) }
             open.editing != null -> comments.edit(open.editing, body)
             open.thread != null -> comments.reply(open.change, open.line, open.thread, body)
-            else -> comments.add(open.change, open.line, body)
+            else -> comments.add(open.change, open.line, body, open.startLine)
         }
     }
 
-    /** The box grows with its text from [MIN_BOX] to [MAX_BOX], then scrolls; the embedded block is resized so the line below moves with it. */
+    /** The box grows with its text from [COMMENT_BOX_MIN] to [MAX_BOX], then scrolls; the embedded block is resized so the line below moves with it. */
     private fun grow(field: EditorTextField) {
         val editor = field.editor ?: return
         val lines = editor.offsetToVisualPosition(editor.document.textLength).line + 1
-        val height = (lines * editor.lineHeight + JBUI.scale(16)).coerceIn(MIN_BOX, MAX_BOX)
+        val height = (lines * editor.lineHeight + JBUI.scale(16)).coerceIn(COMMENT_BOX_MIN, MAX_BOX)
         if (field.preferredSize.height == height) return
         field.preferredSize = Dimension(WIDTH, height)
         var block: Component = field
@@ -195,12 +232,12 @@ class CommentInlays(private val project: Project) : Disposable {
             return
         }
         val drafts = ReviewDrafts.of(project).on(change).groupBy { it.line }
-        val threads = ReviewService.of(project).threadsOn(change)
+        val threads = HostThreads.of(project).threadsOn(change, ReviewService.of(project).meta?.range?.to)
         val placed = threads.mapNotNull { (thread, line) -> line?.let { it to thread } }.groupBy({ it.first }, { it.second })
         val listedOnly = threads.count { it.second == null }
         val open = box?.takeIf { it.change.path == change.path }
         val replies = placed.values.flatten().associate { it.id to ReviewDrafts.of(project).repliesTo(it) }
-        val key = listOf(change, drafts, placed, replies, listedOnly, open, unfolded.toSet(), editor.document.lineCount)
+        val key = listOf(change, drafts, placed, replies, listedOnly, open, unfolded.toSet(), HostThreads.of(project).pending, confirming, editor.document.lineCount)
         if (shown[editor] == key && editor in blocks) return
         shown[editor] = key
         blocks.remove(editor)?.forEach(Disposer::dispose)
@@ -234,14 +271,14 @@ class CommentInlays(private val project: Project) : Disposable {
         val drafts = ReviewDrafts.of(project)
         val mine = drafts.repliesTo(thread)
         val look = CommentLook.of(thread.state)
-        fun author(i: Int) = if (i == 0 && thread.mine) "You" else thread.comments[i].author
+        fun author(i: Int) = if (i == 0 && thread.mine || thread.comments[i].mine) "You" else thread.comments[i].author
         fun bold(text: String) = JBLabel(text).apply { font = JBFont.label().asBold(); foreground = ReviewColors.editorText }
         val card = if (thread.resolved && thread.url !in unfolded && mine.isEmpty()) {
             val more = thread.comments.size - 1
             JPanel(BorderLayout(JBUI.scale(8), 0)).apply {
                 border = JBUI.Borders.empty(6, 12)
                 isOpaque = false
-                add(row(Pill(look.label, look.fill, look.fg), bold(author(0))), BorderLayout.WEST)
+                add(row(Pill(look.label(host), look.fill, look.fg), bold(author(0))), BorderLayout.WEST)
                 add(mutedLabel(previewLine(thread.comments[0].body)))
                 add(mutedLabel(if (more > 0) "+$more ▸" else "▸"), BorderLayout.EAST)
                 cursor = Cursor.getPredefinedCursor(Cursor.HAND_CURSOR)
@@ -251,14 +288,21 @@ class CommentInlays(private val project: Project) : Disposable {
         } else {
             val head = JPanel(BorderLayout()).apply {
                 isOpaque = false
-                add(row(bold(author(0)), Pill(look.label, look.fill, look.fg)), BorderLayout.WEST)
+                add(row(bold(author(0)), Pill(look.label(host), look.fill, look.fg)), BorderLayout.WEST)
                 add(row(*listOfNotNull(
                     ActionLink("Fold") { unfolded -= thread.url; editors().forEach(::render) }.takeIf { thread.resolved && mine.isEmpty() },
-                    ActionLink("Open on GitHub ↗") { BrowserUtil.browse(thread.url) },
+                    *postedLinks(editor, line, thread, thread.comments[0], open).toTypedArray(),
+                    resolveLink(thread),
+                    ActionLink("Open on $host ↗") { BrowserUtil.browse(thread.url) },
                 ).onEach { it.font = JBFont.small() }.toTypedArray(), gap = 12), BorderLayout.EAST)
             }
             val replies = thread.comments.drop(1).mapIndexed { i, reply ->
-                stack(bold(author(i + 1)), vgap(2), markdown(reply.body, JBUI.scale(40))).apply {
+                val who = JPanel(BorderLayout()).apply {
+                    isOpaque = false
+                    add(bold(author(i + 1)), BorderLayout.WEST)
+                    add(row(*postedLinks(editor, line, thread, reply, open).toTypedArray(), gap = 12), BorderLayout.EAST)
+                }
+                stack(who, vgap(2), postedBody(editor, thread, line, reply, open, JBUI.scale(40)), *listOfNotNull(confirmRow(thread, reply)).toTypedArray()).apply {
                     isOpaque = true; background = ReviewColors.surface
                     border = JBUI.Borders.compound(JBUI.Borders.customLineTop(ReviewColors.line), JBUI.Borders.empty(6, 28, 6, 12))
                 }
@@ -270,23 +314,24 @@ class CommentInlays(private val project: Project) : Disposable {
             val pending = mine.filter { it != open?.editing }.map { draft ->
                 indented(stack(JPanel(BorderLayout()).apply {
                     isOpaque = false
-                    add(row(bold("You"), CommentLook.PENDING.let { Pill(it.label, it.fill, it.fg) }), BorderLayout.WEST)
+                    add(row(bold("You"), CommentLook.PENDING.let { Pill(it.label(host), it.fill, it.fg) }), BorderLayout.WEST)
                     add(row(ActionLink("Edit") { open(editor, line, draft, thread) }, ActionLink("Delete") { drafts.delete(draft) }).apply {
                         components.filterIsInstance<ActionLink>().forEach { it.font = JBFont.small() }
                     }, BorderLayout.EAST)
                 }, vgap(2), text(draft.body).apply { foreground = ReviewColors.editorText }))
             }
-            // Reply is offered only on open threads, so a reply waiting on a resolved one means it was resolved since
-            val raced = (thread.resolved && mine.isNotEmpty()).takeIf { it }?.let {
+            // Reply is offered only on open threads, so a reply waiting on one someone else resolved means they did it since
+            val raced = (thread.resolvedByOther && mine.isNotEmpty()).takeIf { it }?.let {
                 indented(wrappingText("${thread.resolvedBy ?: "Someone"} resolved this after you replied. Your reply still posts; the thread stays resolved.", JBFont.small())
                     .apply { foreground = ReviewColors.warn; setSize(WIDTH - JBUI.scale(40), Short.MAX_VALUE.toInt()) })
             }
             val tail = when {
-                open != null -> boxPanel(open, "Reply").apply { border = JBUI.Borders.customLineTop(ReviewColors.line) }
+                open != null && open.posted == null -> boxPanel(open, "Reply").apply { border = JBUI.Borders.customLineTop(ReviewColors.line) }
                 thread.state == ThreadState.OPEN -> replyBar { open(editor, line, null, thread) }
                 else -> null
             }
-            stack(stack(head, vgap(2), markdown(thread.comments[0].body, JBUI.scale(24))).apply { border = JBUI.Borders.empty(8, 12) },
+            stack(stack(head, vgap(2), postedBody(editor, thread, line, thread.comments[0], open, JBUI.scale(24)), *listOfNotNull(confirmRow(thread, thread.comments[0])).toTypedArray())
+                .apply { border = JBUI.Borders.empty(8, 12) },
                 *replies.toTypedArray(), *pending.toTypedArray(), *listOfNotNull(raced, tail).toTypedArray())
         }
         return card.apply {
@@ -294,6 +339,88 @@ class CommentInlays(private val project: Project) : Disposable {
             background = ReviewColors.editorBackground
             border = JBUI.Borders.compound(RoundedLineBorder(ReviewColors.line, JBUI.scale(8)), JBUI.Borders.customLine(look.stripe, 0, 3, 0, 0), border)
         }
+    }
+
+    /** Edit and Delete on a comment GitHub lets you change; "Saving…" / "Deleting…" while it goes; nothing while it's in the box. */
+    private fun postedLinks(editor: Editor, line: Int, thread: ReviewThread, comment: ThreadComment, open: Box?): List<JComponent> {
+        HostThreads.of(project).pending[comment.id]?.let { return listOf(mutedLabel(it)) }
+        if (open?.posted?.id == comment.id) return emptyList()
+        return listOfNotNull(
+            ActionLink("Edit") { open(editor, line, thread = thread, posted = comment) }.takeIf { comment.canEdit },
+            ActionLink("Delete") { confirming = comment.id; editors().forEach(::render) }.takeIf { comment.canDelete },
+        ).onEach { it.font = JBFont.small() }
+    }
+
+    /** A comment's text, or the box editing it. */
+    private fun postedBody(editor: Editor, thread: ReviewThread, line: Int, comment: ThreadComment, open: Box?, inset: Int): JComponent =
+        if (open?.posted?.id == comment.id) boxPanel(open, "Save") else commentBody(editor, comment.body, thread.startLine, line, inset)
+
+    /**
+     * A comment's body: its text, and each suggestion as the lines it covers ([startLine]..[line] of this file) removed and
+     * the suggested ones added. [plain] for your drafts, written as plain text.
+     */
+    private fun commentBody(editor: Editor, body: String, startLine: Int?, line: Int, inset: Int, plain: Boolean = false): JComponent {
+        fun prose(text: String): JComponent = if (plain) text(text).apply { foreground = ReviewColors.editorText } else markdown(text, inset)
+        val parts = bodyParts(body)
+        if (parts.none { it is BodyPart.Suggestion }) return prose(body)
+        val document = editor.document
+        val old = ((startLine ?: line)..line).filter { it in 1..document.lineCount }
+            .map { document.getText(TextRange(document.getLineStartOffset(it - 1), document.getLineEndOffset(it - 1))) }
+        return stack(*parts.flatMapIndexed { i, part ->
+            val shown = when (part) {
+                is BodyPart.Text -> prose(part.markdown)
+                is BodyPart.Suggestion -> suggestion(editor, old, part.lines, span(startLine, line))
+            }
+            if (i == 0) listOf(shown) else listOf(vgap(6), shown)
+        }.toTypedArray())
+    }
+
+    /** "Suggested change · lines 24–26", then the [old] lines struck out and the [new] ones added, in the editor's font. */
+    private fun suggestion(editor: Editor, old: List<String>, new: List<String>, where: String): JComponent {
+        val font = editor.colorsScheme.getFont(EditorFontType.PLAIN).deriveFont(JBUI.scaleFontSize(12f).toFloat())
+        fun line(sign: String, text: String, fill: java.awt.Color) = JBLabel("$sign $text").apply {
+            this.font = font; foreground = ReviewColors.editorText; isOpaque = true; background = fill; border = JBUI.Borders.empty(0, 8)
+            maximumSize = Dimension(Int.MAX_VALUE, preferredSize.height) // the colour spans the card, not just the text
+        }
+        val head = mutedLabel("Suggested change · $where").apply {
+            isOpaque = true; background = ReviewColors.surface
+            border = JBUI.Borders.compound(JBUI.Borders.customLineBottom(ReviewColors.line), JBUI.Borders.empty(3, 8))
+        }
+        return stack(head, *old.map { line("-", it, ReviewColors.delSoft) }.toTypedArray(), *new.map { line("+", it, ReviewColors.addSoft) }.toTypedArray()).apply {
+            border = RoundedLineBorder(ReviewColors.line, JBUI.scale(6))
+        }
+    }
+
+    /** "Delete … on <host>?" with Cancel and Delete, under the comment whose Delete was clicked. */
+    private fun confirmRow(thread: ReviewThread, comment: ThreadComment): JComponent? {
+        if (confirming != comment.id) return null
+        // measured on GitHub: deleting a thread's first comment leaves its replies, so the question promises no more than this one
+        val question = if (thread.comments.firstOrNull()?.id == comment.id) "Delete this comment on $host?" else "Delete this reply on $host?"
+        return JPanel(BorderLayout()).apply {
+            isOpaque = false; border = JBUI.Borders.emptyTop(6)
+            add(JBLabel(question).apply { foreground = ReviewColors.warn; font = JBFont.small() }, BorderLayout.WEST)
+            add(row(ActionLink("Cancel") { confirming = null; editors().forEach(::render) }, ActionLink("Delete") {
+                confirming = null
+                HostThreads.of(project).delete(comment) { refused(it, "Couldn't delete the comment") }
+            }, gap = 12).apply { components.filterIsInstance<ActionLink>().forEach { it.font = JBFont.small() } }, BorderLayout.EAST)
+        }
+    }
+
+    /** Resolve on an open thread, Unresolve on a resolved one, when GitHub lets this viewer; "Resolving…" while it goes. */
+    private fun resolveLink(thread: ReviewThread): JComponent? {
+        HostThreads.of(project).pending[thread.id]?.let { return mutedLabel(it) }
+        val resolve = !thread.resolved
+        if (if (resolve) !thread.canResolve else !thread.canUnresolve) return null
+        return ActionLink(if (resolve) "Resolve" else "Unresolve") { HostThreads.of(project).resolve(thread, resolve) { refused(it, if (resolve) "Couldn't resolve the thread" else "Couldn't reopen the thread") } }
+            .apply { toolTipText = if (resolve) "Resolves the conversation on $host now" else "Reopens the conversation on $host now" }
+    }
+
+    private fun refused(error: Throwable, title: String) = notify(project, title, error.message ?: "$host didn't answer", NotificationType.WARNING)
+
+    /** A refused edit reopens its box with the text, so nothing typed is lost. */
+    private fun reopen(was: Box, body: String) {
+        val editor = editors().firstOrNull { changeIn(it)?.path == was.change.path } ?: return
+        open(editor, was.line, thread = was.thread, posted = was.posted, text = body)
     }
 
     /** A comment body as GitHub renders it (markdown, links open in the browser), sized to the card's width less [inset]. */
@@ -326,16 +453,17 @@ class CommentInlays(private val project: Project) : Disposable {
         if (drafts.isEmpty() && open == null) return null
         val comments = ReviewDrafts.of(project)
         val parts = drafts.filter { it != open?.editing }.map { draft -> // the draft being edited shows as the box instead
-            val state = if (draft.posted) mutedLabel(CommentLook.POSTED.label) else CommentLook.PENDING.let { Pill(it.label, it.fill, it.fg) }
+            val state = if (draft.posted) mutedLabel(CommentLook.POSTED.label(host)) else CommentLook.PENDING.let { Pill(it.label(host), it.fill, it.fg) }
             val who = JPanel(BorderLayout()).apply {
                 isOpaque = false
-                add(row(JBLabel("You").apply { font = JBFont.label().asBold(); foreground = ReviewColors.editorText }, state), BorderLayout.WEST)
+                add(row(*listOfNotNull(JBLabel("You").apply { font = JBFont.label().asBold(); foreground = ReviewColors.editorText }, state,
+                    draft.startLine?.let { mutedLabel(span(it, draft.line)) }).toTypedArray()), BorderLayout.WEST)
                 if (!draft.posted) add(row(
                     ActionLink("Edit") { open(editor, line, draft) }.apply { font = JBFont.small() },
                     ActionLink("Delete") { comments.delete(draft) }.apply { font = JBFont.small() },
                 ), BorderLayout.EAST)
             }
-            stack(who, vgap(2), text(draft.body).apply { foreground = ReviewColors.editorText }).apply { border = JBUI.Borders.empty(8, 12) }
+            stack(who, vgap(2), commentBody(editor, draft.body, draft.startLine, line, JBUI.scale(24), plain = true)).apply { border = JBUI.Borders.empty(8, 12) }
         }.toMutableList<JComponent>()
         if (open != null) parts += boxPanel(open, "Add comment")
         parts.drop(1).forEach { it.border = JBUI.Borders.compound(JBUI.Borders.customLineTop(ReviewColors.line), it.border) }
@@ -349,17 +477,29 @@ class CommentInlays(private val project: Project) : Disposable {
 
     /** The open box with Cancel and [verb] (Save when editing), and the keys that do the same. */
     private fun boxPanel(open: Box, verb: String): JComponent {
-        val add = JButton(if (open.editing != null) "Save" else verb).apply {
+        val add = JButton(if (open.editing != null || open.posted != null) "Save" else verb).apply {
             putClientProperty(DarculaButtonUI.DEFAULT_STYLE_KEY, true)
             addActionListener { save() }
         }
         val cancel = JButton("Cancel").apply { addActionListener { close() } }
-        listOf(add, cancel).forEach { it.cursor = Cursor.getPredefinedCursor(Cursor.HAND_CURSOR) }
+        // a suggestion for the lines this comment covers: the author commits it from GitHub (replies and posted edits have no lines of their own here)
+        val suggest = if (open.thread != null || open.posted != null) null else JButton("Suggest a change").apply {
+            val first = open.startLine ?: open.editing?.startLine ?: open.line
+            toolTipText = "Puts ${span(first.takeIf { it != open.line }, open.line)} into a suggestion block to edit; the author commits it from $host"
+            addActionListener {
+                val typed = open.text.text.trimEnd()
+                open.text.text = (if (typed.isEmpty()) "" else "$typed\n") + suggestionBlock(linesOf(open.change, first, open.line))
+                IdeFocusManager.getInstance(project).requestFocus(open.text, true)
+            }
+        }
+        listOfNotNull(add, cancel, suggest).forEach { it.cursor = Cursor.getPredefinedCursor(Cursor.HAND_CURSOR) }
         val actions = JPanel(BorderLayout(JBUI.scale(8), 0)).apply {
             background = ReviewColors.surface
             border = JBUI.Borders.compound(JBUI.Borders.customLineTop(ReviewColors.line), JBUI.Borders.empty(6, 10))
-            add(mutedLabel("Posted when you finish the review · ${KeymapUtil.getShortcutsText(CommonShortcuts.getCtrlEnter().shortcuts)} ${verb.lowercase().substringBefore(' ')} · Esc cancel"))
+            // an edit of a posted comment goes to GitHub at once; everything else waits for Finish review
+            add(mutedLabel("${if (open.posted != null) "Saved on $host at once" else "Posted when you finish the review"} · ${KeymapUtil.getShortcutsText(CommonShortcuts.getCtrlEnter().shortcuts)} ${verb.lowercase().substringBefore(' ')} · Esc cancel"))
             add(row(cancel, add, gap = 8), BorderLayout.EAST)
+            suggest?.let { add(it, BorderLayout.WEST) }
         }
         return JPanel(BorderLayout()).apply { isOpaque = false; add(open.text); add(actions, BorderLayout.SOUTH) }
     }
@@ -396,7 +536,6 @@ class CommentInlays(private val project: Project) : Disposable {
 
     companion object {
         private val WIDTH get() = JBUI.scale(620)
-        private val MIN_BOX get() = JBUI.scale(64)
         private val MAX_BOX get() = JBUI.scale(260)
 
         private val PLUS: Icon = object : Icon {

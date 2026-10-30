@@ -20,7 +20,7 @@
   <!-- when VS Code ships, turn its badge green -->
 </p>
 
-<p align="center"><img src="docs/images/demo.gif" alt="Review Lens in under 30 seconds: pick a PR, your work is parked, reply to a thread, tick each file, approve, and you're back on your branch with your work restored"></p>
+<p align="center"><img src="docs/images/demo.gif" alt="Review Lens in 40 seconds: pick a PR, your work is parked, see who else uses the changed function, suggest a fix on two lines, resolve a thread, tick each file, approve, and you're back on your branch with your work restored"></p>
 
 ## Why
 
@@ -43,7 +43,9 @@ flowchart LR
 - **Your work stays safe.** Uncommitted changes are parked and come back exactly on Exit.
 - **Read the change in context.** Full files, changes marked in the gutter, a diff one click away.
 - **Track progress.** ⭐ not viewed · ✅ viewed · 🔄 changed since viewed, synced with GitHub.
-- **See the whole conversation.** Everyone's GitHub comments sit under their lines, and the Comments tab lists them all. Reply in place.
+- **See who else uses what changed.** Each changed function shows the places outside the PR that use it, as code you can read and tick off. Python, Java and Kotlin.
+- **See the whole conversation.** Everyone's GitHub comments sit under their lines, and the Comments tab lists them all. Reply, resolve, or edit your own comments in place.
+- **Suggest the fix.** Comment on several lines, or propose replacement lines the author applies from GitHub.
 - **Comment, then post once.** Comments, replies, summary and verdict go to GitHub as a single review, or mark it reviewed without posting.
 - **See what's done.** Reviewed PRs turn green in the list with their verdict: ✓ Reviewed · approved.
 - **Review only what's new.** Someone pushed after your review? The PR shows 🔄 New commits, and one click reviews only those.

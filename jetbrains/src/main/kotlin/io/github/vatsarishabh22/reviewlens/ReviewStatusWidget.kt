@@ -43,7 +43,7 @@ class ReviewStatusWidget(private val project: Project) : CustomStatusBarWidget {
     private fun refresh() {
         val meta = service.meta
         pill.isVisible = meta != null
-        if (meta != null) pill.text = "Reviewing ${meta.target.prNumber?.let { "#$it" } ?: meta.target.label} · ${service.reviewedCount()} of ${service.changes.size} viewed"
+        if (meta != null) pill.text = "Reviewing ${meta.target.ref ?: meta.target.label} · ${service.reviewedCount()} of ${service.changes.size} viewed"
     }
 
     override fun dispose() = Unit

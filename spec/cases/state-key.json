@@ -1,0 +1,41 @@
+{
+  "rule": "state-key",
+  "about": "The state file's key: `pr-<number>`, or `branch-<name>` without `origin/` and with anything outside [A-Za-z0-9._-] as `_`, so no branch can name another state file.",
+  "cases": [
+    {
+      "name": "a PR",
+      "given": {
+        "pr": 7
+      },
+      "expect": "pr-7"
+    },
+    {
+      "name": "a branch named active can't overwrite the review in progress",
+      "given": {
+        "branch": "origin/active"
+      },
+      "expect": "branch-active"
+    },
+    {
+      "name": "a branch named like a PR doesn't share that PR's state",
+      "given": {
+        "branch": "origin/pr-7"
+      },
+      "expect": "branch-pr-7"
+    },
+    {
+      "name": "branch keys keep only file-safe characters",
+      "given": {
+        "branch": "origin/feat/csv export"
+      },
+      "expect": "branch-feat_csv_export"
+    },
+    {
+      "name": "a hyphen is file-safe",
+      "given": {
+        "branch": "origin/feat/csv-export"
+      },
+      "expect": "branch-feat_csv-export"
+    }
+  ]
+}

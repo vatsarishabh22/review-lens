@@ -1,0 +1,62 @@
+{
+  "rule": "since-last-review",
+  "about": "The commits pushed after `seenHead`, offered only when it is still in the PR's history and newer commits exist; null otherwise.",
+  "cases": [
+    {
+      "name": "covers only the commits pushed after the last review",
+      "given": {
+        "head": "h3",
+        "commits": [
+          "h3",
+          "h2",
+          "h1"
+        ],
+        "seenHead": "h1"
+      },
+      "expect": {
+        "from": "h1",
+        "to": "h3",
+        "label": "Since your last review (2)"
+      }
+    },
+    {
+      "name": "nothing new",
+      "given": {
+        "head": "h3",
+        "commits": [
+          "h3",
+          "h2",
+          "h1"
+        ],
+        "seenHead": "h3"
+      },
+      "expect": null
+    },
+    {
+      "name": "never reviewed",
+      "given": {
+        "head": "h3",
+        "commits": [
+          "h3",
+          "h2",
+          "h1"
+        ],
+        "seenHead": null
+      },
+      "expect": null
+    },
+    {
+      "name": "a force-push rewrote the reviewed head",
+      "given": {
+        "head": "h3",
+        "commits": [
+          "h3",
+          "h2",
+          "h1"
+        ],
+        "seenHead": "gone-after-force-push"
+      },
+      "expect": null
+    }
+  ]
+}

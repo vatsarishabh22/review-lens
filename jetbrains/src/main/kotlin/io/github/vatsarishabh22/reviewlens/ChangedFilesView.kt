@@ -1,12 +1,20 @@
 package io.github.vatsarishabh22.reviewlens
 
 import com.intellij.icons.AllIcons
+import com.intellij.ide.ui.laf.darcula.ui.DarculaButtonUI
+import com.intellij.openapi.actionSystem.CommonShortcuts
+import com.intellij.openapi.keymap.KeymapUtil
+import com.intellij.openapi.project.DumbAwareAction
+import com.intellij.openapi.ui.popup.JBPopup
+import com.intellij.openapi.ui.popup.JBPopupFactory
+import com.intellij.ui.awt.RelativePoint
 import com.intellij.openapi.Disposable
 import com.intellij.openapi.fileEditor.FileEditorManagerEvent
 import com.intellij.openapi.fileEditor.FileEditorManagerListener
 import com.intellij.openapi.fileTypes.FileTypeManager
 import com.intellij.openapi.project.Project
 import com.intellij.ui.ColoredTreeCellRenderer
+import com.intellij.ui.RoundedLineBorder
 import com.intellij.ui.RowIcon
 import com.intellij.ui.ScrollPaneFactory
 import com.intellij.ui.SimpleTextAttributes
@@ -23,19 +31,28 @@ import java.awt.BorderLayout
 import java.awt.CardLayout
 import java.awt.Color
 import java.awt.Component
+import java.awt.Container
+import java.awt.Cursor
+import java.awt.Dimension
+import java.awt.Point
+import java.awt.Rectangle
 import java.awt.Graphics
 import java.awt.Graphics2D
 import java.awt.RenderingHints
 import java.awt.Font
 import java.awt.event.MouseAdapter
 import java.awt.event.MouseEvent
+import java.awt.event.MouseMotionAdapter
 import java.awt.font.TextAttribute
 import javax.swing.DefaultListModel
 import javax.swing.Icon
+import javax.swing.JButton
+import javax.swing.JComponent
 import javax.swing.JList
 import javax.swing.JPanel
 import javax.swing.JTree
 import javax.swing.ListCellRenderer
+import javax.swing.SwingUtilities
 import javax.swing.tree.DefaultMutableTreeNode
 import javax.swing.tree.DefaultTreeModel
 import javax.swing.tree.TreePath
@@ -50,20 +67,14 @@ private sealed interface FileRow {
 private enum class Pane(val label: String) { FILES("Changed files"), PROJECT("Whole project"), COMMENTS("Comments") }
 
 
-/** One thread or draft in the Comments tab; [line] is where clicking it goes, null when the version shown has no such line. */
-private data class Remark(val path: String, val line: Int?, val who: String, val kind: CommentLook, val where: String, val replies: Int, val body: String, val mine: Boolean, val pendingReplies: Int = 0)
-
-/** The Comments tab's filter: each one keeps its own rows. */
-private enum class Filter(val label: String, val keeps: (Remark) -> Boolean) {
-    ALL("All", { true }),
-    OPEN("Open", { it.kind == CommentLook.OPEN }),
-    MINE("Mine", { it.mine || it.pendingReplies > 0 }),
-    PENDING("Pending", { it.kind == CommentLook.PENDING || it.pendingReplies > 0 }),
-}
+private const val EDIT = "Edit"
+private const val DELETE = "Delete"
 
 private sealed interface RemarkRow {
     data class File(val path: String) : RemarkRow
     data class Item(val remark: Remark) : RemarkRow
+    /** Your pending reply, under the thread it answers. */
+    data class Reply(val draft: Draft) : RemarkRow
 }
 
 /**
@@ -87,7 +98,7 @@ class ChangedFilesView(private val project: Project, parent: Disposable) : JPane
     private val cards = CardLayout()
     private val body = JPanel(cards)
     private var pane = Pane.FILES
-    private var filter = Filter.ALL
+    private var filter = RemarkFilter.ALL
     private lateinit var tabs: SegmentedButton<Pane>
     private var syncing = false
 
@@ -101,8 +112,8 @@ class ChangedFilesView(private val project: Project, parent: Disposable) : JPane
         }.apply { isOpaque = false }
         val filters = panel {
             row {
-                segmentedButton(Filter.entries) { text = it.label }
-                    .apply { selectedItem = Filter.ALL }
+                segmentedButton(RemarkFilter.entries) { text = it.label }
+                    .apply { selectedItem = RemarkFilter.ALL }
                     .whenItemSelected { filter = it; fillRemarks() }
             }
         }.apply { isOpaque = false; border = JBUI.Borders.empty(6, 12, 0, 12) }
@@ -122,8 +133,20 @@ class ChangedFilesView(private val project: Project, parent: Disposable) : JPane
         remarkList.addMouseListener(object : MouseAdapter() {
             override fun mouseClicked(e: MouseEvent) {
                 val index = remarkList.locationToIndex(e.point).takeIf { it >= 0 && remarkList.getCellBounds(it, it).contains(e.point) } ?: return
-                val remark = (remarkModel[index] as? RemarkRow.Item)?.remark ?: return
-                openPath(project, remark.path, line = remark.line)
+                val row = remarkModel[index]
+                val draft = (row as? RemarkRow.Item)?.remark?.draft ?: (row as? RemarkRow.Reply)?.draft
+                when (draft?.let { linkAt(index, e.point) }) {
+                    EDIT -> editDraft(draft, remarkList.getCellBounds(index, index))
+                    DELETE -> ReviewDrafts.of(project).delete(draft)
+                    else -> (row as? RemarkRow.Item)?.remark?.let { openPath(project, it.path, line = it.line) }
+                }
+            }
+        })
+        remarkList.addMouseMotionListener(object : MouseMotionAdapter() {
+            override fun mouseMoved(e: MouseEvent) {
+                val index = remarkList.locationToIndex(e.point)
+                val over = index >= 0 && remarkList.getCellBounds(index, index).contains(e.point) && linkAt(index, e.point) != null
+                remarkList.cursor = Cursor.getPredefinedCursor(if (over) Cursor.HAND_CURSOR else Cursor.DEFAULT_CURSOR)
             }
         })
 
@@ -149,15 +172,50 @@ class ChangedFilesView(private val project: Project, parent: Disposable) : JPane
         })
     }
 
+    /** The Edit or Delete link under [point] in row [index], found by laying out the row as the renderer draws it. */
+    private fun linkAt(index: Int, point: Point): String? {
+        val bounds = remarkList.getCellBounds(index, index) ?: return null
+        val cell = remarkList.cellRenderer.getListCellRendererComponent(remarkList, remarkModel[index], index, false, false)
+        cell.setBounds(0, 0, bounds.width, bounds.height)
+        fun layout(c: Component) { if (c is Container) { c.doLayout(); c.components.forEach(::layout) } }
+        layout(cell)
+        return SwingUtilities.getDeepestComponentAt(cell, point.x - bounds.x, point.y - bounds.y)?.name?.takeIf { it == EDIT || it == DELETE }
+    }
+
+    /** The editor's comment box, in a popup under the row: ⌘↩ saves, Esc cancels; a click elsewhere keeps what is typed. */
+    private fun editDraft(draft: Draft, cell: Rectangle) {
+        val field = commentField(project, draft.body, "Edit your comment…", (cell.width - JBUI.scale(24)).coerceAtLeast(JBUI.scale(260)))
+        field.preferredSize = Dimension(field.preferredSize.width, COMMENT_BOX_MIN * 2)
+        var popup: JBPopup? = null
+        fun save() {
+            val body = field.text.trim().takeIf { it.isNotEmpty() } ?: return
+            popup?.cancel()
+            ReviewDrafts.of(project).edit(draft, body)
+        }
+        DumbAwareAction.create { save() }.registerCustomShortcutSet(CommonShortcuts.getCtrlEnter(), field)
+        val saveButton = JButton("Save").apply { putClientProperty(DarculaButtonUI.DEFAULT_STYLE_KEY, true); addActionListener { save() } }
+        val cancel = JButton("Cancel").apply { addActionListener { popup?.cancel() } }
+        val actions = JPanel(BorderLayout(JBUI.scale(8), 0)).apply {
+            isOpaque = false
+            add(mutedLabel("${KeymapUtil.getShortcutsText(CommonShortcuts.getCtrlEnter().shortcuts)} save · Esc cancel"))
+            add(row(cancel, saveButton, gap = 8), BorderLayout.EAST)
+        }
+        val framed = JPanel(BorderLayout()).apply { border = RoundedLineBorder(ReviewColors.accent, JBUI.scale(6)); add(field) } // the editor box's outline
+        val content = JPanel(BorderLayout(0, JBUI.scale(8))).apply { border = JBUI.Borders.empty(10); add(framed); add(actions, BorderLayout.SOUTH) }
+        popup = JBPopupFactory.getInstance().createComponentPopupBuilder(content, field)
+            .setRequestFocus(true).setFocusable(true).setCancelKeyEnabled(true).setCancelOnClickOutside(false).createPopup()
+        popup.show(RelativePoint(remarkList, Point(cell.x + JBUI.scale(12), cell.y + cell.height)))
+    }
+
     fun refresh() {
         val meta = service.meta ?: return
-        val pr = meta.target.prNumber?.let { "#$it " }.orEmpty()
+        val pr = meta.target.ref?.let { "$it " }.orEmpty()
         title.text = pr + meta.target.label.removePrefix(pr)
         val total = service.changes.size
         val done = service.reviewedCount()
         strip.fraction = if (total == 0) 0.0 else done.toDouble() / total
         viewedText.text = "$done of $total files viewed · ${meta.scopeLabel}"
-        syncText.text = service.sync.text
+        syncText.text = HostViewed.of(project).status.text(service.hostName)
 
         val selected = (list.selectedValue as? FileRow.File)?.change?.path
         model.clear()
@@ -173,7 +231,7 @@ class ChangedFilesView(private val project: Project, parent: Disposable) : JPane
 
     /** Opens the Comments tab with every thread listed, for the editor's "Show in Comments". */
     fun showComments() {
-        filter = Filter.ALL
+        filter = RemarkFilter.ALL
         tabs.selectedItem = Pane.COMMENTS
         fillRemarks()
     }
@@ -184,20 +242,7 @@ class ChangedFilesView(private val project: Project, parent: Disposable) : JPane
     }
 
     /** Everyone's threads and your drafts, by file in path order; within a file open before resolved, then by line. */
-    private fun remarks(): List<Remark> {
-        val end = service.meta?.range?.to ?: return emptyList()
-        val blobs = service.changes.associate { it.path to it.newBlob }
-        val threads = service.threads.orEmpty().map { thread ->
-            Remark(thread.path, thread.lineAt(end), if (thread.mine) "You" else thread.comments[0].author, CommentLook.of(thread.state), thread.where, thread.comments.size - 1,
-                thread.comments[0].body, thread.mine, ReviewDrafts.of(project).repliesTo(thread).size)
-        }
-        val drafts = ReviewDrafts.of(project).mine().map { draft ->
-            val current = blobs[draft.path] == draft.blob
-            Remark(draft.path, draft.line.takeIf { current }, "You", if (draft.posted) CommentLook.POSTED else CommentLook.PENDING,
-                "line ${draft.line}" + if (current) "" else " of an earlier version", 0, draft.body, true)
-        }
-        return (threads + drafts).sortedWith(compareBy({ it.path }, { it.kind == CommentLook.RESOLVED }, { it.line ?: Int.MAX_VALUE }))
-    }
+    private fun remarks(): List<Remark> = remarks(HostThreads.of(project).threads, service.meta?.drafts.orEmpty(), service.changes, service.meta?.range?.to, service.hostName)
 
     private fun remarkCount() = remarks().size
 
@@ -205,11 +250,11 @@ class ChangedFilesView(private val project: Project, parent: Disposable) : JPane
         remarkModel.clear()
         remarks().filter(filter.keeps).groupBy { it.path }.forEach { (path, items) ->
             remarkModel.addElement(RemarkRow.File(path))
-            items.forEach { remarkModel.addElement(RemarkRow.Item(it)) }
+            items.forEach { remark -> remarkModel.addElement(RemarkRow.Item(remark)); remark.pending.forEach { remarkModel.addElement(RemarkRow.Reply(it)) } }
         }
-        val pr = service.meta?.target?.prNumber != null
+        val pr = service.meta?.target?.reviewable == true
         remarkNote.text = when {
-            pr && service.threads == null -> "Couldn't load comments from GitHub · showing only yours"
+            pr && HostThreads.of(project).threads == null -> "Couldn't load comments from ${service.hostName} · showing only yours"
             remarkModel.isEmpty -> "Nothing here."
             else -> ""
         }
@@ -261,7 +306,7 @@ class ChangedFilesView(private val project: Project, parent: Disposable) : JPane
                         name.foreground = ReviewColors.muted
                         name.font = name.font.deriveFont(mapOf(TextAttribute.STRIKETHROUGH to TextAttribute.STRIKETHROUGH_ON))
                     }
-                    val comments = ReviewDrafts.of(project).on(change).size + service.threadsOn(change).size
+                    val comments = ReviewDrafts.of(project).on(change).size + HostThreads.of(project).threadsOn(change, service.meta?.range?.to).size
                     val counts = if (change.added == null) mutedLabel("binary") else row(
                         *listOfNotNull(JBLabel("$comments", AllIcons.General.Balloon, JBLabel.LEFT).apply { foreground = ReviewColors.muted; iconTextGap = JBUI.scale(3) }
                             .takeIf { comments > 0 }).toTypedArray(),
@@ -295,16 +340,27 @@ class ChangedFilesView(private val project: Project, parent: Disposable) : JPane
                     val remark = value.remark
                     cell.border = JBUI.Borders.empty(5, 18, 5, 10)
                     val replies = if (remark.replies > 0) " · ${remark.replies} repl${if (remark.replies > 1) "ies" else "y"}" else ""
-                    val meta = row(JBLabel(remark.who).apply { font = JBFont.label().asBold() }, Pill(remark.kind.label, remark.kind.fill, remark.kind.fg),
+                    val meta = row(JBLabel(remark.who).apply { font = JBFont.label().asBold() }, CommentLook.of(remark.kind).let { Pill(it.label(service.hostName), it.fill, it.fg) },
                         mutedLabel(remark.where + replies),
-                        *listOfNotNull(Pill("your reply pending", ReviewColors.review, ReviewColors.reviewFg).takeIf { remark.pendingReplies > 0 }).toTypedArray(), gap = 6)
-                    val body = JBLabel(previewLine(remark.body)).apply { if (remark.kind == CommentLook.RESOLVED) foreground = ReviewColors.muted }
-                    cell.add(JBLabel(Dot(remark.kind.fg)).apply { verticalAlignment = JBLabel.TOP; border = JBUI.Borders.emptyTop(4) }, BorderLayout.WEST)
-                    cell.add(stack(meta, vgap(2), body))
+                        *listOfNotNull(Pill("your reply pending", ReviewColors.review, ReviewColors.reviewFg).takeIf { remark.pending.isNotEmpty() }).toTypedArray(), gap = 6)
+                    val body = JBLabel(previewLine(remark.body)).apply { if (remark.kind == RemarkKind.RESOLVED) foreground = ReviewColors.muted }
+                    cell.add(JBLabel(Dot(CommentLook.of(remark.kind).fg)).apply { verticalAlignment = JBLabel.TOP; border = JBUI.Borders.emptyTop(4) }, BorderLayout.WEST)
+                    cell.add(stack(if (remark.draft != null) withLinks(meta) else meta, vgap(2), body))
+                }
+                is RemarkRow.Reply -> {
+                    cell.border = JBUI.Borders.compound(JBUI.Borders.emptyLeft(22), JBUI.Borders.customLine(ReviewColors.warn, 0, 2, 0, 0), JBUI.Borders.empty(4, 12, 6, 10))
+                    val meta = row(JBLabel("You").apply { font = JBFont.label().asBold() }, CommentLook.PENDING.let { Pill(it.label(service.hostName), it.fill, it.fg) }, mutedLabel("reply"), gap = 6)
+                    cell.add(stack(withLinks(meta), vgap(2), JBLabel(previewLine(value.draft.body))))
                 }
             }
             return cell
         }
+    }
+
+    /** [meta] with Edit and Delete at its right, named so a click can tell them apart ([linkAt]). */
+    private fun withLinks(meta: JComponent): JComponent {
+        fun link(text: String) = JBLabel(text).apply { name = text; foreground = JBUI.CurrentTheme.Link.Foreground.ENABLED; font = JBFont.small() }
+        return JPanel(BorderLayout()).apply { isOpaque = false; add(meta); add(row(link(EDIT), link(DELETE), gap = 8), BorderLayout.EAST) }
     }
 
     /** The coloured dot before a row in the Comments tab. */

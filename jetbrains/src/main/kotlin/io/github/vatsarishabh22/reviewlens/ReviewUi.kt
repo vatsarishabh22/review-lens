@@ -1,6 +1,10 @@
 package io.github.vatsarishabh22.reviewlens
 
+import com.intellij.openapi.editor.EditorFactory
 import com.intellij.openapi.editor.colors.EditorColorsManager
+import com.intellij.openapi.fileTypes.PlainTextFileType
+import com.intellij.openapi.project.Project
+import com.intellij.ui.EditorTextField
 import com.intellij.ui.JBColor
 import com.intellij.ui.components.JBLabel
 import com.intellij.ui.components.JBTextArea
@@ -44,6 +48,9 @@ object ReviewColors {
     /** The "✓ Reviewed" pill behind [ok] text. */
     val okSoft = JBColor(0xe3f3e5, 0x253a28)
     val star = JBColor(0xe5a50a, 0xf2c55c)
+    /** A suggested change's removed and added lines, as the prototype's diff colours. */
+    val delSoft = JBColor(0xfbe9e9, 0x402629)
+    val addSoft = JBColor(0xe9f5e6, 0x253a28)
     /** Someone else's open review thread. */
     val other = JBColor(0x7a5af5, 0xa78bfa)
     val otherSoft = JBColor(0xefeaff, 0x2e2747)
@@ -164,17 +171,23 @@ class ProgressStrip : JComponent() {
 
 /**
  * How a comment reads wherever it is drawn (its card in the editor, its row in the Comments tab): someone's thread by
- * its GitHub state, or one of your drafts. The one place a state gets its words and colours.
+ * its state on the host, or one of your drafts. The one place a state gets its words and colours.
  */
-enum class CommentLook(val label: String, val fill: Color, val fg: Color, val stripe: Color) {
+enum class CommentLook(private val words: String, val fill: Color, val fg: Color, val stripe: Color) {
     OPEN("open", ReviewColors.otherSoft, ReviewColors.other, ReviewColors.other),
     RESOLVED("resolved", ReviewColors.okSoft, ReviewColors.ok, ReviewColors.ok),
     OUTDATED("outdated", ReviewColors.chip, ReviewColors.muted, ReviewColors.line),
-    POSTED("on GitHub", ReviewColors.accentSoft, ReviewColors.accent, ReviewColors.accent),
+    POSTED("on %s", ReviewColors.accentSoft, ReviewColors.accent, ReviewColors.accent),
     PENDING("Pending", ReviewColors.review, ReviewColors.reviewFg, ReviewColors.reviewLine);
 
+    /** Its words; a posted draft names the host it is on. */
+    fun label(host: String) = words.format(host)
+
     companion object {
-        fun of(state: ThreadState): CommentLook = when (state) { ThreadState.OPEN -> OPEN; ThreadState.RESOLVED -> RESOLVED; ThreadState.OUTDATED -> OUTDATED }
+        fun of(state: ThreadState): CommentLook = of(RemarkKind.of(state))
+        fun of(kind: RemarkKind): CommentLook = when (kind) {
+            RemarkKind.OPEN -> OPEN; RemarkKind.RESOLVED -> RESOLVED; RemarkKind.OUTDATED -> OUTDATED; RemarkKind.POSTED -> POSTED; RemarkKind.PENDING -> PENDING
+        }
     }
 }
 
@@ -240,3 +253,20 @@ fun row(vararg parts: JComponent, gap: Int = 8) = JPanel().apply {
     }
     add(Box.createHorizontalGlue())
 }
+
+/** The comment box's height before it grows with its text. */
+val COMMENT_BOX_MIN get() = JBUI.scale(64)
+
+/**
+ * The comment box's field, wherever it opens: under a line here, or in the Comments tab's edit popup. An
+ * EditorTextField (a small editor of its own), not a text area: Enter and Backspace act on it, never on the read-only file.
+ */
+fun commentField(project: Project, text: String, placeholder: String, width: Int): EditorTextField =
+    EditorTextField(EditorFactory.getInstance().createDocument(text), project, PlainTextFileType.INSTANCE, false, false).apply {
+        setPlaceholder(placeholder)
+        setShowPlaceholderWhenFocused(true)
+        // wraps like prose: no wrap arrows, no hanging indent
+        addSettingsProvider { it.settings.isUseSoftWraps = true; it.settings.isPaintSoftWraps = false; it.settings.isUseCustomSoftWrapIndent = true; it.settings.customSoftWrapIndent = 0; it.setBorder(JBUI.Borders.empty(8, 10))
+            it.setVerticalScrollbarVisible(true) } // past its tallest the text scrolls instead of disappearing
+        preferredSize = Dimension(width, COMMENT_BOX_MIN)
+    }
