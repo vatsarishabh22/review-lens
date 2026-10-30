@@ -40,7 +40,9 @@ flowchart LR
     B -->|Exit review:<br/>work restored| D
 ```
 
-- **Your work stays safe.** Uncommitted changes are parked and come back exactly on Exit.
+- **Your work stays safe.** Before the PR is checked out, your uncommitted changes, new files included, go into a git
+  stash named `review-lens: parked from <your branch> for <PR>`. Exit puts them back. If they can't apply cleanly, the
+  stash is kept, never dropped, and `git stash list` shows it.
 - **Read the change in context.** Full files, changes marked in the gutter, a diff one click away.
 - **Track progress.** ⭐ not viewed · ✅ viewed · 🔄 changed since viewed, synced with GitHub.
 - **See who else uses what changed.** Each changed function shows the places outside the PR that use it, as code you can read and tick off. Python, Java and Kotlin.
