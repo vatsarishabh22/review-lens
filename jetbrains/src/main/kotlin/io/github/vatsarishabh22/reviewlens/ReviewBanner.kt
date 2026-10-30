@@ -5,11 +5,13 @@ import com.intellij.ide.ui.laf.darcula.ui.DarculaButtonUI
 import com.intellij.openapi.util.Disposer
 import com.intellij.openapi.util.Key
 import com.intellij.openapi.fileEditor.FileEditor
+import com.intellij.openapi.fileEditor.FileEditorManager
 import com.intellij.openapi.project.DumbAware
 import com.intellij.openapi.project.Project
 import com.intellij.openapi.ui.popup.JBPopupFactory
 import com.intellij.openapi.vfs.VirtualFile
 import com.intellij.ui.EditorNotificationProvider
+import com.intellij.ui.EditorNotifications
 import com.intellij.ui.SimpleColoredComponent
 import com.intellij.ui.SimpleListCellRenderer
 import com.intellij.ui.SimpleTextAttributes
@@ -43,7 +45,16 @@ class ReviewBanner : EditorNotificationProvider, DumbAware {
         val meta = service.meta ?: return null
         val path = service.relativePath(file) ?: return null // IDE pages, scratches, files outside the repo
         val change = service.changeFor(file)
-        return Function { editor -> stack(reviewBar(project, meta, change), fileBar(project, editor, file, path, change)) }
+        return Function { editor ->
+            // The bars belong to the tab. The platform also hands over a text editor nested in another (a Markdown or
+            // AsciiDoc split view) when it finishes loading, and a nested editor's bar is never shown; when that comes
+            // first, the tab's own editor is never asked. So skip it, and ask again now that its tab has loaded.
+            if (editor !in FileEditorManager.getInstance(project).getAllEditors(file)) {
+                EditorNotifications.getInstance(project).updateNotifications(file)
+                return@Function null
+            }
+            stack(reviewBar(project, meta, change), fileBar(project, editor, file, path, change))
+        }
     }
 
     private fun reviewBar(project: Project, meta: ReviewMeta, change: FileChange?): JComponent {
@@ -109,7 +120,8 @@ class ReviewBanner : EditorNotificationProvider, DumbAware {
         fun show() {
             val viewed = service.badge(change) == Badge.REVIEWED
             toggle.icon = if (viewed) BadgeIcon(Badge.REVIEWED) else BOX
-            toggle.toolTipText = if (viewed) "Viewed — click to unmark (⌥R)" else "Mark viewed (⌥R)"
+            toggle.toolTipText = (if (viewed) "Viewed — click to unmark (⌥R)" else "Mark viewed (⌥R)") +
+                if (service.meta?.target?.prNumber != null && !service.syncsViewed(change)) ". Not in the PR's files on GitHub (its net change is empty), so it's ticked here only." else ""
             toggle.foreground = if (viewed) ReviewColors.ok else ReviewColors.text
         }
         show()

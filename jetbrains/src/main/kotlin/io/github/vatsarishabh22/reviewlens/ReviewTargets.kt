@@ -7,14 +7,15 @@ data class ListedTarget(val target: ReviewTarget, val title: String, val pr: Pul
 data class Listing(val targets: List<ListedTarget>, val branchesOnly: Boolean)
 
 /** What the Review panel lists: open PRs, or remote branches when this repo has no reachable GitHub. Runs CLIs: call off EDT. */
-class ReviewTargets(private val git: GitClient, private val gh: GhClient = GhClient(git.root)) {
+class ReviewTargets(private val git: GitClient) {
 
     fun list(): Listing {
-        // gh can be logged in while this repo isn't on GitHub; then PRs can't be listed and branches stand in.
-        val prs = if (gh.isReady()) runCatching { gh.openPullRequests() }.getOrNull() else null
+        // picked again on every load, so signing in or out shows; no host signed in for origin, or no answer: branches stand in
+        val host = ReviewHosts.refresh(git)
+        val prs = host?.let { runCatching { it.openPullRequests() }.getOrNull() }
         if (prs == null) return Listing(branches(), branchesOnly = true)
         // ponytail: matches user review requests only; a request to one of the viewer's teams lists under "Other open".
-        val me = runCatching { gh.viewerLogin() }.getOrNull()
+        val me = runCatching { host.viewerLogin() }.getOrNull()
         return Listing(prs.map { pr ->
             val target = ReviewTarget.forPr(pr.number, pr.title, pr.headRefName, "${GitClient.REMOTE}/${pr.baseRefName}")
             ListedTarget(target, pr.title, pr, pr.reviewRequests.any { it.login != null && it.login == me })

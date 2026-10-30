@@ -57,6 +57,17 @@
 
     <depends>com.intellij.modules.platform</depends>
     <depends>com.intellij.modules.vcs</depends>
+    <!-- The impact map reads each language through its own plugin; where one is missing, that language shows "not available". -->
+    <depends optional="true" config-file="impact-python.xml">PythonCore</depends>
+    <depends optional="true" config-file="impact-java.xml">com.intellij.java</depends>
+    <depends optional="true" config-file="impact-kotlin.xml">org.jetbrains.kotlin</depends>
+    <!-- The impact map reads Kotlin PSI only, which works in both Kotlin plugin modes; read from here, never from impact-kotlin.xml -->
+    <extensions defaultExtensionNs="org.jetbrains.kotlin">
+        <supportsKotlinPluginMode supportsK1="true" supportsK2="true"/>
+    </extensions>
+    <extensionPoints>
+        <extensionPoint name="impactLanguage" interface="io.github.vatsarishabh22.reviewlens.ImpactLanguage" dynamic="true"/>
+    </extensionPoints>
 
     <extensions defaultExtensionNs="com.intellij">
         <writingAccessProvider implementation="io.github.vatsarishabh22.reviewlens.ReadOnlyGuard"/>
@@ -91,6 +102,10 @@
         <action id="ReviewLens.ShowDiff" class="io.github.vatsarishabh22.reviewlens.ShowDiffAction"
                 text="File / Diff" description="Flip this file between the file and its diff against the scope's base" icon="AllIcons.Actions.Diff">
             <keyboard-shortcut keymap="$default" first-keystroke="alt D"/>
+        </action>
+        <action id="ReviewLens.NextPlace" class="io.github.vatsarishabh22.reviewlens.NextPlaceAction"
+                text="Next Place to Check" description="Unfold the next place outside the PR that uses a changed function">
+            <keyboard-shortcut keymap="$default" first-keystroke="alt I"/>
         </action>
         <action id="ReviewLens.Exit" class="io.github.vatsarishabh22.reviewlens.ExitReviewAction"
                 text="Exit Review" description="Go back to your branch and restore your parked changes" icon="AllIcons.Actions.Exit"/>

@@ -39,53 +39,79 @@ data class Checks(val state: ChecksState, val failing: Int = 0) {
     }
 }
 
-/** The `gh` CLI, used only when it is installed and logged in. */
-class GhClient(private val root: Path) {
+/** GitHub through the `gh` CLI, the host of a checkout whose `origin` is on a host `gh` is signed in to ([ReviewHosts]). */
+class GhClient(private val root: Path) : ReviewHost, ViewedSync {
 
-    fun isReady(): Boolean = runCatching { runCli(root, "gh", "auth", "status") }.isSuccess
+    /** `gh` is signed in to [host] (github.com, or a GitHub Enterprise server). */
+    fun signedInTo(host: String): Boolean = runCatching { runCli(root, "gh", "auth", "status", "--hostname", host) }.isSuccess
 
-    fun viewerLogin(): String = runCli(root, "gh", "api", "user", "--jq", ".login")
+    override val viewed: ViewedSync get() = this
+
+    override fun headRef(number: Int) = "pull/$number/head"
+
+    override fun viewerLogin(): String = runCli(root, "gh", "api", "user", "--jq", ".login")
 
     /** Open PRs without their checks: checks double the call's time (2.65 s vs 5.43 s for 70 PRs) and only the detail shows them. */
-    fun openPullRequests(): List<PullRequest> {
+    override fun openPullRequests(): List<PullRequest> {
         val json = runCli(root, "gh", "pr", "list", "--state", "open", "--limit", "100", "--json",
             "number,title,headRefName,headRefOid,baseRefName,author,body,additions,deletions,changedFiles,updatedAt,reviewRequests")
         return Gson().fromJson(json, Array<PullRequest>::class.java).toList()
     }
 
     /** This viewer's GitHub "Viewed" ticks for PR [number], every page; owner and repo come from the checkout's remote. */
-    fun viewedStates(number: Int): ViewedStates = parseViewedStates(runCli(root, "gh", "api", "graphql", "--paginate",
+    override fun viewedStates(number: Int): ViewedStates = parseViewedStates(runCli(root, "gh", "api", "graphql", "--paginate",
         "-F", "owner={owner}", "-F", "name={repo}", "-F", "number=$number", "-f", "query=$VIEWED_QUERY", "--jq", VIEWED_JQ))
 
     /** Everyone's review threads on PR [number], every page. */
-    fun reviewThreads(number: Int): List<ReviewThread> = parseReviewThreads(runCli(root, "gh", "api", "graphql", "--paginate",
+    override fun reviewThreads(number: Int): List<ReviewThread> = parseReviewThreads(runCli(root, "gh", "api", "graphql", "--paginate",
         "-F", "owner={owner}", "-F", "name={repo}", "-F", "number=$number", "-f", "query=$REVIEW_THREADS_QUERY", "--jq", REVIEW_THREADS_JQ))
 
     /** Ticks or unticks one file on GitHub (private to the viewer; nobody is notified). */
-    fun setViewed(pullRequestId: String, path: String, viewed: Boolean) {
+    override fun setViewed(reviewId: String, path: String, viewed: Boolean) {
         val mutation = if (viewed) "markFileAsViewed" else "unmarkFileAsViewed"
-        runCli(root, "gh", "api", "graphql", "-f", "id=$pullRequestId", "-f", "path=$path",
+        runCli(root, "gh", "api", "graphql", "-f", "id=$reviewId", "-f", "path=$path",
             "-f", "query=mutation(\$id:ID!,\$path:String!){$mutation(input:{pullRequestId:\$id,path:\$path}){clientMutationId}}")
     }
 
+    /** The PR's id and latest push, and your own pending review on it (started on github.com or anywhere else), if any. */
+    override fun reviewSlot(number: Int): ReviewSlot = parseReviewSlot(runCli(root, "gh", "api", "graphql", "-F", "owner={owner}", "-F", "name={repo}",
+        "-F", "number=$number", "-f", "query=$REVIEW_SLOT_QUERY", "--jq", REVIEW_SLOT_JQ))
+
     /**
-     * Posts one review: a pending review with the new [comments], each of the [replies] added to it, then submitted with
-     * [verdict] and [summary]. A refusal at any step deletes the pending review, so nothing posts by halves, and throws GitHub's reason.
+     * Posts one review: the new [comments] and the [replies] go into your pending review, which is then submitted with
+     * [verdict] and [summary]. GitHub keeps one pending review per person per PR, so one started on github.com is
+     * adopted (its comments post too) rather than refused. A refusal at any step undoes only what this call added, so
+     * nothing posts by halves and nothing written on github.com is lost, and throws GitHub's reason.
      */
-    fun submitReview(number: Int, commit: String, summary: String, verdict: Verdict, comments: List<Draft>, replies: List<Draft>) {
-        val review = graphql(startReviewBody(pullRequestId(number), commit, comments), ".data.addPullRequestReview.pullRequestReview.id")
+    override fun submitReview(number: Int, commit: String, summary: String, verdict: Verdict, comments: List<Draft>, replies: List<Draft>) {
+        val slot = reviewSlot(number)
+        slot.blocker(commit, comments.size)?.let { throw CliException(it) }
+        val adopted = slot.pending?.id
+        val review = adopted ?: graphql(startReviewBody(slot.pullRequestId, commit, comments), ".data.addPullRequestReview.pullRequestReview.id")
+        val added = mutableListOf<String>()
         try {
-            replies.forEach { graphql(replyBody(review, it), ".data.addPullRequestReviewThreadReply.comment.id") }
+            if (adopted != null) comments.forEach { added += graphql(addThreadBody(review, it), ".data.addPullRequestReviewThread.thread.comments.nodes[0].id") }
+            replies.forEach { added += graphql(replyBody(review, it), ".data.addPullRequestReviewThreadReply.comment.id") }
             graphql(submitBody(review, verdict, summary), ".data.submitPullRequestReview.pullRequestReview.id")
         } catch (e: CliException) {
-            runCatching { graphql(deleteReviewBody(review), ".data.deletePullRequestReview.pullRequestReview.id") }
+            if (adopted == null) runCatching { graphql(deleteReviewBody(review), ".data.deletePullRequestReview.pullRequestReview.id") }
+            else added.forEach { runCatching { graphql(deleteCommentBody(it), ".data.deletePullRequestReviewComment.pullRequestReview.id") } }
             throw e
         }
     }
 
-    private fun pullRequestId(number: Int): String = runCli(root, "gh", "api", "graphql", "-F", "owner={owner}", "-F", "name={repo}", "-F", "number=$number",
-        "-f", "query=query(\$owner:String!,\$name:String!,\$number:Int!){repository(owner:\$owner,name:\$name){pullRequest(number:\$number){id}}}",
-        "--jq", ".data.repository.pullRequest.id")
+    override fun resolveThread(threadId: String, resolved: Boolean) {
+        val field = if (resolved) "resolveReviewThread" else "unresolveReviewThread"
+        graphql(resolveBody(threadId, resolved), ".data.$field.thread.id")
+    }
+
+    override fun editComment(commentId: String, body: String) {
+        graphql(editCommentBody(commentId, body), ".data.updatePullRequestReviewComment.pullRequestReviewComment.id")
+    }
+
+    override fun deleteComment(commentId: String) {
+        graphql(deleteCommentBody(commentId), ".data.deletePullRequestReviewComment.pullRequestReview.id")
+    }
 
     /** Sends one GraphQL [body] and returns what [jq] picks from the answer; a refusal throws with GitHub's reason. */
     private fun graphql(body: String, jq: String): String {
@@ -101,7 +127,7 @@ class GhClient(private val root: Path) {
         }
     }
 
-    fun checks(number: Int): Checks =
+    override fun checks(number: Int): Checks =
         summarizeChecks(runCli(root, "gh", "pr", "view", number.toString(), "--json", "statusCheckRollup"))
 }
 

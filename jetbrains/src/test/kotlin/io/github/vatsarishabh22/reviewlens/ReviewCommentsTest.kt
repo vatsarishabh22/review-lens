@@ -5,6 +5,7 @@ import com.google.gson.JsonObject
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
 import org.junit.Assert.assertNull
+import org.junit.Assert.assertThrows
 import org.junit.Assert.assertTrue
 import org.junit.Test
 
@@ -62,8 +63,8 @@ class ReviewCommentsTest {
         assertEquals(listOf(now), toPost(listOf(now, posted, otherScope, notInScope, reply), scope))
     }
 
-    private fun thread(id: String, resolved: Boolean = false, by: String? = null) =
-        ReviewThread(id, "a.py", 7, 7, false, "abc", resolved, by, "u$id", false, listOf(ThreadComment("lee", "why?")))
+    private fun thread(id: String, resolved: Boolean = false, by: String? = null, byMe: Boolean = false) =
+        ReviewThread(id, "a.py", 7, 7, false, "abc", resolved, by, "u$id", false, listOf(ThreadComment("lee", "why?")), resolvedByMe = byMe)
 
     @Test
     fun `every pending reply posts while its thread exists, whatever scope or blob, resolved or not`() {
@@ -85,6 +86,7 @@ class ReviewCommentsTest {
         ), replyNotes(drafts, listOf(thread("T2", resolved = true, by = "lee"))))
         assertEquals(emptyList<String>(), replyNotes(drafts.take(1), listOf(thread("T2"))))
         assertEquals("threads unknown: nothing to say", emptyList<String>(), replyNotes(drafts, null))
+        assertEquals("you resolved it yourself: no news", emptyList<String>(), replyNotes(drafts.take(1), listOf(thread("T2", resolved = true, by = "me", byMe = true))))
     }
 
     @Test
@@ -150,5 +152,73 @@ class ReviewCommentsTest {
         assertEquals("Line could not be resolved", githubRefusal("""{"message":"Validation Failed","errors":[{"message":"Line could not be resolved"}]}"""))
         assertEquals("Not Found", githubRefusal("""{"message":"Not Found","status":"404"}"""))
         assertNull(githubRefusal("error connecting to api.github.com"))
+    }
+
+    @Test
+    fun `the review slot reads the PR, its latest push and your pending review, or none`() {
+        assertEquals(ReviewSlot("PR_1", "h2", null), parseReviewSlot("PR_1\th2\t\t0\n"))
+        assertEquals(ReviewSlot("PR_1", "h2", PendingReview("PRR_9", 2)), parseReviewSlot("PR_1\th2\tPRR_9\t2\n"))
+        assertThrows(IllegalArgumentException::class.java) { parseReviewSlot("") }
+    }
+
+    @Test
+    fun `a github_com review is joined only when its new comments would land on the lines they were written for`() {
+        val slot = ReviewSlot("PR_1", "h2", PendingReview("PRR_9", 1))
+        assertNull(slot.blocker("h2", 3)) // scope ends at the latest push: adopt
+        assertNull(slot.blocker("h1", 0)) // replies only: they sit on their threads
+        assertNull(slot.copy(pending = null).blocker("h1", 3)) // no pending review: a new one is pinned to h1
+        assertEquals("You have a review in progress on github.com, and comments added to it land on the latest push. " +
+            "Review up to the latest push to add yours, or submit that one on github.com first.", slot.blocker("h1", 1))
+    }
+
+    @Test
+    fun `a comment joins an adopted review on the new side, and only the comments this Finish added are undone`() {
+        val v = vars(addThreadBody("PRR_9", Draft("a.py", 7, "a2", "why?")))
+        assertEquals(listOf("PRR_9", "a.py", "7", "why?"), listOf("review", "path", "line", "body").map { v[it].asString })
+        assertTrue(Gson().fromJson(addThreadBody("PRR_9", Draft("a.py", 7, "a2", "x")), JsonObject::class.java)["query"].asString.contains("side:RIGHT"))
+        assertEquals("PRRC_1", vars(deleteCommentBody("PRRC_1"))["comment"].asString)
+    }
+
+    @Test
+    fun `a comment on several lines names its first line on the same side, one on a line names none`() {
+        val range = Draft("a.py", 17, "b1", "split", startLine = 15)
+        fun thread(body: String) = Gson().fromJson(body, JsonObject::class.java)["variables"].asJsonObject["threads"].asJsonArray[0].asJsonObject
+        assertEquals(15 to "RIGHT", thread(startReviewBody("PR_1", "c1", listOf(range))).let { it["startLine"].asInt to it["startSide"].asString })
+        assertTrue(thread(startReviewBody("PR_1", "c1", listOf(range.copy(startLine = null)))).let { !it.has("startLine") && !it.has("startSide") })
+        assertEquals(15, vars(addThreadBody("PRR_9", range))["startLine"].asInt)
+        assertTrue(!vars(addThreadBody("PRR_9", range.copy(startLine = null))).has("startLine"))
+        assertEquals("lines 15–17", span(15, 17)); assertEquals("line 17", span(null, 17))
+    }
+
+    @Test
+    fun `several lines are one block of the diff when each is within 3 of a changed line`() {
+        val changed = setOf(10, 11, 20)
+        assertTrue("the changes and 3 lines around them", inOneDiffBlock(changed, 7, 14))
+        assertTrue(!inOneDiffBlock(changed, 14, 17)) // 15 and 16 are 4+ lines from every change: two blocks
+        assertTrue(!inOneDiffBlock(changed, 22, 24)) // beyond the last change's 3 lines
+        assertTrue("changes 6 apart share their context lines: one block", inOneDiffBlock(setOf(10, 16), 7, 19))
+    }
+
+    @Test
+    fun `a body splits into its text and each suggestion's lines, which Suggest a change writes back the same way`() {
+        assertEquals(listOf(BodyPart.Text("int() raises on \"1,200\".")), bodyParts("int() raises on \"1,200\"."))
+        val body = "Both fields:\n" + suggestionBlock(listOf("    a = 1", "    b = 2")) + "\nthen this.\n```suggestion\n```"
+        assertEquals(listOf(BodyPart.Text("Both fields:"), BodyPart.Suggestion(listOf("    a = 1", "    b = 2")), BodyPart.Text("then this."), BodyPart.Suggestion(emptyList())), bodyParts(body))
+        assertEquals("a code block is not a suggestion", listOf(BodyPart.Text("```python\nx = 1\n```")), bodyParts("```python\nx = 1\n```"))
+    }
+
+    @Test
+    fun `an edit replaces the posted comment's text by its id`() {
+        val v = vars(editCommentBody("PRRC_7", "new text"))
+        assertEquals("PRRC_7" to "new text", v["comment"].asString to v["body"].asString)
+        assertTrue(Gson().fromJson(editCommentBody("PRRC_7", "x"), JsonObject::class.java)["query"].asString.contains("updatePullRequestReviewComment(input:{pullRequestReviewCommentId:"))
+    }
+
+    @Test
+    fun `resolve and reopen are separate GitHub calls on the thread id`() {
+        fun query(body: String) = Gson().fromJson(body, JsonObject::class.java)["query"].asString
+        assertEquals("PRRT_4", vars(resolveBody("PRRT_4", true))["thread"].asString)
+        assertTrue(query(resolveBody("PRRT_4", true)).contains("{resolveReviewThread("))
+        assertTrue(query(resolveBody("PRRT_4", false)).contains("{unresolveReviewThread("))
     }
 }

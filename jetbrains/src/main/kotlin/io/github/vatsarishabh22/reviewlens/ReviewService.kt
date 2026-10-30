@@ -36,6 +36,10 @@ class ReviewService(private val project: Project) : Disposable {
     enum class Sync(val text: String) { GITHUB("Synced with GitHub"), LOCAL("Viewed kept on this laptop"), FAILED("GitHub sync failed · kept on this laptop") }
     @Volatile var sync = Sync.LOCAL; private set
     @Volatile private var pullRequestId: String? = null
+    /** False once the host is known to keep no "Viewed" checkboxes (GitLab): a tick is then local only, never queued. */
+    @Volatile private var hostKeepsViewed = true
+    /** The PR's files on GitHub, read at load; null when unknown (a branch, or GitHub didn't answer). */
+    @Volatile private var pullRequestFiles: Set<String>? = null
     /** The viewer opened this PR (from GitHub at load); false when unknown, so GitHub's own refusal still applies. */
     @Volatile var ownPullRequest = false; private set
     private var syncFailureShown = false
@@ -63,13 +67,18 @@ class ReviewService(private val project: Project) : Disposable {
 
     /** For a PR review, folds GitHub's ticks into the saved checklist (GitHub wins for its files); a branch review stays local. */
     private fun withGitHubViewed(git: GitClient, meta: ReviewMeta): ReviewMeta {
+        pullRequestFiles = null
         val number = meta.target.prNumber ?: return meta.also { sync = Sync.LOCAL; pullRequestId = null }
-        val gh = GhClient(git.root)
-        return runCatching { gh.viewedStates(number) }.fold(
+        val host = ReviewHosts.of(git)
+        hostKeepsViewed = host == null || host.viewed != null // unknown while no host answers: ticks queue for when one does
+        val viewedSync = host?.viewed
+        if (host != null && viewedSync == null) return meta.also { sync = Sync.LOCAL; pullRequestId = null } // a host with no Viewed checkboxes
+        return runCatching { (viewedSync ?: throw CliException("Not signed in to this repository's host")).viewedStates(number) }.fold(
             onSuccess = { states ->
                 pullRequestId = states.pullRequestId
+                pullRequestFiles = states.files.keys
                 ownPullRequest = states.ownPullRequest
-                syncViewed(meta, states.files, changes) { path, viewed -> runCatching { gh.setViewed(states.pullRequestId, path, viewed) }.isSuccess }
+                syncViewed(meta, states.files, changes) { path, viewed -> runCatching { viewedSync!!.setViewed(states.pullRequestId, path, viewed) }.isSuccess }
                     .also { sync = if (it.unsent == null) Sync.GITHUB else Sync.FAILED; if (it != meta) ReviewMeta.save(git, it) }
             },
             onFailure = { syncFailed(it); meta },
@@ -98,15 +107,25 @@ class ReviewService(private val project: Project) : Disposable {
         else -> Badge.CHANGED_SINCE
     }
 
-    /** Reads the threads again (Finish review does, so a thread resolved or deleted meanwhile is said before anything posts). Runs gh: call off EDT. */
+    /** Your pending review on GitHub as Finish review last read it; null when it wasn't read or GitHub didn't answer. */
+    @Volatile var reviewSlot: ReviewSlot? = null; private set
+
+    /**
+     * Reads the threads and your pending review again (Finish review does, so a thread resolved or deleted meanwhile, or
+     * a review started on github.com, is said before anything posts). Runs gh: call off EDT.
+     */
     fun reloadThreads() {
         val number = meta?.target?.prNumber ?: return
-        fetchThreads(git ?: return, number)?.let { threads = it; fireChanged() } // a failed reload keeps the threads already shown
+        val git = git ?: return
+        reviewSlot = runCatching { host(git).reviewSlot(number) }.onFailure { thisLogger().info("GitHub pending review not read", it) }.getOrNull()
+        fetchThreads(git, number)?.let { threads = it; fireChanged() } // a failed reload keeps the threads already shown
     }
 
     /** The PR's threads from GitHub, or null (logged) when GitHub didn't answer. */
     private fun fetchThreads(git: GitClient, number: Int): List<ReviewThread>? =
-        runCatching { GhClient(git.root).reviewThreads(number) }.onFailure { thisLogger().info("GitHub review threads not loaded", it) }.getOrNull()
+        runCatching { host(git).reviewThreads(number) }.onFailure { thisLogger().info("GitHub review threads not loaded", it) }.getOrNull()
+
+    private fun host(git: GitClient) = ReviewHosts.of(git) ?: throw CliException("Not signed in to this repository's host")
 
     /** [change]'s threads, each with the line it sits under in the file shown, or null when it is only listed. */
     fun threadsOn(change: FileChange): List<Pair<ReviewThread, Int?>> {
@@ -119,23 +138,31 @@ class ReviewService(private val project: Project) : Disposable {
     /** Unreviewed files under [dir] ("" = the whole repository), for folder badges. */
     fun pendingUnder(dir: String) = changes.count { (dir.isEmpty() || it.path.startsWith("$dir/")) && badge(it) != Badge.REVIEWED }
 
-    /** Marks a file viewed, or un-marks it, here at once; for a PR the same tick goes to GitHub in the background. */
+    /**
+     * Whether [change]'s Viewed tick goes to GitHub: a PR file GitHub lists, or any PR file while the list is unknown (the
+     * next load sorts it out). A scope file the PR's net change doesn't include has no Viewed box on GitHub.
+     */
+    fun syncsViewed(change: FileChange): Boolean = meta?.target?.prNumber != null && hostKeepsViewed && pullRequestFiles?.contains(change.path) != false
+
+    /** Marks a file viewed, or un-marks it, here at once; for a PR file GitHub lists, the same tick goes there in the background. */
     @Synchronized
     fun toggleReviewed(change: FileChange) {
         val current = meta ?: return
         val viewed = badge(change) != Badge.REVIEWED
         val reviewed = if (viewed) current.reviewed + (change.path to change.newBlob) else current.reviewed - change.path
         // A PR tick is queued even when GitHub is unreachable now, so the next load sends it instead of erasing it.
-        val unsent = if (current.target.prNumber == null) current.unsent else current.unsent.orEmpty() + (change.path to viewed)
+        val sends = syncsViewed(change)
+        val unsent = if (!sends) current.unsent else current.unsent.orEmpty() + (change.path to viewed)
         update { current.copy(reviewed = reviewed, unsent = unsent) }
         // the last tick is the moment to finish: say so once, with the way to do it
         if (viewed && current.target.prNumber != null && reviewedCount() == changes.size) notify(project, "All ${changes.size} files viewed",
             "Finish the review to post a verdict, or mark it reviewed without posting.", NotificationType.INFORMATION,
             NotificationAction.createSimpleExpiring("Finish review…") { showFinishReview(project, null) })
-        val id = pullRequestId ?: return
-        val root = git!!.root
+        val id = pullRequestId?.takeIf { sends } ?: return
+        val git = git!!
         ApplicationManager.getApplication().executeOnPooledThread {
-            runCatching { GhClient(root).setViewed(id, change.path, viewed) }
+            // an id exists only once a host with Viewed checkboxes answered, so viewed is there
+            runCatching { (host(git).viewed ?: throw CliException("This host keeps no Viewed checkboxes")).setViewed(id, change.path, viewed) }
                 .onSuccess { confirmSent(change.path, viewed) }
                 .onFailure { syncFailed(it); fireChanged() }
         }

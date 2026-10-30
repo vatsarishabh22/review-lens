@@ -77,3 +77,39 @@ fun parseBlame(porcelain: String): Blame {
     }
     return Blame(lines, commits)
 }
+
+/** One file's changed lines in a scope: [added] on the new side (range.to), [deleted] on the old side, 1-based. */
+data class LineChanges(val oldPath: String?, val added: Set<Int>, val deleted: Set<Int>)
+
+/**
+ * Reads `git diff -U0 --no-prefix -M` into new path -> [LineChanges] (old path for a deleted file). Hunk headers are
+ * `@@ -a[,b] +c[,d] @@`: b old lines from a were removed, d new lines from c were written; a count of 0 means none.
+ */
+fun parseChangedLines(diff: String): Map<String, LineChanges> {
+    val result = LinkedHashMap<String, LineChanges>()
+    var old: String? = null
+    var new: String? = null
+    val added = HashSet<Int>()
+    val deleted = HashSet<Int>()
+    fun flush() {
+        (new ?: old)?.let { result[it] = LineChanges(old, added.toSet(), deleted.toSet()) }
+        added.clear(); deleted.clear()
+    }
+    val hunk = Regex("""^@@ -(\d+)(?:,(\d+))? \+(\d+)(?:,(\d+))? @@""")
+    for (line in diff.lineSequence()) {
+        when {
+            line.startsWith("diff --git ") -> { flush(); old = null; new = null }
+            line.startsWith("--- ") -> old = line.removePrefix("--- ").takeUnless { it == "/dev/null" }
+            line.startsWith("+++ ") -> new = line.removePrefix("+++ ").takeUnless { it == "/dev/null" }
+            else -> hunk.find(line)?.destructured?.let { (a, b, c, d) ->
+                val from = a.toInt(); val count = b.ifEmpty { "1" }.toInt()
+                val to = c.toInt(); val written = d.ifEmpty { "1" }.toInt()
+                deleted += from until from + count
+                added += to until to + written
+            }
+        }
+    }
+    flush()
+    return result
+}
+

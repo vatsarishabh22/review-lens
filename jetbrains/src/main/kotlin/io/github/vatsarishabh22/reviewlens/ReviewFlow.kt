@@ -12,6 +12,7 @@ import com.intellij.openapi.actionSystem.AnAction
 import com.intellij.openapi.application.ApplicationManager
 import com.intellij.openapi.application.ModalityState
 import com.intellij.openapi.application.ReadAction
+import com.intellij.openapi.components.serviceIfCreated
 import com.intellij.openapi.fileEditor.FileEditorManager
 import com.intellij.openapi.fileEditor.OpenFileDescriptor
 import com.intellij.openapi.editor.ScrollType
@@ -102,7 +103,9 @@ private fun endReview(project: Project, finished: String?, said: String) {
     val git = service.git ?: return
     val branch = service.active?.originalRef ?: return
     val kept = keptText(service.meta?.drafts.orEmpty())
-    background(project, "Exiting review", { ReviewLifecycle(git).exit().also { afterCheckout(project, git) } }) { restored ->
+    // ticks on functions this scope no longer changes go now (kept across re-scopes until Exit); unknown until searched
+    project.serviceIfCreated<ImpactService>()?.functions()?.let { keys -> service.update { it.keepChecked(keys) } }
+    background(project, "Exiting review", { ReviewLifecycle(git).exit().also { afterCheckout(project, git) } }) { exited ->
         refreshViews(project)
         // The "Reviewing…" balloons offer Exit, which no longer applies.
         NotificationsManager.getNotificationsManager().getNotificationsOfType(Notification::class.java, project)
@@ -111,7 +114,11 @@ private fun endReview(project: Project, finished: String?, said: String) {
         if (finished != null) ToolWindowManager.getInstance(project).getToolWindow(TOOL_WINDOW_ID)?.activate(null)
         val title = finished ?: "Back on $branch"
         val lead = if (said.isEmpty()) "" else "$said "
-        when (restored) {
+        exited.changedStash?.let { stash ->
+            val files = exited.changedDuringReview.joinToString(", ")
+            notify(project, "Changed during the review", "$files changed while you reviewed (the IDE rewrites its settings). Kept in the stash \"$stash\", not applied.", NotificationType.WARNING)
+        }
+        when (exited.restored) {
             Restored.RESTORED -> notify(project, title, "${lead}Your parked changes are restored.$kept")
             Restored.NOTHING_TO_RESTORE -> notify(project, title, "${lead}Nothing was parked, so nothing to restore.$kept")
             Restored.KEPT_IN_STASH -> notify(project, "$title: your changes need a hand", "${lead}Your parked changes didn't apply cleanly, so they are still safe in the stash \"review-lens: parked from $branch…\". Resolve the conflicts, or run git stash pop.", NotificationType.WARNING)
@@ -133,15 +140,22 @@ fun openChange(project: Project, change: FileChange) {
     openPath(project, change.path, missing = { showDiff(project, change) })
 }
 
-/** Opens the repository file at [path], the one way every view opens a file, at [line] (1-based) when given; [missing] runs when it isn't on disk. */
-fun openPath(project: Project, path: String, missing: () -> Unit = {}, line: Int? = null) {
+/**
+ * Opens the repository file at [path], the one way every view opens a file, at [line] (1-based) when given, with
+ * [columns] of that line selected when given; [missing] runs when it isn't on disk.
+ */
+fun openPath(project: Project, path: String, missing: () -> Unit = {}, line: Int? = null, columns: IntRange? = null) {
     val file = ReviewService.of(project).git?.root?.resolve(path) ?: return
     // A VFS lookup can hit disk, which is not allowed on EDT: find the file in the background, open it on EDT.
     ReadAction.nonBlocking<VirtualFile?> { LocalFileSystem.getInstance().findFileByNioFile(file) }
         .finishOnUiThread(ModalityState.defaultModalityState()) { found ->
             if (found == null) return@finishOnUiThread missing()
             // no line: the caret stays where the reviewer left it
-            (if (line == null) OpenFileDescriptor(project, found) else OpenFileDescriptor(project, found, line - 1, 0).apply { setScrollType(ScrollType.CENTER) }).navigate(true)
+            (if (line == null) OpenFileDescriptor(project, found) else OpenFileDescriptor(project, found, line - 1, columns?.first ?: 0).apply { setScrollType(ScrollType.CENTER) }).navigate(true)
+            if (line != null && columns != null) FileEditorManager.getInstance(project).selectedTextEditor?.let { editor ->
+                val start = editor.caretModel.offset
+                editor.selectionModel.setSelection(start, start + columns.count())
+            }
             ReviewBlame.of(project).blameText(found, 0) // starts the blame early so it is ready when the editor paints
         }
         .expireWith(ReviewService.of(project))
@@ -157,7 +171,10 @@ fun loadDiff(project: Project, change: FileChange, then: (SimpleDiffRequest) -> 
     }) { (before, after) ->
         val factory = DiffContentFactory.getInstance()
         val fileType = FileTypeManager.getInstance().getFileTypeByFileName(change.name)
-        then(SimpleDiffRequest("${change.path} · ${meta.scopeLabel}", factory.create(project, before, fileType),
+        val base = factory.create(project, before, fileType)
+        // a deleted file has no tab: the impact map puts its removed functions above this side
+        if (change.status == 'D') base.document.putUserData(ImpactInlays.DELETED_FILE, change.path)
+        then(SimpleDiffRequest("${change.path} · ${meta.scopeLabel}", base,
             factory.create(project, after, fileType), "Base ${meta.range.from.take(9)}", "PR ${meta.range.to.take(9)}"))
     }
 }

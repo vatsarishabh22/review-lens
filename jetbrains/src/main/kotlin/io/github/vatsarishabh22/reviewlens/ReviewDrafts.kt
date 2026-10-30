@@ -25,7 +25,7 @@ class ReviewDrafts(private val project: Project) {
     /** What Finish review would post now: comments on the versions this scope shows, and replies to threads GitHub still has. */
     fun outbox(): Outbox = review.meta?.drafts.orEmpty().let { Outbox(toPost(it, review.changes), repliesToPost(it, review.threads)) }
 
-    fun add(change: FileChange, line: Int, body: String) = update { it + Draft(change.path, line, change.newBlob, body) }
+    fun add(change: FileChange, line: Int, body: String, startLine: Int? = null) = update { it + Draft(change.path, line, change.newBlob, body, startLine = startLine) }
 
     /** A reply to [thread], shown under [change]'s line [line]; posted with the review, into the thread. */
     fun reply(change: FileChange, line: Int, thread: ReviewThread, body: String) = update { it + Draft(change.path, line, change.newBlob, body, replyTo = thread.id) }
@@ -44,7 +44,8 @@ class ReviewDrafts(private val project: Project) {
         val meta = review.meta ?: error("No review in progress")
         val number = meta.target.prNumber ?: error("Only a pull request can be reviewed on GitHub")
         val sending = outbox()
-        GhClient(review.git!!.root).submitReview(number, meta.range.to, summary, verdict, sending.comments, sending.replies)
+        val host = ReviewHosts.of(review.git!!) ?: throw CliException("Sign in to this repository's host to post the review")
+        host.submitReview(number, meta.range.to, summary, verdict, sending.comments, sending.replies)
         val sent = (sending.comments + sending.replies).toSet()
         review.update { m -> m.copy(drafts = m.drafts?.map { if (it in sent) it.copy(posted = true) else it }, verdict = verdict) }
         this.summary = ""

@@ -70,7 +70,7 @@ class PrDetailView(private val project: Project, private val onBack: () -> Unit)
         }
         target.pr?.let { pr ->
             checksLabel.text = ""
-            background(project, "Loading checks for #${pr.number}", { GhClient(git.root).checks(pr.number) }) { checks ->
+            background(project, "Loading checks for #${pr.number}", { ReviewHosts.of(git)?.checks(pr.number) ?: Checks(ChecksState.NONE) }) { checks ->
                 if (listed !== target) return@background
                 checksLabel.text = checks.text
                 checksLabel.foreground = when (checks.state) {

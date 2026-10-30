@@ -54,6 +54,14 @@ class ShowDiffAction : ReviewAction() {
     }
 }
 
+/** ⌥I: unfolds the next place outside the PR left to check (spec/impact.md, "Ticks"). */
+class NextPlaceAction : ReviewAction() {
+    override fun actionPerformed(e: AnActionEvent) {
+        val project = e.project ?: return
+        e.getData(CommonDataKeys.EDITOR)?.let(ImpactInlays.of(project)::nextPlace)
+    }
+}
+
 class ExitReviewAction : ReviewAction() {
     override fun actionPerformed(e: AnActionEvent) {
         e.project?.let(::exitReview)

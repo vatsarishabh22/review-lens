@@ -58,6 +58,17 @@ class ViewedSyncTest {
     }
 
     @Test
+    fun `a queued tick for a file outside the PR on GitHub is dropped, never re-sent, and stays ticked here`() {
+        val c = change("c.kt", "c2")
+        val stuck = meta.copy(reviewed = meta.reviewed + ("c.kt" to "c2"), unsent = mapOf("a.kt" to true, "c.kt" to true))
+        val sent = mutableListOf<String>()
+        val synced = syncViewed(stuck, mapOf("a.kt" to ViewedState.UNVIEWED, "b.kt" to ViewedState.VIEWED), listOf(a, b, c)) { path, _ -> sent += path; true }
+        assertEquals(listOf("a.kt"), sent) // c.kt has no Viewed box on GitHub: sending it is refused every load
+        assertNull(synced.unsent)
+        assertEquals("c2", synced.reviewed["c.kt"])
+    }
+
+    @Test
     fun `files GitHub does not list keep this laptop's answer`() =
         assertEquals(mapOf("x.kt" to "x1"), mergeViewed(mapOf("x.kt" to "x1"), emptyMap(), listOf(change("x.kt", "x2"))))
 

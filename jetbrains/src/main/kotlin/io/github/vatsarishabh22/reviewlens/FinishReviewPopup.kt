@@ -38,7 +38,7 @@ fun replyNotes(replies: List<Draft>, threads: List<ReviewThread>?): List<String>
     if (threads == null) return emptyList()
     val byId = threads.associateBy { it.id }
     val replied = replies.filter { !it.posted && it.replyTo != null }
-    val resolved = replied.mapNotNull { byId[it.replyTo] }.filter { it.resolved }.distinct().map {
+    val resolved = replied.mapNotNull { byId[it.replyTo] }.filter { it.resolvedByOther }.distinct().map {
         "${it.resolvedBy ?: "Someone"} resolved a thread you replied to since the review loaded. Your reply still posts; the thread stays resolved."
     }
     val gone = replied.count { it.replyTo !in byId }
@@ -75,7 +75,17 @@ private fun openFinishReview(project: Project, anchor: JComponent?) {
     }
     // drafts written on another scope's version of a file go out only from that scope: say so, never skip them silently
     val waiting = service.meta?.drafts.orEmpty().count { !it.posted && it.replyTo == null } - outbox.comments.size
-    val posting = if (outbox.size > 0) "${outbox.text} will be posted with it, as one review." else "No inline comments yet."
+    // a review started on github.com is adopted: its comments go out with yours, so say so before Submit
+    val slot = service.reviewSlot
+    val started = slot?.pending?.comments ?: 0
+    val fromGitHub = "${draftsText(started, 0)} you started on github.com"
+    val held = slot?.blocker(service.meta?.range?.to.orEmpty(), outbox.comments.size) // said in place of "will be posted", not only on hover
+    val posting = when {
+        held != null -> held
+        outbox.size > 0 -> "${outbox.text} will be posted with it, as one review." + if (started > 0) " So ${if (started == 1) "is" else "are"} the $fromGitHub." else ""
+        started > 0 -> "The $fromGitHub will be posted with it."
+        else -> "No inline comments yet."
+    }
     val later = if (waiting > 0) " $waiting more ${if (waiting == 1) "waits for the scope it was" else "wait for the scopes they were"} written in." else ""
     val viewed = "${service.reviewedCount()} of ${service.changes.size} files viewed."
     val fineprint = wrappingText("", JBFont.small()).apply { foreground = ReviewColors.muted }
@@ -86,7 +96,7 @@ private fun openFinishReview(project: Project, anchor: JComponent?) {
     }
     val update = {
         val v = verdict()
-        val blocker = v?.let { submitBlocker(it, summary.text, outbox.size, service.ownPullRequest) }
+        val blocker = v?.let { held ?: submitBlocker(it, summary.text, outbox.size + started, service.ownPullRequest) }
         submit.isEnabled = blocker == null
         submit.toolTipText = blocker // a greyed-out Submit says why on hover
         submit.text = if (v == null) "Finish review" else "Submit to GitHub"

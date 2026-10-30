@@ -44,6 +44,9 @@ object ReviewColors {
     /** The "✓ Reviewed" pill behind [ok] text. */
     val okSoft = JBColor(0xe3f3e5, 0x253a28)
     val star = JBColor(0xe5a50a, 0xf2c55c)
+    /** A suggested change's removed and added lines, as the prototype's diff colours. */
+    val delSoft = JBColor(0xfbe9e9, 0x402629)
+    val addSoft = JBColor(0xe9f5e6, 0x253a28)
     /** Someone else's open review thread. */
     val other = JBColor(0x7a5af5, 0xa78bfa)
     val otherSoft = JBColor(0xefeaff, 0x2e2747)

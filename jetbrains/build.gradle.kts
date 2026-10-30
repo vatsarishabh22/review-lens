@@ -1,4 +1,5 @@
 import org.jetbrains.intellij.platform.gradle.IntelliJPlatformType
+import org.jetbrains.intellij.platform.gradle.TestFrameworkType
 import org.jetbrains.kotlin.gradle.dsl.JvmDefaultMode
 import org.jetbrains.kotlin.gradle.dsl.JvmTarget
 import org.jetbrains.kotlin.gradle.tasks.KotlinCompile
@@ -22,11 +23,15 @@ repositories {
 
 dependencies {
     intellijPlatform {
-        // The installed PyCharm when there is one (no download); CI downloads the same version instead
-        val installed = providers.gradleProperty("platformPath").orNull?.takeIf { file(it).exists() }
-        if (installed != null) local(installed) else pycharm(providers.gradleProperty("platformVersion").get())
+        // Built against IntelliJ IDEA, the one IDE with Java and Kotlin, plus the Python plugin PyCharm bundles: the
+        // impact map reads all three languages. At runtime each language is an optional dependency (plugin.xml).
+        intellijIdeaUltimate(providers.gradleProperty("platformVersion").get())
+        bundledPlugins("com.intellij.java", "org.jetbrains.kotlin")
+        plugin("PythonCore", providers.gradleProperty("pythonCoreVersion").get())
         bundledModule("intellij.platform.vcs.impl") // SimpleLocalLineStatusTracker for the review gutter
         pluginVerifier()
+        testFramework(TestFrameworkType.Platform) // real PSI for the impact map's language tests
+        testFramework(TestFrameworkType.Plugin.Java) // a mock JDK, so Java and Kotlin references resolve in those tests
     }
     testImplementation("junit:junit:4.13.2")
 }
@@ -36,6 +41,8 @@ java { toolchain { languageVersion = JavaLanguageVersion.of(25) } }
 tasks.withType<JavaCompile> { options.release = 21 }
 // SpecFixturesTest reads the editors' shared state examples; a fixture change must re-run it
 tasks.test { inputs.dir("../spec/fixtures") }
+// spec/code-files.json is the editors' shared list of which files are code; the plugin ships it as /spec/code-files.json
+tasks.processResources { from("../spec") { include("code-files.json"); into("spec") } }
 tasks.withType<KotlinCompile> {
     compilerOptions {
         jvmTarget = JvmTarget.JVM_21
@@ -72,6 +79,9 @@ intellijPlatform {
 intellijPlatformTesting {
     runIde {
         register("runIdeForUiTests") {
+            // The sandbox stays the installed PyCharm, the IDE the screenshots and the prototype are checked in
+            providers.gradleProperty("platformPath").orNull?.takeIf { file(it).exists() }?.let { localPath = file(it) }
+                ?: run { type = IntelliJPlatformType.PyCharmProfessional; version = providers.gradleProperty("pycharmVersion") }
             task {
                 jvmArgumentProviders += CommandLineArgumentProvider {
                     listOf(
