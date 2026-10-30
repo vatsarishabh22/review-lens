@@ -30,7 +30,7 @@ import javax.swing.event.DocumentEvent
  */
 fun showFinishReview(project: Project, anchor: JComponent?) {
     if (ReviewService.of(project).meta?.target?.reviewable != true) return openFinishReview(project, anchor)
-    background(project, "Checking ${ReviewService.of(project).hostName} for new comments", { ReviewService.of(project).reloadThreads() }) { openFinishReview(project, anchor) }
+    background(project, "Checking ${ReviewService.of(project).hostName} for new comments", { HostThreads.of(project).reload() }) { openFinishReview(project, anchor) }
 }
 
 /** What changed on [host] under your pending replies: a thread resolved meanwhile (the reply still posts), or one deleted (it waits). */
@@ -57,7 +57,7 @@ private fun openFinishReview(project: Project, anchor: JComponent?) {
     }
     val group = ButtonGroup()
     // null is "Mark as reviewed": nothing goes to the host, so none of its rules apply; the slot was read just before this opened
-    val slot = service.reviewSlot
+    val slot = HostThreads.of(project).slot
     val scopeEnd = service.meta?.range?.to.orEmpty()
     val choices = (Verdict.entries + null).associateWith { v ->
         JRadioButton(v?.label ?: "Mark as reviewed", v == Verdict.COMMENT).apply {
@@ -92,7 +92,7 @@ private fun openFinishReview(project: Project, anchor: JComponent?) {
     val fineprint = wrappingText("", JBFont.small()).apply { foreground = ReviewColors.muted }
     val keep = wrappingText("Your ${outbox.text} won't be posted; ${if (outbox.size > 1) "they're" else "it's"} kept for next time.", JBFont.small())
         .apply { foreground = ReviewColors.warn }
-    val notes = replyNotes(service.meta?.drafts.orEmpty(), service.threads, service.hostName).map { note ->
+    val notes = replyNotes(service.meta?.drafts.orEmpty(), HostThreads.of(project).threads, service.hostName).map { note ->
         wrappingText(note, JBFont.small()).apply { foreground = ReviewColors.warn; setSize(JBUI.scale(356), Short.MAX_VALUE.toInt()) }
     }
     val update = {

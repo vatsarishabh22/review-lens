@@ -63,7 +63,7 @@ class ReviewBanner : EditorNotificationProvider, DumbAware {
             font = JBFont.label().asBold(); foreground = ReviewColors.reviewFg
         }
         val scope = flat(meta.scopeLabel, AllIcons.General.ArrowDown, iconRight = true) { scopeMenu(project, meta, it) }
-        val lock = JBLabel(if (service.flashing) "Read-only while reviewing. Exit review to edit." else "Read-only", AllIcons.Diff.Lock, SwingConstants.LEFT)
+        val lock = JBLabel(if (ReadOnlyFlash.of(project).on) "Read-only while reviewing. Exit review to edit." else "Read-only", AllIcons.Diff.Lock, SwingConstants.LEFT)
             .apply { font = JBFont.small(); foreground = ReviewColors.reviewFg }
         val prev = flat("Prev", AllIcons.Actions.Back) { service.previous(change?.path)?.let { openChange(project, it) } }
         val next = flat("Next unviewed", AllIcons.Actions.Forward, iconRight = true) {
@@ -79,7 +79,7 @@ class ReviewBanner : EditorNotificationProvider, DumbAware {
         }.takeIf { meta.target.reviewable } // a branch has nowhere to post a review
         val exit = flat("Exit", AllIcons.Actions.Exit) { exitReview(project) }.apply { toolTipText = "Back to ${service.active?.originalRef}" }
         return JPanel(BorderLayout()).apply {
-            background = if (service.flashing) ReviewColors.flash else ReviewColors.review
+            background = if (ReadOnlyFlash.of(project).on) ReviewColors.flash else ReviewColors.review
             border = JBUI.Borders.compound(JBUI.Borders.customLineBottom(ReviewColors.reviewLine), JBUI.Borders.empty(3, 12, 3, 8))
             add(row(what, scope, gap = 6), BorderLayout.WEST)
             add(lock.apply { border = JBUI.Borders.emptyLeft(6) }) // centre: a long flash message truncates, never overlaps Prev
@@ -121,7 +121,7 @@ class ReviewBanner : EditorNotificationProvider, DumbAware {
             val viewed = service.badge(change) == Badge.REVIEWED
             toggle.icon = if (viewed) BadgeIcon(Badge.REVIEWED) else BOX
             toggle.toolTipText = (if (viewed) "Viewed — click to unmark (⌥R)" else "Mark viewed (⌥R)") +
-                if (service.meta?.target?.reviewable == true && !service.syncsViewed(change)) ". Not in the PR's files on ${service.hostName} (its net change is empty), so it's ticked here only." else ""
+                if (service.meta?.target?.reviewable == true && !HostViewed.of(project).sends(service.meta, change)) ". Not in the PR's files on ${service.hostName} (its net change is empty), so it's ticked here only." else ""
             toggle.foreground = if (viewed) ReviewColors.ok else ReviewColors.text
         }
         show()

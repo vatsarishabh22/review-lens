@@ -232,7 +232,7 @@ class CommentInlays(private val project: Project) : Disposable {
             return
         }
         val drafts = ReviewDrafts.of(project).on(change).groupBy { it.line }
-        val threads = ReviewService.of(project).threadsOn(change)
+        val threads = HostThreads.of(project).threadsOn(change, ReviewService.of(project).meta?.range?.to)
         val placed = threads.mapNotNull { (thread, line) -> line?.let { it to thread } }.groupBy({ it.first }, { it.second })
         val listedOnly = threads.count { it.second == null }
         val open = box?.takeIf { it.change.path == change.path }

@@ -17,13 +17,13 @@ class ReviewDrafts(private val project: Project) {
     fun on(change: FileChange): List<Draft> = mine().filter { it.path == change.path && it.blob == change.newBlob }
 
     /** Every comment (not reply) of this review the panel lists: pending ones, and posted ones while GitHub's threads aren't loaded. */
-    fun mine(): List<Draft> = review.meta?.drafts.orEmpty().filter { it.replyTo == null && (!it.posted || review.threads == null) }
+    fun mine(): List<Draft> = review.meta?.drafts.orEmpty().filter { it.replyTo == null && (!it.posted || HostThreads.of(project).threads == null) }
 
     /** Your pending replies to [thread], shown inside its card. */
     fun repliesTo(thread: ReviewThread): List<Draft> = review.meta?.drafts.orEmpty().filter { !it.posted && it.replyTo == thread.id }
 
     /** What Finish review would post now: comments on the versions this scope shows, and replies to threads GitHub still has. */
-    fun outbox(): Outbox = review.meta?.drafts.orEmpty().let { Outbox(toPost(it, review.changes), repliesToPost(it, review.threads)) }
+    fun outbox(): Outbox = review.meta?.drafts.orEmpty().let { Outbox(toPost(it, review.changes), repliesToPost(it, HostThreads.of(project).threads)) }
 
     fun add(change: FileChange, line: Int, body: String, startLine: Int? = null) = update { it + Draft(change.path, line, change.newBlob, body, startLine = startLine) }
 

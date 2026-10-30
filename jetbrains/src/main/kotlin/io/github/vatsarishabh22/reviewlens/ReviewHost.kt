@@ -111,7 +111,9 @@ object ReviewHosts {
     fun nameOf(git: GitClient?): String = git?.let { picked[it.root]?.host?.name } ?: "your code host"
 
     /** [of] for a call that can't go on without the host; the balloon's title already says which call. */
-    fun required(git: GitClient): ReviewHost = of(git) ?: throw CliException("Sign in to this repository's host")
+    fun required(git: GitClient): ReviewHost = of(git) ?: throw notSignedIn()
+
+    fun notSignedIn() = CliException("Sign in to this repository's host")
 
     fun refresh(git: GitClient): ReviewHost? = Picked(pick(git)).also { picked[git.root] = it }.host
 

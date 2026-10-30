@@ -231,7 +231,7 @@ class ChangedFilesView(private val project: Project, parent: Disposable) : JPane
         val done = service.reviewedCount()
         strip.fraction = if (total == 0) 0.0 else done.toDouble() / total
         viewedText.text = "$done of $total files viewed · ${meta.scopeLabel}"
-        syncText.text = service.sync.text(service.hostName)
+        syncText.text = HostViewed.of(project).status.text(service.hostName)
 
         val selected = (list.selectedValue as? FileRow.File)?.change?.path
         model.clear()
@@ -262,7 +262,7 @@ class ChangedFilesView(private val project: Project, parent: Disposable) : JPane
         val end = service.meta?.range?.to ?: return emptyList()
         val blobs = service.changes.associate { it.path to it.newBlob }
         val drafts = ReviewDrafts.of(project)
-        val threads = service.threads.orEmpty().map { thread ->
+        val threads = HostThreads.of(project).threads.orEmpty().map { thread ->
             Remark(thread.path, thread.lineAt(end), if (thread.mine) "You" else thread.comments[0].author, CommentLook.of(thread.state), thread.where, thread.comments.size - 1,
                 thread.comments[0].body, thread.mine, drafts.repliesTo(thread))
         }
@@ -272,9 +272,9 @@ class ChangedFilesView(private val project: Project, parent: Disposable) : JPane
                 span(draft.startLine, draft.line) + if (current) "" else " of an earlier version", 0, draft.body, true, draft = draft.takeUnless { it.posted })
         }
         // a pending reply whose thread isn't listed (deleted on GitHub, or the threads didn't load) gets its own row
-        val ids = service.threads.orEmpty().map { it.id }.toSet()
+        val ids = HostThreads.of(project).threads.orEmpty().map { it.id }.toSet()
         val strays = service.meta?.drafts.orEmpty().filter { !it.posted && it.replyTo != null && it.replyTo !in ids }.map { draft ->
-            Remark(draft.path, null, "You", CommentLook.PENDING, if (service.threads == null) "reply" else "reply · its thread is gone from ${service.hostName}", 0, draft.body, true, draft = draft)
+            Remark(draft.path, null, "You", CommentLook.PENDING, if (HostThreads.of(project).threads == null) "reply" else "reply · its thread is gone from ${service.hostName}", 0, draft.body, true, draft = draft)
         }
         return (threads + comments + strays).sortedWith(compareBy({ it.path }, { it.kind == CommentLook.RESOLVED }, { it.line ?: Int.MAX_VALUE }))
     }
@@ -289,7 +289,7 @@ class ChangedFilesView(private val project: Project, parent: Disposable) : JPane
         }
         val pr = service.meta?.target?.reviewable == true
         remarkNote.text = when {
-            pr && service.threads == null -> "Couldn't load comments from ${service.hostName} · showing only yours"
+            pr && HostThreads.of(project).threads == null -> "Couldn't load comments from ${service.hostName} · showing only yours"
             remarkModel.isEmpty -> "Nothing here."
             else -> ""
         }
@@ -341,7 +341,7 @@ class ChangedFilesView(private val project: Project, parent: Disposable) : JPane
                         name.foreground = ReviewColors.muted
                         name.font = name.font.deriveFont(mapOf(TextAttribute.STRIKETHROUGH to TextAttribute.STRIKETHROUGH_ON))
                     }
-                    val comments = ReviewDrafts.of(project).on(change).size + service.threadsOn(change).size
+                    val comments = ReviewDrafts.of(project).on(change).size + HostThreads.of(project).threadsOn(change, service.meta?.range?.to).size
                     val counts = if (change.added == null) mutedLabel("binary") else row(
                         *listOfNotNull(JBLabel("$comments", AllIcons.General.Balloon, JBLabel.LEFT).apply { foreground = ReviewColors.muted; iconTextGap = JBUI.scale(3) }
                             .takeIf { comments > 0 }).toTypedArray(),

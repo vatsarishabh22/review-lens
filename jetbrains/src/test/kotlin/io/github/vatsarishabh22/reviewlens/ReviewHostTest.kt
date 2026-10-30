@@ -15,7 +15,7 @@ class ReviewHostTest {
         assertEquals("GitHub", GhClient(java.nio.file.Path.of(".")).name)
         assertEquals("your code host", ReviewHosts.nameOf(null))
         assertEquals("on GitLab", CommentLook.POSTED.label("GitLab"))
-        assertEquals("GitLab sync failed · kept on this laptop", ReviewService.Sync.FAILED.text("GitLab"))
+        assertEquals("GitLab sync failed · kept on this laptop", HostViewed.Status.FAILED.text("GitLab"))
     }
 
     @Test
