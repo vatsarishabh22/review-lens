@@ -1,7 +1,8 @@
 # GitLab merge requests
 
-Status: **proposed**, not built yet. When it ships, the schema, a fixture and the [README](README.md)'s flow table
-change in the same PR, as [CONTRIBUTING](../CONTRIBUTING.md) asks.
+Status: **planned for 0.2.0**. The seam is in JetBrains 0.1.4: every host call goes through `ReviewHost`, picked as
+below, and GitHub is the only host yet. When GitLab ships, the schema, a fixture and the [README](README.md)'s flow
+table change in the same PR, as [CONTRIBUTING](../CONTRIBUTING.md) asks.
 
 Same product, same flow, same `.git/review-lens/` files. Only the host calls change: `glab` instead of `gh`, merge
 requests (MRs) instead of pull requests. Park, checkout, read-only, scope, "since your last review", Exit and the

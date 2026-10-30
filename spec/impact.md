@@ -1,7 +1,7 @@
 # Impact: who else depends on this change
 
-Status: **proposed**, not built yet. When it ships, its state lands in [`state.schema.json`](state.schema.json) and
-a fixture, like everything else in [the contract](README.md).
+Status: **shipped** in JetBrains 0.1.4 for Python, Java and Kotlin; its ticks are `checked` in
+[`state.schema.json`](state.schema.json). VS Code: not built yet.
 
 A diff shows the lines that changed. It doesn't show **who depends on them**. For each function the review's scope
 changed, Review Lens shows the places that use it and that this PR didn't touch, as real code you can read and tick
