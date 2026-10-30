@@ -200,8 +200,8 @@ class ChangedFilesView(private val project: Project, parent: Disposable) : JPane
 
     /** The editor's comment box, in a popup under the row: ⌘↩ saves, Esc cancels; a click elsewhere keeps what is typed. */
     private fun editDraft(draft: Draft, cell: Rectangle) {
-        val field = CommentInlays.commentField(project, draft.body, "Edit your comment…", (cell.width - JBUI.scale(24)).coerceAtLeast(JBUI.scale(260)))
-        field.preferredSize = Dimension(field.preferredSize.width, CommentInlays.MIN_BOX * 2)
+        val field = commentField(project, draft.body, "Edit your comment…", (cell.width - JBUI.scale(24)).coerceAtLeast(JBUI.scale(260)))
+        field.preferredSize = Dimension(field.preferredSize.width, COMMENT_BOX_MIN * 2)
         var popup: JBPopup? = null
         fun save() {
             val body = field.text.trim().takeIf { it.isNotEmpty() } ?: return

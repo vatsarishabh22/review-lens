@@ -13,7 +13,6 @@ import java.awt.event.MouseAdapter
 import java.awt.event.MouseEvent
 import com.intellij.openapi.Disposable
 import com.intellij.notification.NotificationType
-import com.intellij.openapi.application.ApplicationManager
 import com.intellij.openapi.actionSystem.AnAction
 import com.intellij.openapi.components.Service
 import com.intellij.openapi.components.service
@@ -41,7 +40,6 @@ import com.intellij.openapi.util.Disposer
 import com.intellij.ui.RoundedLineBorder
 import com.intellij.ui.components.ActionLink
 import com.intellij.ui.components.JBLabel
-import com.intellij.openapi.fileTypes.PlainTextFileType
 import com.intellij.openapi.wm.IdeFocusManager
 import com.intellij.openapi.wm.ToolWindowManager
 import com.intellij.util.ui.UIUtil
@@ -84,12 +82,8 @@ class CommentInlays(private val project: Project) : Disposable {
     private val blocks = HashMap<Editor, List<Inlay<*>>>()
     /** What each editor's blocks were built from: a refresh that changes none of it (a tick, a sync) leaves them, and the box's focus, alone. */
     private val shown = HashMap<Editor, Any>()
-    /** Your posted comments whose edit or delete is on its way to the host, by id, with what the card says meanwhile. */
-    private val writing = HashMap<String, String>()
     /** The posted comment whose Delete is waiting for "Delete" in its card. */
     private var confirming: String? = null
-    /** Threads whose resolve or reopen is on its way to the host, by id, with where it's going (true: resolved). */
-    private val resolving = HashMap<String, Boolean>()
     /** Resolved threads the reviewer unfolded, by URL. */
     private val unfolded = HashSet<String>()
 
@@ -105,6 +99,7 @@ class CommentInlays(private val project: Project) : Disposable {
             }
         }, this)
         ReviewService.of(project).onChanged(this) { editors().forEach(::render) }
+        HostThreads.of(project).onChanged(this) { editors().forEach(::render) }
     }
 
     private fun editors() = EditorFactory.getInstance().allEditors.filter { it.project == project && it.editorKind == EditorKind.MAIN_EDITOR }
@@ -142,7 +137,7 @@ class CommentInlays(private val project: Project) : Disposable {
             thread != null -> "Reply to ${thread.comments[0].author}…"
             else -> "Comment on ${span(startLine ?: editing?.startLine, line)}…"
         }
-        val field = commentField(project, text ?: editing?.body ?: posted?.body.orEmpty(), placeholder)
+        val field = commentField(project, text ?: editing?.body ?: posted?.body.orEmpty(), placeholder, WIDTH)
         DumbAwareAction.create { save() }.registerCustomShortcutSet(CommonShortcuts.getCtrlEnter(), field)
         DumbAwareAction.create { close() }.registerCustomShortcutSet(CommonShortcuts.ESCAPE, field)
         field.addDocumentListener(object : DocumentListener { override fun documentChanged(event: DocumentEvent) = grow(field) })
@@ -207,18 +202,18 @@ class CommentInlays(private val project: Project) : Disposable {
         box = null
         val comments = ReviewDrafts.of(project)
         when {
-            open.posted != null -> writePosted(open.change, open.line, open.thread!!, open.posted, body)
+            open.posted != null -> HostThreads.of(project).edit(open.posted, body) { refused(it, "Couldn't save the edit"); reopen(open, body) }
             open.editing != null -> comments.edit(open.editing, body)
             open.thread != null -> comments.reply(open.change, open.line, open.thread, body)
             else -> comments.add(open.change, open.line, body, open.startLine)
         }
     }
 
-    /** The box grows with its text from [MIN_BOX] to [MAX_BOX], then scrolls; the embedded block is resized so the line below moves with it. */
+    /** The box grows with its text from [COMMENT_BOX_MIN] to [MAX_BOX], then scrolls; the embedded block is resized so the line below moves with it. */
     private fun grow(field: EditorTextField) {
         val editor = field.editor ?: return
         val lines = editor.offsetToVisualPosition(editor.document.textLength).line + 1
-        val height = (lines * editor.lineHeight + JBUI.scale(16)).coerceIn(MIN_BOX, MAX_BOX)
+        val height = (lines * editor.lineHeight + JBUI.scale(16)).coerceIn(COMMENT_BOX_MIN, MAX_BOX)
         if (field.preferredSize.height == height) return
         field.preferredSize = Dimension(WIDTH, height)
         var block: Component = field
@@ -242,7 +237,7 @@ class CommentInlays(private val project: Project) : Disposable {
         val listedOnly = threads.count { it.second == null }
         val open = box?.takeIf { it.change.path == change.path }
         val replies = placed.values.flatten().associate { it.id to ReviewDrafts.of(project).repliesTo(it) }
-        val key = listOf(change, drafts, placed, replies, listedOnly, open, unfolded.toSet(), resolving.toMap(), writing.toMap(), confirming, editor.document.lineCount)
+        val key = listOf(change, drafts, placed, replies, listedOnly, open, unfolded.toSet(), HostThreads.of(project).pending, confirming, editor.document.lineCount)
         if (shown[editor] == key && editor in blocks) return
         shown[editor] = key
         blocks.remove(editor)?.forEach(Disposer::dispose)
@@ -348,7 +343,7 @@ class CommentInlays(private val project: Project) : Disposable {
 
     /** Edit and Delete on a comment GitHub lets you change; "Saving…" / "Deleting…" while it goes; nothing while it's in the box. */
     private fun postedLinks(editor: Editor, line: Int, thread: ReviewThread, comment: ThreadComment, open: Box?): List<JComponent> {
-        writing[comment.id]?.let { return listOf(mutedLabel(it)) }
+        HostThreads.of(project).pending[comment.id]?.let { return listOf(mutedLabel(it)) }
         if (open?.posted?.id == comment.id) return emptyList()
         return listOfNotNull(
             ActionLink("Edit") { open(editor, line, thread = thread, posted = comment) }.takeIf { comment.canEdit },
@@ -406,63 +401,26 @@ class CommentInlays(private val project: Project) : Disposable {
             add(JBLabel(question).apply { foreground = ReviewColors.warn; font = JBFont.small() }, BorderLayout.WEST)
             add(row(ActionLink("Cancel") { confirming = null; editors().forEach(::render) }, ActionLink("Delete") {
                 confirming = null
-                writePosted(null, 0, thread, comment, null)
+                HostThreads.of(project).delete(comment) { refused(it, "Couldn't delete the comment") }
             }, gap = 12).apply { components.filterIsInstance<ActionLink>().forEach { it.font = JBFont.small() } }, BorderLayout.EAST)
-        }
-    }
-
-    /**
-     * Sends an edit ([body]) or a delete (null) of your posted [comment] to the host at once (spec: posted is public, so
-     * it can't wait for Finish), then shows what GitHub answers by reading the threads again. A refused edit reopens the
-     * box with the text, so nothing typed is lost.
-     */
-    private fun writePosted(change: FileChange?, line: Int, thread: ReviewThread, comment: ThreadComment, body: String?) {
-        val service = ReviewService.of(project)
-        val git = service.git ?: return
-        writing[comment.id] = if (body == null) "Deleting…" else "Saving…"
-        editors().forEach(::render)
-        ApplicationManager.getApplication().executeOnPooledThread {
-            val sent = runCatching {
-                val host = ReviewHosts.required(git)
-                if (body == null) host.deleteComment(comment.id) else host.editComment(comment.id, body)
-            }
-            service.reloadThreads()
-            ApplicationManager.getApplication().invokeLater({
-                writing -= comment.id
-                sent.onFailure { error ->
-                    notify(project, if (body == null) "Couldn't delete the comment" else "Couldn't save the edit", error.message ?: "$host didn't answer", NotificationType.WARNING)
-                    val editor = change?.let { c -> editors().firstOrNull { changeIn(it)?.path == c.path } }
-                    if (body != null && editor != null) open(editor, line, thread = thread, posted = comment, text = body)
-                }
-                editors().forEach(::render)
-            }, project.disposed)
         }
     }
 
     /** Resolve on an open thread, Unresolve on a resolved one, when GitHub lets this viewer; "Resolving…" while it goes. */
     private fun resolveLink(thread: ReviewThread): JComponent? {
-        resolving[thread.id]?.let { return mutedLabel(if (it) "Resolving…" else "Unresolving…") }
+        HostThreads.of(project).pending[thread.id]?.let { return mutedLabel(it) }
         val resolve = !thread.resolved
         if (if (resolve) !thread.canResolve else !thread.canUnresolve) return null
-        return ActionLink(if (resolve) "Resolve" else "Unresolve") { resolve(thread, resolve) }
+        return ActionLink(if (resolve) "Resolve" else "Unresolve") { HostThreads.of(project).resolve(thread, resolve) { refused(it, if (resolve) "Couldn't resolve the thread" else "Couldn't reopen the thread") } }
             .apply { toolTipText = if (resolve) "Resolves the conversation on $host now" else "Reopens the conversation on $host now" }
     }
 
-    /** Sends the resolve at once (spec: it can't wait for Finish), then shows what GitHub answers by reading the threads again. */
-    private fun resolve(thread: ReviewThread, resolved: Boolean) {
-        val service = ReviewService.of(project)
-        val git = service.git ?: return
-        resolving[thread.id] = resolved
-        editors().forEach(::render)
-        ApplicationManager.getApplication().executeOnPooledThread {
-            val sent = runCatching { ReviewHosts.required(git).resolveThread(thread.id, resolved) }
-            service.reloadThreads()
-            ApplicationManager.getApplication().invokeLater({
-                resolving -= thread.id
-                sent.onFailure { notify(project, if (resolved) "Couldn't resolve the thread" else "Couldn't reopen the thread", it.message ?: "$host didn't answer", NotificationType.WARNING) }
-                editors().forEach(::render)
-            }, project.disposed)
-        }
+    private fun refused(error: Throwable, title: String) = notify(project, title, error.message ?: "$host didn't answer", NotificationType.WARNING)
+
+    /** A refused edit reopens its box with the text, so nothing typed is lost. */
+    private fun reopen(was: Box, body: String) {
+        val editor = editors().firstOrNull { changeIn(it)?.path == was.change.path } ?: return
+        open(editor, was.line, thread = was.thread, posted = was.posted, text = body)
     }
 
     /** A comment body as GitHub renders it (markdown, links open in the browser), sized to the card's width less [inset]. */
@@ -578,22 +536,7 @@ class CommentInlays(private val project: Project) : Disposable {
 
     companion object {
         private val WIDTH get() = JBUI.scale(620)
-        val MIN_BOX get() = JBUI.scale(64)
         private val MAX_BOX get() = JBUI.scale(260)
-
-        /**
-         * The comment box's field, wherever it opens: under a line here, or in the Comments tab's edit popup. An
-         * EditorTextField (a small editor of its own), not a text area: Enter and Backspace act on it, never on the read-only file.
-         */
-        fun commentField(project: Project, text: String, placeholder: String, width: Int = WIDTH): EditorTextField =
-            EditorTextField(EditorFactory.getInstance().createDocument(text), project, PlainTextFileType.INSTANCE, false, false).apply {
-                setPlaceholder(placeholder)
-                setShowPlaceholderWhenFocused(true)
-                // wraps like prose: no wrap arrows, no hanging indent
-                addSettingsProvider { it.settings.isUseSoftWraps = true; it.settings.isPaintSoftWraps = false; it.settings.isUseCustomSoftWrapIndent = true; it.settings.customSoftWrapIndent = 0; it.setBorder(JBUI.Borders.empty(8, 10))
-                    it.setVerticalScrollbarVisible(true) } // past MAX_BOX the text scrolls instead of disappearing
-                preferredSize = Dimension(width, MIN_BOX)
-            }
 
         private val PLUS: Icon = object : Icon {
             override fun getIconWidth() = JBUI.scale(16)

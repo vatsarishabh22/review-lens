@@ -1,6 +1,10 @@
 package io.github.vatsarishabh22.reviewlens
 
+import com.intellij.openapi.editor.EditorFactory
 import com.intellij.openapi.editor.colors.EditorColorsManager
+import com.intellij.openapi.fileTypes.PlainTextFileType
+import com.intellij.openapi.project.Project
+import com.intellij.ui.EditorTextField
 import com.intellij.ui.JBColor
 import com.intellij.ui.components.JBLabel
 import com.intellij.ui.components.JBTextArea
@@ -246,3 +250,20 @@ fun row(vararg parts: JComponent, gap: Int = 8) = JPanel().apply {
     }
     add(Box.createHorizontalGlue())
 }
+
+/** The comment box's height before it grows with its text. */
+val COMMENT_BOX_MIN get() = JBUI.scale(64)
+
+/**
+ * The comment box's field, wherever it opens: under a line here, or in the Comments tab's edit popup. An
+ * EditorTextField (a small editor of its own), not a text area: Enter and Backspace act on it, never on the read-only file.
+ */
+fun commentField(project: Project, text: String, placeholder: String, width: Int): EditorTextField =
+    EditorTextField(EditorFactory.getInstance().createDocument(text), project, PlainTextFileType.INSTANCE, false, false).apply {
+        setPlaceholder(placeholder)
+        setShowPlaceholderWhenFocused(true)
+        // wraps like prose: no wrap arrows, no hanging indent
+        addSettingsProvider { it.settings.isUseSoftWraps = true; it.settings.isPaintSoftWraps = false; it.settings.isUseCustomSoftWrapIndent = true; it.settings.customSoftWrapIndent = 0; it.setBorder(JBUI.Borders.empty(8, 10))
+            it.setVerticalScrollbarVisible(true) } // past its tallest the text scrolls instead of disappearing
+        preferredSize = Dimension(width, COMMENT_BOX_MIN)
+    }
