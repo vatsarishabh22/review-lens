@@ -212,7 +212,7 @@ class ReviewLifecycleTest {
         val range = ScopeRange(git("rev-parse", "main"), head)
         val app = git.changes(range).first { it.path == "app.py" }
         ReviewMeta.save(git, ReviewMeta(target, range, "All commits (1)", mapOf("app.py" to app.newBlob, "gone.py" to "x")))
-        val listed = ListedTarget(target, "t", null, false) // no gh: the PR's head is unknown
+        val listed = ListedTarget(target, "t", null) // no gh: the PR's head is unknown
         assertEquals(ReviewProgress(1, 2), ReviewTargets(git).progress(listed)) // app.py of {app.py, new.py}; a stale path does not count
         ReviewMeta.save(git, ReviewMeta(target, range, "All commits (1)", mapOf("app.py" to "old-blob")))
         assertEquals(ReviewProgress(0, 2), ReviewTargets(git).progress(listed)) // changed since viewed
@@ -224,7 +224,7 @@ class ReviewLifecycleTest {
         val git = GitClient(repo)
         val range = ScopeRange(git("rev-parse", "main"), head)
         ReviewMeta.save(git, ReviewMeta(target, range, "All commits (1)", git.changes(range).associate { it.path to it.newBlob }, seenHead = head, verdict = Verdict.APPROVE))
-        fun at(sha: String) = ListedTarget(target, "t", PullRequest(1, "t", "feature", sha, "main", GhUser("asha", null)), false)
+        fun at(sha: String) = ListedTarget(target, "t", PullRequest(1, "t", "feature", sha, "main", Person("asha", "asha")))
         assertEquals("✓ Reviewed · approved", ReviewTargets(git).progress(at(head))!!.label)
         assertEquals("🔄 New commits since your review", ReviewTargets(git).progress(at("0123456789abcdef0123456789abcdef01234567"))!!.label)
     }

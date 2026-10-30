@@ -12,7 +12,6 @@ interface ReviewHost {
     /** How the UI names the host: "Submit to GitHub". */
     val name: String
 
-    fun viewerLogin(): String
     fun openPullRequests(): List<PullRequest>
 
     /** The refspec source that fetches review [number]'s head (`pull/7/head` on GitHub). */
@@ -62,6 +61,20 @@ interface ViewedSync {
     fun viewedStates(number: Int): ViewedStates
     fun setViewed(reviewId: String, path: String, viewed: Boolean)
 }
+
+/** Someone on the host as the UI shows them: [name] in text, [login] seeds their avatar. */
+data class Person(val login: String, val name: String)
+
+/**
+ * An open review on the host in the host's neutral words; each host maps its own answer to it. [head] is the branch
+ * under review and [headSha] its commit on the host now (a review whose head moved on shows "New commits since your
+ * review"); [requested]: the host asks the viewer to review it ("Waiting on you").
+ */
+data class PullRequest(
+    val number: Int, val title: String, val head: String, val headSha: String, val base: String, val author: Person,
+    val body: String = "", val additions: Int = 0, val deletions: Int = 0, val changedFiles: Int = 0, val updatedAt: String = "",
+    val requested: Boolean = false,
+)
 
 /**
  * Picks a checkout's host as spec/gitlab.md says: `origin`'s host, then the CLI signed in to it. GitHub is the only

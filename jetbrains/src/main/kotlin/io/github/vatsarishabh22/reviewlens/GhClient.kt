@@ -6,27 +6,22 @@ import com.google.gson.JsonObject
 import java.nio.file.Files
 import java.nio.file.Path
 
-data class GhUser(val login: String, val name: String?) {
-    val displayName get() = name?.ifBlank { null } ?: login
-}
-
-data class ReviewRequest(val login: String?)
-
-data class PullRequest(
-    val number: Int,
-    val title: String,
-    val headRefName: String,
-    /** The PR's head commit on GitHub now: a finished review whose head moved on shows "New commits since your review". */
-    val headRefOid: String = "",
-    val baseRefName: String,
-    val author: GhUser,
-    val body: String = "",
-    val additions: Int = 0,
-    val deletions: Int = 0,
-    val changedFiles: Int = 0,
-    val updatedAt: String = "",
-    val reviewRequests: List<ReviewRequest> = emptyList(),
+/** `gh pr list --json` as GitHub spells it; only [parsePullRequests] reads it. A team review request has no login. */
+private data class GhUser(val login: String, val name: String?)
+private data class GhRequest(val login: String?)
+private data class GhPullRequest(
+    val number: Int, val title: String, val headRefName: String, val headRefOid: String, val baseRefName: String, val author: GhUser,
+    val body: String?, val additions: Int, val deletions: Int, val changedFiles: Int, val updatedAt: String, val reviewRequests: List<GhRequest>?,
 )
+
+/**
+ * `gh pr list --json` as [PullRequest]s. A PR waits on [viewer] when a review request names them.
+ * ponytail: user requests only; a request to one of the viewer's teams lists under "Other open".
+ */
+fun parsePullRequests(json: String, viewer: String?): List<PullRequest> = Gson().fromJson(json, Array<GhPullRequest>::class.java).map {
+    PullRequest(it.number, it.title, it.headRefName, it.headRefOid, it.baseRefName, Person(it.author.login, it.author.name?.ifBlank { null } ?: it.author.login),
+        it.body.orEmpty(), it.additions, it.deletions, it.changedFiles, it.updatedAt, viewer != null && it.reviewRequests.orEmpty().any { r -> r.login == viewer })
+}
 
 enum class ChecksState { NONE, RUNNING, FAILING, PASSED }
 
@@ -50,13 +45,13 @@ class GhClient(private val root: Path) : ReviewHost, ViewedSync {
 
     override fun headRef(number: Int) = "pull/$number/head"
 
-    override fun viewerLogin(): String = runCli(root, "gh", "api", "user", "--jq", ".login")
+    private fun viewerLogin(): String = runCli(root, "gh", "api", "user", "--jq", ".login")
 
     /** Open PRs without their checks: checks double the call's time (2.65 s vs 5.43 s for 70 PRs) and only the detail shows them. */
     override fun openPullRequests(): List<PullRequest> {
         val json = runCli(root, "gh", "pr", "list", "--state", "open", "--limit", "100", "--json",
             "number,title,headRefName,headRefOid,baseRefName,author,body,additions,deletions,changedFiles,updatedAt,reviewRequests")
-        return Gson().fromJson(json, Array<PullRequest>::class.java).toList()
+        return parsePullRequests(json, runCatching { viewerLogin() }.getOrNull())
     }
 
     /** This viewer's GitHub "Viewed" ticks for PR [number], every page; owner and repo come from the checkout's remote. */

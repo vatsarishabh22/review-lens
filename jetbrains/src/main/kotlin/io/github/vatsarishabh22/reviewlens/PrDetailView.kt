@@ -92,7 +92,7 @@ class PrDetailView(private val project: Project, private val onBack: () -> Unit)
         content.gap(6)
         val base = target.target.base.removePrefix("${GitClient.REMOTE}/")
         if (pr != null) {
-            content.add(row(JBLabel(pr.author.displayName, AvatarIcon(pr.author.displayName, pr.author.login, 18), SwingConstants.LEFT)
+            content.add(row(JBLabel(pr.author.name, AvatarIcon(pr.author.name, pr.author.login, 18), SwingConstants.LEFT)
                 .apply { foreground = ReviewColors.muted; font = JBFont.small() }, mutedLabel("wants to merge"), gap = 4))
             content.gap(4)
         }
