@@ -1,6 +1,5 @@
 package io.github.vatsarishabh22.reviewlens
 
-import com.google.gson.Gson
 
 /**
  * An inline comment written during a review. [line] (1-based) counts in the file version [blob], the one the scope
@@ -74,34 +73,3 @@ fun keptText(drafts: List<Draft>): String {
     val text = draftsText(waiting.count { it.replyTo == null }, waiting.count { it.replyTo != null })
     return if (text.isEmpty()) "" else " $text kept as drafts for next time."
 }
-
-/** One GraphQL call as `gh api graphql --input` takes it. */
-fun graphqlBody(query: String, variables: Map<String, Any?>): String = Gson().toJson(mapOf("query" to query, "variables" to variables))
-
-/** Starts the reviewer's pending review at [commit] with the new [comments]; GitHub answers with the review's id. */
-fun startReviewBody(pullRequestId: String, commit: String, comments: List<Draft>) = graphqlBody(START_REVIEW, mapOf("pr" to pullRequestId, "commit" to commit,
-    "threads" to comments.map { mapOf("path" to it.path, "line" to it.line, "side" to "RIGHT", "body" to it.body) + range(it) }))
-/** A comment on several lines also names its first line, on the same side. */
-private fun range(comment: Draft) = comment.startLine?.let { mapOf("startLine" to it, "startSide" to "RIGHT") }.orEmpty()
-fun replyBody(reviewId: String, reply: Draft) = graphqlBody(ADD_REPLY, mapOf("review" to reviewId, "thread" to reply.replyTo, "body" to reply.body))
-fun submitBody(reviewId: String, verdict: Verdict, summary: String) = graphqlBody(SUBMIT_REVIEW, mapOf("review" to reviewId, "event" to githubEvent(verdict), "body" to summary.ifBlank { null }))
-/** GitHub's own `PullRequestReviewEvent` for a verdict, spelled here so renaming a [Verdict] can't change what GitHub is sent. */
-private fun githubEvent(verdict: Verdict) = when (verdict) { Verdict.COMMENT -> "COMMENT"; Verdict.APPROVE -> "APPROVE"; Verdict.REQUEST_CHANGES -> "REQUEST_CHANGES" }
-fun deleteReviewBody(reviewId: String) = graphqlBody(DELETE_REVIEW, mapOf("review" to reviewId))
-/** Adds a new comment to a pending review someone else started; GitHub anchors it at the PR's latest push (it takes no commit). */
-fun addThreadBody(reviewId: String, comment: Draft) = graphqlBody(ADD_THREAD, mapOf("review" to reviewId, "path" to comment.path, "line" to comment.line, "body" to comment.body) + range(comment))
-fun deleteCommentBody(commentId: String) = graphqlBody(DELETE_COMMENT, mapOf("comment" to commentId))
-/** Replaces a posted comment's text on GitHub at once. */
-fun editCommentBody(commentId: String, body: String) = graphqlBody(UPDATE_COMMENT, mapOf("comment" to commentId, "body" to body))
-/** Resolves a thread, or reopens it ([resolved] false), on GitHub at once: GitHub can't hold it in a pending review. */
-fun resolveBody(threadId: String, resolved: Boolean) = graphqlBody(if (resolved) RESOLVE_THREAD else UNRESOLVE_THREAD, mapOf("thread" to threadId))
-
-private const val START_REVIEW = "mutation(\$pr:ID!,\$commit:GitObjectID!,\$threads:[DraftPullRequestReviewThread]){addPullRequestReview(input:{pullRequestId:\$pr,commitOID:\$commit,threads:\$threads}){pullRequestReview{id}}}"
-private const val ADD_REPLY = "mutation(\$review:ID!,\$thread:ID!,\$body:String!){addPullRequestReviewThreadReply(input:{pullRequestReviewId:\$review,pullRequestReviewThreadId:\$thread,body:\$body}){comment{id}}}"
-private const val SUBMIT_REVIEW = "mutation(\$review:ID!,\$event:PullRequestReviewEvent!,\$body:String){submitPullRequestReview(input:{pullRequestReviewId:\$review,event:\$event,body:\$body}){pullRequestReview{id}}}"
-private const val ADD_THREAD = "mutation(\$review:ID!,\$path:String!,\$line:Int!,\$startLine:Int,\$startSide:DiffSide,\$body:String!){addPullRequestReviewThread(input:{pullRequestReviewId:\$review,path:\$path,line:\$line,side:RIGHT,startLine:\$startLine,startSide:\$startSide,body:\$body}){thread{comments(first:1){nodes{id}}}}}"
-private const val DELETE_COMMENT = "mutation(\$comment:ID!){deletePullRequestReviewComment(input:{id:\$comment}){pullRequestReview{id}}}"
-private const val UPDATE_COMMENT = "mutation(\$comment:ID!,\$body:String!){updatePullRequestReviewComment(input:{pullRequestReviewCommentId:\$comment,body:\$body}){pullRequestReviewComment{id}}}"
-private const val RESOLVE_THREAD = "mutation(\$thread:ID!){resolveReviewThread(input:{threadId:\$thread}){thread{id}}}"
-private const val UNRESOLVE_THREAD = "mutation(\$thread:ID!){unresolveReviewThread(input:{threadId:\$thread}){thread{id}}}"
-private const val DELETE_REVIEW = "mutation(\$review:ID!){deletePullRequestReview(input:{pullRequestReviewId:\$review}){pullRequestReview{id}}}"

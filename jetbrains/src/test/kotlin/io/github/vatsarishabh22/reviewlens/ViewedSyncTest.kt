@@ -7,17 +7,6 @@ import org.junit.Test
 /** The two checklists (this laptop's, GitHub's) and "Since your last review". Lines below are `gh`'s real output shape (PR #579). */
 class ViewedSyncTest {
 
-    @Test
-    fun `reads GitHub's answer across pages and skips states it does not know`() {
-        val text = "#id\tPR_1\n.github/a.yml\tVIEWED\n.github/b.yml\tUNVIEWED\n#id\tPR_1\nsrc/c.kt\tDISMISSED\nsrc/d.kt\tSOMETHING_NEW\n"
-        val states = parseViewedStates(text)
-        assertEquals("PR_1", states.pullRequestId)
-        assertEquals(mapOf(".github/a.yml" to ViewedState.VIEWED, ".github/b.yml" to ViewedState.UNVIEWED, "src/c.kt" to ViewedState.DISMISSED), states.files)
-    }
-
-    @Test(expected = IllegalArgumentException::class)
-    fun `an answer without the pull request is refused`() { parseViewedStates("a.yml\tVIEWED\n") }
-
     private fun change(path: String, blob: String) = FileChange(path, null, 'M', blob, 1, 1)
     private val a = change("a.kt", "a2")
     private val b = change("b.kt", "b2")

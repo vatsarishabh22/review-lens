@@ -1,38 +1,8 @@
-package io.github.vatsarishabh22.reviewlens
+package io.github.vatsarishabh22.reviewlens.github
 
-import com.google.gson.Gson
-import com.google.gson.JsonArray
-import com.google.gson.JsonObject
+import io.github.vatsarishabh22.reviewlens.*
 import java.nio.file.Files
 import java.nio.file.Path
-
-/** `gh pr list --json` as GitHub spells it; only [parsePullRequests] reads it. A team review request has no login. */
-private data class GhUser(val login: String, val name: String?)
-private data class GhRequest(val login: String?)
-private data class GhPullRequest(
-    val number: Int, val title: String, val headRefName: String, val headRefOid: String, val baseRefName: String, val author: GhUser,
-    val body: String?, val additions: Int, val deletions: Int, val changedFiles: Int, val updatedAt: String, val reviewRequests: List<GhRequest>?,
-)
-
-/**
- * `gh pr list --json` as [PullRequest]s. A PR waits on [viewer] when a review request names them.
- * ponytail: user requests only; a request to one of the viewer's teams lists under "Other open".
- */
-fun parsePullRequests(json: String, viewer: String?): List<PullRequest> = Gson().fromJson(json, Array<GhPullRequest>::class.java).map {
-    PullRequest(it.number, it.title, it.headRefName, it.headRefOid, it.baseRefName, Person(it.author.login, it.author.name?.ifBlank { null } ?: it.author.login),
-        it.body.orEmpty(), it.additions, it.deletions, it.changedFiles, it.updatedAt, viewer != null && it.reviewRequests.orEmpty().any { r -> r.login == viewer })
-}
-
-enum class ChecksState { NONE, RUNNING, FAILING, PASSED }
-
-data class Checks(val state: ChecksState, val failing: Int = 0) {
-    val text get() = when (state) {
-        ChecksState.NONE -> ""
-        ChecksState.RUNNING -> "Checks running"
-        ChecksState.FAILING -> if (failing == 1) "1 check failing" else "$failing checks failing"
-        ChecksState.PASSED -> "Checks passed"
-    }
-}
 
 /** GitHub through the `gh` CLI, the host of a checkout whose `origin` is on a host `gh` is signed in to ([ReviewHosts]). */
 class GhClient(private val root: Path) : ReviewHost, ViewedSync {
@@ -148,75 +118,4 @@ data class GitHubSlot(val id: String, val head: String, val pending: PendingRevi
     /** Then [denied], then GitHub's 422 on an empty Comment or Request changes (a blank reason, measured on PR #1). */
     override fun refusal(verdict: Verdict, summary: String, outbox: Outbox, scopeEnd: String) = held(outbox, scopeEnd) ?: denied(verdict)
         ?: if (verdict != Verdict.APPROVE && summary.isBlank() && outbox.size + started == 0) "Add a summary or an inline comment to post a ${verdict.label.lowercase()} review." else null
-}
-
-/** Reads `PR_id<TAB>head<TAB>pendingId<TAB>comments<TAB>own`; pendingId is empty and comments 0 when there is no pending review. */
-fun parseReviewSlot(text: String): GitHubSlot {
-    val (pr, head, pending, comments, own) = text.trim().split('\t').let { it + List(5 - it.size) { "" } }
-    require(pr.isNotEmpty() && head.isNotEmpty()) { "GitHub did not return this pull request" }
-    return GitHubSlot(pr, head, pending.ifEmpty { null }?.let { PendingReview(it, comments.toIntOrNull() ?: 0) }, own == "true")
-}
-
-// reviews(states: PENDING) lists only the viewer's own: nobody else's pending review is visible
-private const val REVIEW_SLOT_QUERY = "query(\$owner:String!,\$name:String!,\$number:Int!){repository(owner:\$owner,name:\$name){pullRequest(number:\$number)" +
-    "{id headRefOid viewerDidAuthor reviews(states:PENDING,first:1){nodes{id comments{totalCount}}}}}}"
-private const val REVIEW_SLOT_JQ = ".data.repository.pullRequest | [.id, .headRefOid, (.reviews.nodes[0].id // \"\"), (.reviews.nodes[0].comments.totalCount // 0 | tostring), (.viewerDidAuthor | tostring)] | @tsv"
-
-/** GitHub's own per-viewer state of a PR file; DISMISSED = "new changes since last viewed" (our 🔄). */
-enum class ViewedState { VIEWED, UNVIEWED, DISMISSED }
-
-data class ViewedStates(val pullRequestId: String, val files: Map<String, ViewedState>)
-
-private const val VIEWED_QUERY = "query(\$owner:String!,\$name:String!,\$number:Int!,\$endCursor:String){repository(owner:\$owner,name:\$name)" +
-    "{pullRequest(number:\$number){id files(first:100,after:\$endCursor){pageInfo{hasNextPage endCursor} nodes{path viewerViewedState}}}}}"
-private const val VIEWED_JQ = ".data as \$d | \$d.repository.pullRequest as \$p | (\"#id\\t\" + \$p.id), " +
-    "(\$p.files.nodes[] | \"\\(.path)\\t\\(.viewerViewedState)\")"
-
-/** Reads `#id<TAB>PR_…`, then `path<TAB>STATE` lines (the `#` lines repeat per page). */
-fun parseViewedStates(text: String): ViewedStates {
-    var id = ""
-    val files = LinkedHashMap<String, ViewedState>()
-    text.lines().filter { '\t' in it }.forEach { line ->
-        val (key, value) = line.split('\t', limit = 2)
-        when (key) {
-            "#id" -> id = value
-            else -> runCatching { ViewedState.valueOf(value) }.getOrNull()?.let { files[key] = it }
-        }
-    }
-    require(id.isNotEmpty()) { "GitHub did not return this pull request" }
-    return ViewedStates(id, files)
-}
-
-/** GitHub's reason from an error body (`{"message":"Unprocessable Entity","errors":["Path could not be resolved"]}`), or null. */
-fun githubRefusal(body: String): String? {
-    val json = runCatching { Gson().fromJson(body, JsonObject::class.java) }.getOrNull() ?: return null
-    val errors = (json.get("errors") as? JsonArray)?.map { if (it.isJsonObject) it.asJsonObject.get("message")?.asString.orEmpty() else it.asString }
-        ?.filter { it.isNotBlank() }.orEmpty()
-    return errors.joinToString("; ").ifEmpty { json.get("message")?.asString }
-}
-
-private val FAILED = setOf("FAILURE", "ERROR", "TIMED_OUT", "CANCELLED", "ACTION_REQUIRED", "STARTUP_FAILURE")
-private val RUNNING = setOf("PENDING", "EXPECTED", "QUEUED", "IN_PROGRESS", "WAITING", "REQUESTED")
-
-/**
- * One line for a PR's checks from `gh pr view --json statusCheckRollup`. GitHub mixes two kinds: check runs carry
- * `status` + `conclusion`, commit statuses carry `state`. Any failure wins over running, running over passed.
- */
-fun summarizeChecks(json: String): Checks {
-    val rollup = Gson().fromJson(json, JsonObject::class.java).get("statusCheckRollup") as? JsonArray ?: return Checks(ChecksState.NONE)
-    val outcomes = rollup.map { it.asJsonObject }.map { check ->
-        fun field(name: String) = check.get(name)?.takeUnless { it.isJsonNull }?.asString.orEmpty()
-        val status = field("status")
-        when {
-            status.isNotEmpty() && status != "COMPLETED" -> "PENDING"
-            else -> field("conclusion").ifEmpty { field("state") }
-        }
-    }
-    val failing = outcomes.count { it in FAILED }
-    return when {
-        outcomes.isEmpty() -> Checks(ChecksState.NONE)
-        failing > 0 -> Checks(ChecksState.FAILING, failing)
-        outcomes.any { it in RUNNING } -> Checks(ChecksState.RUNNING)
-        else -> Checks(ChecksState.PASSED)
-    }
 }

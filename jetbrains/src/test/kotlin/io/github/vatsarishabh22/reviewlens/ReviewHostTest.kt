@@ -3,29 +3,11 @@ package io.github.vatsarishabh22.reviewlens
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertNull
 import org.junit.Test
+import io.github.vatsarishabh22.reviewlens.github.GhClient
 import java.nio.file.Files
 
 /** Which host a checkout talks to, from `origin`'s URL (spec/gitlab.md, "Picking the host"), and fetching a review's head. */
 class ReviewHostTest {
-
-    // gh pr list's real shape (JetBrains/intellij-platform-plugin-template #598); the second asks a user and a team (no login)
-    private val ghList = """[
-        {"additions":1,"author":{"id":"U1","is_bot":false,"login":"SimY4","name":"Alex"},"baseRefName":"main","body":"x","changedFiles":1,"deletions":0,
-         "headRefName":"fix/zip","headRefOid":"2f9d9ea","number":598,"reviewRequests":[],"title":"chore: zip","updatedAt":"2026-07-23T01:09:36Z"},
-        {"additions":186,"author":{"id":"U2","is_bot":false,"login":"nikitavilkov","name":""},"baseRefName":"main","body":"","changedFiles":12,"deletions":166,
-         "headRefName":"feature/chat","headRefOid":"e9c9c9d","number":597,"title":"AI chat demo","updatedAt":"2026-07-20T10:00:00Z",
-         "reviewRequests":[{"__typename":"Team","name":"core","slug":"core"},{"__typename":"User","login":"me"}]}
-    ]"""
-
-    @Test
-    fun `GitHub's PR list becomes host-neutral rows, waiting on you only when a request names you`() {
-        val (a, b) = parsePullRequests(ghList, "me")
-        assertEquals(PullRequest(598, "chore: zip", "fix/zip", "2f9d9ea", "main", Person("SimY4", "Alex"), "x", 1, 0, 1, "2026-07-23T01:09:36Z", false), a)
-        assertEquals(Person("nikitavilkov", "nikitavilkov"), b.author) // a blank name shows the login
-        assertEquals(true, b.requested)
-        assertEquals("a team request names nobody", false, parsePullRequests(ghList, "core")[1].requested)
-        assertEquals("viewer unknown: nothing waits", false, parsePullRequests(ghList, null)[1].requested)
-    }
 
     // Every "GitHub" the UI shows comes from the host's name (another host's name must show through); before any host is picked the text stays neutral.
     @Test

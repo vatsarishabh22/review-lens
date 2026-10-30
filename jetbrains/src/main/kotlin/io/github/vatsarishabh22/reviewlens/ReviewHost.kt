@@ -1,5 +1,6 @@
 package io.github.vatsarishabh22.reviewlens
 
+import io.github.vatsarishabh22.reviewlens.github.GhClient
 import java.nio.file.Path
 import java.util.concurrent.ConcurrentHashMap
 
@@ -55,6 +56,22 @@ interface ReviewSlot {
     /** Why the host won't take this review as it is now (greys Submit), or null. */
     fun refusal(verdict: Verdict, summary: String, outbox: Outbox, scopeEnd: String): String?
 }
+
+enum class ChecksState { NONE, RUNNING, FAILING, PASSED }
+
+data class Checks(val state: ChecksState, val failing: Int = 0) {
+    val text get() = when (state) {
+        ChecksState.NONE -> ""
+        ChecksState.RUNNING -> "Checks running"
+        ChecksState.FAILING -> if (failing == 1) "1 check failing" else "$failing checks failing"
+        ChecksState.PASSED -> "Checks passed"
+    }
+}
+
+/** GitHub's own per-viewer state of a PR file; DISMISSED = "new changes since last viewed" (our 🔄). */
+enum class ViewedState { VIEWED, UNVIEWED, DISMISSED }
+
+data class ViewedStates(val pullRequestId: String, val files: Map<String, ViewedState>)
 
 /** A host's per-viewer "Viewed" checkboxes on a review's files. */
 interface ViewedSync {
