@@ -51,4 +51,12 @@ class PreviousIndexTest {
         assertNotEquals(ReviewTarget.forPr(7, "t", "h", "origin/main").key, ReviewTarget.forBranch("origin/pr-7", "origin/main").key)
     @Test fun `branch keys keep only file-safe characters`() =
         assertEquals("branch-feat_csv_export", ReviewTarget.forBranch("origin/feat/csv export", "origin/main").key)
+
+    // Every "#7" the UI shows comes from ref; the stored label keeps its old text so existing state files still read.
+    @Test fun `a PR is named by its number and a branch by nothing`() {
+        val pr = ReviewTarget.forPr(7, "Add CSV export", "h", "origin/main")
+        assertEquals("#7", pr.ref)
+        assertEquals("#7 Add CSV export", pr.label)
+        assertEquals(null, ReviewTarget.forBranch("origin/feat", "origin/main").ref)
+    }
 }

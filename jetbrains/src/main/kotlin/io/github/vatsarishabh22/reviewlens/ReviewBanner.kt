@@ -59,7 +59,7 @@ class ReviewBanner : EditorNotificationProvider, DumbAware {
 
     private fun reviewBar(project: Project, meta: ReviewMeta, change: FileChange?): JComponent {
         val service = ReviewService.of(project)
-        val what = JBLabel("Reviewing ${meta.target.prNumber?.let { "#$it" } ?: meta.target.label}").apply {
+        val what = JBLabel("Reviewing ${meta.target.ref ?: meta.target.label}").apply {
             font = JBFont.label().asBold(); foreground = ReviewColors.reviewFg
         }
         val scope = flat(meta.scopeLabel, AllIcons.General.ArrowDown, iconRight = true) { scopeMenu(project, meta, it) }
@@ -68,7 +68,7 @@ class ReviewBanner : EditorNotificationProvider, DumbAware {
         val prev = flat("Prev", AllIcons.Actions.Back) { service.previous(change?.path)?.let { openChange(project, it) } }
         val next = flat("Next unviewed", AllIcons.Actions.Forward, iconRight = true) {
             service.nextUnreviewed(change?.path)?.let { openChange(project, it) }
-                ?: notify(project, "Every file is viewed", if (meta.target.prNumber != null) "Finish the review when you're ready." else "Exit the review when you're done.")
+                ?: notify(project, "Every file is viewed", if (meta.target.reviewable) "Finish the review when you're ready." else "Exit the review when you're done.")
         }.apply { toolTipText = "Next unviewed file (⌥N)" }
         val pending = ReviewDrafts.of(project).outbox().size
         val finish = JButton("Finish review", if (pending > 0) CountIcon(pending) else null).apply {
@@ -76,7 +76,7 @@ class ReviewBanner : EditorNotificationProvider, DumbAware {
             isOpaque = false; isFocusable = false
             horizontalTextPosition = SwingConstants.LEFT
             addActionListener { showFinishReview(project, this) }
-        }.takeIf { meta.target.prNumber != null } // a branch has nowhere to post a review
+        }.takeIf { meta.target.reviewable } // a branch has nowhere to post a review
         val exit = flat("Exit", AllIcons.Actions.Exit) { exitReview(project) }.apply { toolTipText = "Back to ${service.active?.originalRef}" }
         return JPanel(BorderLayout()).apply {
             background = if (service.flashing) ReviewColors.flash else ReviewColors.review
@@ -121,7 +121,7 @@ class ReviewBanner : EditorNotificationProvider, DumbAware {
             val viewed = service.badge(change) == Badge.REVIEWED
             toggle.icon = if (viewed) BadgeIcon(Badge.REVIEWED) else BOX
             toggle.toolTipText = (if (viewed) "Viewed — click to unmark (⌥R)" else "Mark viewed (⌥R)") +
-                if (service.meta?.target?.prNumber != null && !service.syncsViewed(change)) ". Not in the PR's files on GitHub (its net change is empty), so it's ticked here only." else ""
+                if (service.meta?.target?.reviewable == true && !service.syncsViewed(change)) ". Not in the PR's files on GitHub (its net change is empty), so it's ticked here only." else ""
             toggle.foreground = if (viewed) ReviewColors.ok else ReviewColors.text
         }
         show()

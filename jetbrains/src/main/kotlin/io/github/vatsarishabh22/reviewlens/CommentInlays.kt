@@ -111,7 +111,7 @@ class CommentInlays(private val project: Project) : Disposable {
     /** The PR file [editor] shows, when it is one this review changed; branch reviews have nowhere to post. */
     private fun changeIn(editor: Editor): FileChange? {
         val service = ReviewService.of(project)
-        if (editor.project != project || editor.editorKind != EditorKind.MAIN_EDITOR || service.meta?.target?.prNumber == null) return null
+        if (editor.project != project || editor.editorKind != EditorKind.MAIN_EDITOR || service.meta?.target?.reviewable != true) return null
         return FileDocumentManager.getInstance().getFile(editor.document)?.let(service::changeFor)
     }
 
@@ -422,7 +422,7 @@ class CommentInlays(private val project: Project) : Disposable {
         editors().forEach(::render)
         ApplicationManager.getApplication().executeOnPooledThread {
             val sent = runCatching {
-                val host = ReviewHosts.of(git) ?: throw CliException("Not signed in to this repository's host")
+                val host = ReviewHosts.required(git)
                 if (body == null) host.deleteComment(comment.id) else host.editComment(comment.id, body)
             }
             service.reloadThreads()
@@ -454,7 +454,7 @@ class CommentInlays(private val project: Project) : Disposable {
         resolving[thread.id] = resolved
         editors().forEach(::render)
         ApplicationManager.getApplication().executeOnPooledThread {
-            val sent = runCatching { (ReviewHosts.of(git) ?: throw CliException("Not signed in to this repository's host")).resolveThread(thread.id, resolved) }
+            val sent = runCatching { ReviewHosts.required(git).resolveThread(thread.id, resolved) }
             service.reloadThreads()
             ApplicationManager.getApplication().invokeLater({
                 resolving -= thread.id

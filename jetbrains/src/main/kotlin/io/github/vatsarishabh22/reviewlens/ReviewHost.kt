@@ -53,6 +53,9 @@ object ReviewHosts {
 
     fun of(git: GitClient): ReviewHost? = picked.getOrPut(git.root) { Picked(pick(git)) }.host
 
+    /** [of] for a call that can't go on without the host; the balloon's title already says which call. */
+    fun required(git: GitClient): ReviewHost = of(git) ?: throw CliException("Sign in to this repository's host")
+
     fun refresh(git: GitClient): ReviewHost? = Picked(pick(git)).also { picked[git.root] = it }.host
 
     private fun pick(git: GitClient): ReviewHost? {

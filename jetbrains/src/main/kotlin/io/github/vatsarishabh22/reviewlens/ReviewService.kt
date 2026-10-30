@@ -73,7 +73,7 @@ class ReviewService(private val project: Project) : Disposable {
         hostKeepsViewed = host == null || host.viewed != null // unknown while no host answers: ticks queue for when one does
         val viewedSync = host?.viewed
         if (host != null && viewedSync == null) return meta.also { sync = Sync.LOCAL; pullRequestId = null } // a host with no Viewed checkboxes
-        return runCatching { (viewedSync ?: throw CliException("Not signed in to this repository's host")).viewedStates(number) }.fold(
+        return runCatching { (host ?: ReviewHosts.required(git)).viewed!!.viewedStates(number) }.fold(
             onSuccess = { states ->
                 pullRequestId = states.pullRequestId
                 pullRequestFiles = states.files.keys
@@ -117,15 +117,14 @@ class ReviewService(private val project: Project) : Disposable {
     fun reloadThreads() {
         val number = meta?.target?.prNumber ?: return
         val git = git ?: return
-        reviewSlot = runCatching { host(git).reviewSlot(number) }.onFailure { thisLogger().info("GitHub pending review not read", it) }.getOrNull()
+        reviewSlot = runCatching { ReviewHosts.required(git).reviewSlot(number) }.onFailure { thisLogger().info("GitHub pending review not read", it) }.getOrNull()
         fetchThreads(git, number)?.let { threads = it; fireChanged() } // a failed reload keeps the threads already shown
     }
 
     /** The PR's threads from GitHub, or null (logged) when GitHub didn't answer. */
     private fun fetchThreads(git: GitClient, number: Int): List<ReviewThread>? =
-        runCatching { host(git).reviewThreads(number) }.onFailure { thisLogger().info("GitHub review threads not loaded", it) }.getOrNull()
+        runCatching { ReviewHosts.required(git).reviewThreads(number) }.onFailure { thisLogger().info("GitHub review threads not loaded", it) }.getOrNull()
 
-    private fun host(git: GitClient) = ReviewHosts.of(git) ?: throw CliException("Not signed in to this repository's host")
 
     /** [change]'s threads, each with the line it sits under in the file shown, or null when it is only listed. */
     fun threadsOn(change: FileChange): List<Pair<ReviewThread, Int?>> {
@@ -142,7 +141,7 @@ class ReviewService(private val project: Project) : Disposable {
      * Whether [change]'s Viewed tick goes to GitHub: a PR file GitHub lists, or any PR file while the list is unknown (the
      * next load sorts it out). A scope file the PR's net change doesn't include has no Viewed box on GitHub.
      */
-    fun syncsViewed(change: FileChange): Boolean = meta?.target?.prNumber != null && hostKeepsViewed && pullRequestFiles?.contains(change.path) != false
+    fun syncsViewed(change: FileChange): Boolean = meta?.target?.reviewable == true && hostKeepsViewed && pullRequestFiles?.contains(change.path) != false
 
     /** Marks a file viewed, or un-marks it, here at once; for a PR file GitHub lists, the same tick goes there in the background. */
     @Synchronized
@@ -155,14 +154,14 @@ class ReviewService(private val project: Project) : Disposable {
         val unsent = if (!sends) current.unsent else current.unsent.orEmpty() + (change.path to viewed)
         update { current.copy(reviewed = reviewed, unsent = unsent) }
         // the last tick is the moment to finish: say so once, with the way to do it
-        if (viewed && current.target.prNumber != null && reviewedCount() == changes.size) notify(project, "All ${changes.size} files viewed",
+        if (viewed && current.target.reviewable && reviewedCount() == changes.size) notify(project, "All ${changes.size} files viewed",
             "Finish the review to post a verdict, or mark it reviewed without posting.", NotificationType.INFORMATION,
             NotificationAction.createSimpleExpiring("Finish review…") { showFinishReview(project, null) })
         val id = pullRequestId?.takeIf { sends } ?: return
         val git = git!!
         ApplicationManager.getApplication().executeOnPooledThread {
             // an id exists only once a host with Viewed checkboxes answered, so viewed is there
-            runCatching { (host(git).viewed ?: throw CliException("This host keeps no Viewed checkboxes")).setViewed(id, change.path, viewed) }
+            runCatching { (ReviewHosts.required(git).viewed ?: throw CliException("This host keeps no Viewed checkboxes")).setViewed(id, change.path, viewed) }
                 .onSuccess { confirmSent(change.path, viewed) }
                 .onFailure { syncFailed(it); fireChanged() }
         }

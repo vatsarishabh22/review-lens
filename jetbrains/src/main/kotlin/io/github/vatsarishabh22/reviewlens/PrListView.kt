@@ -89,7 +89,7 @@ class PrListView(private val onPick: (ListedTarget) -> Unit, onRefresh: () -> Un
 
     private fun rebuild() {
         val query = search.text.trim().lowercase()
-        val shown = all.filter { query.isEmpty() || query in "#${it.target.prNumber} ${it.title} ${it.pr?.author?.displayName}".lowercase() }
+        val shown = all.filter { query.isEmpty() || query in "${it.target.ref.orEmpty()} ${it.title} ${it.pr?.author?.displayName}".lowercase() }
         model.clear()
         fun section(title: String, rows: List<ListedTarget>) {
             if (rows.isEmpty()) return
@@ -120,7 +120,7 @@ class PrListView(private val onPick: (ListedTarget) -> Unit, onRefresh: () -> Un
             val title = JBLabel(row.listed.title).apply { font = JBFont.label().asBold() }
             val meta = mutableListOf<JComponent>()
             if (pr != null) {
-                meta += mutedLabel("#${pr.number}"); meta += mutedLabel(pr.author.displayName); meta += mutedLabel(files(pr.changedFiles))
+                meta += mutedLabel(ReviewTarget.refOf(pr.number)); meta += mutedLabel(pr.author.displayName); meta += mutedLabel(files(pr.changedFiles))
             }
             val progress = row.progress
             when {

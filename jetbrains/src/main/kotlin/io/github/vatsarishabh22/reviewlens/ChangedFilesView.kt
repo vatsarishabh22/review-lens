@@ -225,7 +225,7 @@ class ChangedFilesView(private val project: Project, parent: Disposable) : JPane
 
     fun refresh() {
         val meta = service.meta ?: return
-        val pr = meta.target.prNumber?.let { "#$it " }.orEmpty()
+        val pr = meta.target.ref?.let { "$it " }.orEmpty()
         title.text = pr + meta.target.label.removePrefix(pr)
         val total = service.changes.size
         val done = service.reviewedCount()
@@ -287,7 +287,7 @@ class ChangedFilesView(private val project: Project, parent: Disposable) : JPane
             remarkModel.addElement(RemarkRow.File(path))
             items.forEach { remark -> remarkModel.addElement(RemarkRow.Item(remark)); remark.pending.forEach { remarkModel.addElement(RemarkRow.Reply(it)) } }
         }
-        val pr = service.meta?.target?.prNumber != null
+        val pr = service.meta?.target?.reviewable == true
         remarkNote.text = when {
             pr && service.threads == null -> "Couldn't load comments from GitHub · showing only yours"
             remarkModel.isEmpty -> "Nothing here."

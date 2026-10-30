@@ -9,10 +9,18 @@ data class ScopeRange(val from: String, val to: String)
 
 /** What is under review: a PR (listed via gh) or a plain remote branch (without gh). */
 data class ReviewTarget(val key: String, val label: String, val prNumber: Int?, val head: String, val base: String) {
+    /** How the host names this review in text (`#7`), or null for a branch. */
+    val ref get() = prNumber?.let { refOf(it) }
+
+    /** A review on the host: Finish posts to it and Viewed syncs with it; a branch has neither. */
+    val reviewable get() = prNumber != null
+
     companion object {
+        fun refOf(number: Int) = "#$number"
+
         // [key] names the state file `.git/review-lens/<key>.json`: the pr- and branch- prefixes keep a branch named
         // "active" or "pr-7" from overwriting the review in progress or another PR's state.
-        fun forPr(number: Int, title: String, head: String, base: String) = ReviewTarget("pr-$number", "#$number $title", number, head, base)
+        fun forPr(number: Int, title: String, head: String, base: String) = ReviewTarget("pr-$number", "${refOf(number)} $title", number, head, base)
 
         fun forBranch(remoteBranch: String, base: String) = ReviewTarget(
             "branch-" + remoteBranch.removePrefix("${GitClient.REMOTE}/").replace(Regex("[^A-Za-z0-9._-]"), "_"), remoteBranch, null, remoteBranch, base)

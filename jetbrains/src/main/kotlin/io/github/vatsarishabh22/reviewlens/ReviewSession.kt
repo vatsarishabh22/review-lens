@@ -10,7 +10,7 @@ class ReviewSession(val git: GitClient) {
 
     fun load(target: ReviewTarget): LoadedTarget {
         val ref = target.prNumber?.let { n ->
-            val host = ReviewHosts.of(git) ?: throw CliException("Sign in to this repository's host to fetch ${target.label}")
+            val host = ReviewHosts.required(git)
             git.fetchReview(host.headRef(n), target.key, target.base.removePrefix("${GitClient.REMOTE}/"))
         }
             ?: target.head.also { git.fetchAll() }

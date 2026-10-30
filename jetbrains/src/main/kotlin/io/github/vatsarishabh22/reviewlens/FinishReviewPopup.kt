@@ -29,7 +29,7 @@ import javax.swing.event.DocumentEvent
  * The threads are read again first, so a thread resolved or deleted since the review loaded is said before anything posts.
  */
 fun showFinishReview(project: Project, anchor: JComponent?) {
-    if (ReviewService.of(project).meta?.target?.prNumber == null) return openFinishReview(project, anchor)
+    if (ReviewService.of(project).meta?.target?.reviewable != true) return openFinishReview(project, anchor)
     background(project, "Checking GitHub for new comments", { ReviewService.of(project).reloadThreads() }) { openFinishReview(project, anchor) }
 }
 

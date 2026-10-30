@@ -44,7 +44,7 @@ class ReviewDrafts(private val project: Project) {
         val meta = review.meta ?: error("No review in progress")
         val number = meta.target.prNumber ?: error("Only a pull request can be reviewed on GitHub")
         val sending = outbox()
-        val host = ReviewHosts.of(review.git!!) ?: throw CliException("Sign in to this repository's host to post the review")
+        val host = ReviewHosts.required(review.git!!)
         host.submitReview(number, meta.range.to, summary, verdict, sending.comments, sending.replies)
         val sent = (sending.comments + sending.replies).toSet()
         review.update { m -> m.copy(drafts = m.drafts?.map { if (it in sent) it.copy(posted = true) else it }, verdict = verdict) }
