@@ -4,7 +4,7 @@ import com.google.gson.Gson
 
 /**
  * An inline comment written during a review. [line] (1-based) counts in the file version [blob], the one the scope
- * showed, so a draft stays on the line it was written for. [posted] once Finish review sent it ("on GitHub").
+ * showed, so a draft stays on the line it was written for. [posted] once Finish review sent it ("on <host>").
  * A reply has [replyTo], the GitHub thread it answers; its path, line and blob are the thread's, for listing it.
  */
 data class Draft(val path: String, val line: Int, val blob: String, val body: String, val posted: Boolean = false, val replyTo: String? = null, val startLine: Int? = null)

@@ -30,11 +30,11 @@ import javax.swing.event.DocumentEvent
  */
 fun showFinishReview(project: Project, anchor: JComponent?) {
     if (ReviewService.of(project).meta?.target?.reviewable != true) return openFinishReview(project, anchor)
-    background(project, "Checking GitHub for new comments", { ReviewService.of(project).reloadThreads() }) { openFinishReview(project, anchor) }
+    background(project, "Checking ${ReviewService.of(project).hostName} for new comments", { ReviewService.of(project).reloadThreads() }) { openFinishReview(project, anchor) }
 }
 
-/** What changed on GitHub under your pending replies: a thread resolved meanwhile (the reply still posts), or one deleted (it waits). */
-fun replyNotes(replies: List<Draft>, threads: List<ReviewThread>?): List<String> {
+/** What changed on [host] under your pending replies: a thread resolved meanwhile (the reply still posts), or one deleted (it waits). */
+fun replyNotes(replies: List<Draft>, threads: List<ReviewThread>?, host: String): List<String> {
     if (threads == null) return emptyList()
     val byId = threads.associateBy { it.id }
     val replied = replies.filter { !it.posted && it.replyTo != null }
@@ -43,8 +43,8 @@ fun replyNotes(replies: List<Draft>, threads: List<ReviewThread>?): List<String>
     }
     val gone = replied.count { it.replyTo !in byId }
     return resolved + listOfNotNull(gone.takeIf { it > 0 }?.let {
-        if (it == 1) "1 reply is on a thread that's gone from GitHub. It won't post and stays as a draft."
-        else "$it replies are on threads that are gone from GitHub. They won't post and stay as drafts."
+        if (it == 1) "1 reply is on a thread that's gone from $host. It won't post and stays as a draft."
+        else "$it replies are on threads that are gone from $host. They won't post and stay as drafts."
     })
 }
 
@@ -56,7 +56,7 @@ private fun openFinishReview(project: Project, anchor: JComponent?) {
         lineWrap = true; wrapStyleWord = true; font = JBFont.label(); emptyText.text = "Leave a summary (optional)"
     }
     val group = ButtonGroup()
-    // null is "Mark as reviewed": no GitHub event, so own-PR and empty-review rules don't apply to it
+    // null is "Mark as reviewed": no host event, so own-PR and empty-review rules don't apply to it
     val choices = (Verdict.entries + null).associateWith { v ->
         JRadioButton(v?.label ?: "Mark as reviewed", v == Verdict.COMMENT).apply {
             isOpaque = false; group.add(this)
@@ -68,22 +68,22 @@ private fun openFinishReview(project: Project, anchor: JComponent?) {
     var content: JComponent? = null
     val verdict = { choices.entries.first { it.value.isSelected }.key }
     val cancel = JButton("Cancel").apply { addActionListener { popup?.cancel() }; cursor = Cursor.getPredefinedCursor(Cursor.HAND_CURSOR) }
-    val submit = JButton("Submit to GitHub").apply {
+    val submit = JButton("Submit to ${service.hostName}").apply {
         putClientProperty(DarculaButtonUI.DEFAULT_STYLE_KEY, true)
         cursor = Cursor.getPredefinedCursor(Cursor.HAND_CURSOR)
         addActionListener { popup?.cancel(); finishReview(project, summary.text.trim(), verdict()) }
     }
     // drafts written on another scope's version of a file go out only from that scope: say so, never skip them silently
     val waiting = service.meta?.drafts.orEmpty().count { !it.posted && it.replyTo == null } - outbox.comments.size
-    // a review started on github.com is adopted: its comments go out with yours, so say so before Submit
+    // a review started on the host's website is adopted: its comments go out with yours, so say so before Submit
     val slot = service.reviewSlot
     val started = slot?.pending?.comments ?: 0
-    val fromGitHub = "${draftsText(started, 0)} you started on github.com"
+    val fromHost = "${draftsText(started, 0)} you started on ${service.hostName}"
     val held = slot?.blocker(service.meta?.range?.to.orEmpty(), outbox.comments.size) // said in place of "will be posted", not only on hover
     val posting = when {
         held != null -> held
-        outbox.size > 0 -> "${outbox.text} will be posted with it, as one review." + if (started > 0) " So ${if (started == 1) "is" else "are"} the $fromGitHub." else ""
-        started > 0 -> "The $fromGitHub will be posted with it."
+        outbox.size > 0 -> "${outbox.text} will be posted with it, as one review." + if (started > 0) " So ${if (started == 1) "is" else "are"} the $fromHost." else ""
+        started > 0 -> "The $fromHost will be posted with it."
         else -> "No inline comments yet."
     }
     val later = if (waiting > 0) " $waiting more ${if (waiting == 1) "waits for the scope it was" else "wait for the scopes they were"} written in." else ""
@@ -91,7 +91,7 @@ private fun openFinishReview(project: Project, anchor: JComponent?) {
     val fineprint = wrappingText("", JBFont.small()).apply { foreground = ReviewColors.muted }
     val keep = wrappingText("Your ${outbox.text} won't be posted; ${if (outbox.size > 1) "they're" else "it's"} kept for next time.", JBFont.small())
         .apply { foreground = ReviewColors.warn }
-    val notes = replyNotes(service.meta?.drafts.orEmpty(), service.threads).map { note ->
+    val notes = replyNotes(service.meta?.drafts.orEmpty(), service.threads, service.hostName).map { note ->
         wrappingText(note, JBFont.small()).apply { foreground = ReviewColors.warn; setSize(JBUI.scale(356), Short.MAX_VALUE.toInt()) }
     }
     val update = {
@@ -99,7 +99,7 @@ private fun openFinishReview(project: Project, anchor: JComponent?) {
         val blocker = v?.let { held ?: submitBlocker(it, summary.text, outbox.size + started, service.ownPullRequest) }
         submit.isEnabled = blocker == null
         submit.toolTipText = blocker // a greyed-out Submit says why on hover
-        submit.text = if (v == null) "Finish review" else "Submit to GitHub"
+        submit.text = if (v == null) "Finish review" else "Submit to ${service.hostName}"
         summary.isEnabled = v != null // nothing is posted, so a summary has nowhere to go
         keep.isVisible = v == null && outbox.size > 0
         // the warning says what happens to the drafts instead of "will be posted"
@@ -114,7 +114,7 @@ private fun openFinishReview(project: Project, anchor: JComponent?) {
     choices.values.forEach { it.addActionListener { update() } }
     update()
     // the hint is its own muted label under the radio, so its colour follows the theme like every other label
-    fun option(v: Verdict?, radio: JRadioButton) = listOf(radio, mutedLabel(v?.hint ?: "Nothing is posted to GitHub").apply { border = EmptyBorder(0, textIndent(radio), 0, 0) }, vgap(4))
+    fun option(v: Verdict?, radio: JRadioButton) = listOf(radio, mutedLabel(v?.hint ?: "Nothing is posted to ${service.hostName}").apply { border = EmptyBorder(0, textIndent(radio), 0, 0) }, vgap(4))
     content = stack(
         JBLabel("Finish your review").apply { font = JBFont.label().asBold() }, vgap(4),
         fineprint, vgap(6),

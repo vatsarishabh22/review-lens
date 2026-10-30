@@ -33,7 +33,13 @@ class ReviewService(private val project: Project) : Disposable {
     @Volatile var trackedFiles: List<String> = emptyList(); private set
 
     /** Where the viewed checklist lives right now, for the panel's one-line status. */
-    enum class Sync(val text: String) { GITHUB("Synced with GitHub"), LOCAL("Viewed kept on this laptop"), FAILED("GitHub sync failed · kept on this laptop") }
+    enum class Sync(private val words: String) {
+        HOST("Synced with %s"), LOCAL("Viewed kept on this laptop"), FAILED("%s sync failed · kept on this laptop");
+        fun text(host: String) = words.format(host)
+    }
+
+    /** The host's name for UI text ([ReviewHosts.nameOf]). */
+    val hostName get() = ReviewHosts.nameOf(git)
     @Volatile var sync = Sync.LOCAL; private set
     @Volatile private var pullRequestId: String? = null
     /** False once the host is known to keep no "Viewed" checkboxes (GitLab): a tick is then local only, never queued. */
@@ -79,7 +85,7 @@ class ReviewService(private val project: Project) : Disposable {
                 pullRequestFiles = states.files.keys
                 ownPullRequest = states.ownPullRequest
                 syncViewed(meta, states.files, changes) { path, viewed -> runCatching { viewedSync!!.setViewed(states.pullRequestId, path, viewed) }.isSuccess }
-                    .also { sync = if (it.unsent == null) Sync.GITHUB else Sync.FAILED; if (it != meta) ReviewMeta.save(git, it) }
+                    .also { sync = if (it.unsent == null) Sync.HOST else Sync.FAILED; if (it != meta) ReviewMeta.save(git, it) }
             },
             onFailure = { syncFailed(it); meta },
         )
@@ -90,8 +96,8 @@ class ReviewService(private val project: Project) : Disposable {
         sync = Sync.FAILED
         if (syncFailureShown) return
         syncFailureShown = true
-        thisLogger().info("GitHub viewed sync failed", error)
-        notify(project, "Can't reach GitHub right now", "Your viewed ticks are kept on this laptop and sent when GitHub is back.", NotificationType.WARNING)
+        thisLogger().info("Host viewed sync failed", error)
+        notify(project, "Can't reach $hostName right now", "Your viewed ticks are kept on this laptop and sent when $hostName is back.", NotificationType.WARNING)
     }
 
     fun relativePath(file: VirtualFile): String? {
@@ -112,18 +118,18 @@ class ReviewService(private val project: Project) : Disposable {
 
     /**
      * Reads the threads and your pending review again (Finish review does, so a thread resolved or deleted meanwhile, or
-     * a review started on github.com, is said before anything posts). Runs gh: call off EDT.
+     * a review started on the host's website, is said before anything posts). Runs gh: call off EDT.
      */
     fun reloadThreads() {
         val number = meta?.target?.prNumber ?: return
         val git = git ?: return
-        reviewSlot = runCatching { ReviewHosts.required(git).reviewSlot(number) }.onFailure { thisLogger().info("GitHub pending review not read", it) }.getOrNull()
+        reviewSlot = runCatching { ReviewHosts.required(git).reviewSlot(number) }.onFailure { thisLogger().info("Host pending review not read", it) }.getOrNull()
         fetchThreads(git, number)?.let { threads = it; fireChanged() } // a failed reload keeps the threads already shown
     }
 
     /** The PR's threads from GitHub, or null (logged) when GitHub didn't answer. */
     private fun fetchThreads(git: GitClient, number: Int): List<ReviewThread>? =
-        runCatching { ReviewHosts.required(git).reviewThreads(number) }.onFailure { thisLogger().info("GitHub review threads not loaded", it) }.getOrNull()
+        runCatching { ReviewHosts.required(git).reviewThreads(number) }.onFailure { thisLogger().info("Host review threads not loaded", it) }.getOrNull()
 
 
     /** [change]'s threads, each with the line it sits under in the file shown, or null when it is only listed. */

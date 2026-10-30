@@ -79,11 +79,11 @@ fun beginReview(
  */
 fun finishReview(project: Project, summary: String, verdict: Verdict?) {
     val number = ReviewService.of(project).meta?.target?.prNumber ?: return
-    if (verdict == null) return endReview(project, "Finished ${ReviewTarget.refOf(number)}", "Marked as reviewed. Nothing was posted to GitHub.")
+    if (verdict == null) return endReview(project, "Finished ${ReviewTarget.refOf(number)}", "Marked as reviewed. Nothing was posted to ${ReviewService.of(project).hostName}.")
     background(project, "Posting your review", {
         runCatching { ReviewDrafts.of(project).submit(summary, verdict) }.getOrElse { throw IllegalStateException("${it.message}. Your comments are kept as drafts.", it) }
     }) { sent ->
-        endReview(project, "Finished ${ReviewTarget.refOf(number)}", "${verdict.posted} on GitHub${if (sent.isEmpty()) "" else " with $sent"}.")
+        endReview(project, "Finished ${ReviewTarget.refOf(number)}", "${verdict.posted} on ${ReviewService.of(project).hostName}${if (sent.isEmpty()) "" else " with $sent"}.")
     }
 }
 

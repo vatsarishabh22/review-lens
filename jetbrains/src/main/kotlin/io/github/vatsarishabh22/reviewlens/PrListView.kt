@@ -41,7 +41,7 @@ class PrListView(private val onPick: (ListedTarget) -> Unit, onRefresh: () -> Un
     private var all: List<ListedTarget> = emptyList()
     private var progress: Map<String, ReviewProgress> = emptyMap()
     /** Branches stand in when `gh` could not list PRs (not installed, signed out, offline, not a GitHub repo): say so. */
-    private val fallbackNote = mutedLabel("Couldn't get pull requests from GitHub · showing branches").apply {
+    private val fallbackNote = mutedLabel("").apply {
         border = JBUI.Borders.empty(0, 12, 4, 12); isVisible = false
     }
 
@@ -83,6 +83,7 @@ class PrListView(private val onPick: (ListedTarget) -> Unit, onRefresh: () -> Un
     fun show(listing: Listing, progress: Map<String, ReviewProgress>) {
         all = listing.targets; this.progress = progress
         fallbackNote.isVisible = listing.branchesOnly
+        fallbackNote.text = "Couldn't get pull requests from ${listing.hostName} · showing branches"
         list.emptyText.text = if (listing.branchesOnly) "No branches to review" else "No open pull requests"
         rebuild()
     }

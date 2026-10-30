@@ -83,10 +83,10 @@ class ReviewCommentsTest {
         assertEquals(listOf(
             "lee resolved a thread you replied to since the review loaded. Your reply still posts; the thread stays resolved.",
             "1 reply is on a thread that's gone from GitHub. It won't post and stays as a draft.",
-        ), replyNotes(drafts, listOf(thread("T2", resolved = true, by = "lee"))))
-        assertEquals(emptyList<String>(), replyNotes(drafts.take(1), listOf(thread("T2"))))
-        assertEquals("threads unknown: nothing to say", emptyList<String>(), replyNotes(drafts, null))
-        assertEquals("you resolved it yourself: no news", emptyList<String>(), replyNotes(drafts.take(1), listOf(thread("T2", resolved = true, by = "me", byMe = true))))
+        ), replyNotes(drafts, listOf(thread("T2", resolved = true, by = "lee")), "GitHub"))
+        assertEquals(emptyList<String>(), replyNotes(drafts.take(1), listOf(thread("T2")), "GitHub"))
+        assertEquals("threads unknown: nothing to say", emptyList<String>(), replyNotes(drafts, null, "GitHub"))
+        assertEquals("you resolved it yourself: no news", emptyList<String>(), replyNotes(drafts.take(1), listOf(thread("T2", resolved = true, by = "me", byMe = true)), "GitHub"))
     }
 
     @Test

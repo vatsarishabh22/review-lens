@@ -126,8 +126,8 @@ class PrDetailView(private val project: Project, private val onBack: () -> Unit)
         }
         // while greyed out, the button says why: on hover, and beside it while the fetch runs
         val (status, hint) = when {
-            fetchFailed -> null to "Couldn't fetch the PR from GitHub."
-            loaded == null -> JBLabel("Fetching the PR from GitHub…", AnimatedIcon.Default.INSTANCE, SwingConstants.LEFT)
+            fetchFailed -> null to "Couldn't fetch the PR from ${ReviewHosts.nameOf(session?.git)}."
+            loaded == null -> JBLabel("Fetching the PR from ${ReviewHosts.nameOf(session?.git)}…", AnimatedIcon.Default.INSTANCE, SwingConstants.LEFT)
                 .apply { foreground = ReviewColors.muted; font = JBFont.small() } to null
             loaded!!.commits.isEmpty() -> null to "Nothing to review: no commits beyond ${listed!!.target.base}."
             else -> null to "Opens the PR in this window, read-only."

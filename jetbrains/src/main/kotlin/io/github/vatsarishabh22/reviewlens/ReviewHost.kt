@@ -9,6 +9,9 @@ import java.util.concurrent.ConcurrentHashMap
  * Calls run a CLI and block: call off EDT.
  */
 interface ReviewHost {
+    /** How the UI names the host: "Submit to GitHub". */
+    val name: String
+
     fun viewerLogin(): String
     fun openPullRequests(): List<PullRequest>
 
@@ -52,6 +55,12 @@ object ReviewHosts {
     private class Picked(val host: ReviewHost?)
 
     fun of(git: GitClient): ReviewHost? = picked.getOrPut(git.root) { Picked(pick(git)) }.host
+
+    /**
+     * The picked host's [ReviewHost.name] for UI text, read without picking (picking runs `ssh`/`gh`, never on EDT). The PR
+     * list and a restored review pick first, so the fallback shows only before either has run.
+     */
+    fun nameOf(git: GitClient?): String = git?.let { picked[it.root]?.host?.name } ?: "your code host"
 
     /** [of] for a call that can't go on without the host; the balloon's title already says which call. */
     fun required(git: GitClient): ReviewHost = of(git) ?: throw CliException("Sign in to this repository's host")

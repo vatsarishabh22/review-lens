@@ -8,6 +8,15 @@ import java.nio.file.Files
 /** Which host a checkout talks to, from `origin`'s URL (spec/gitlab.md, "Picking the host"), and fetching a review's head. */
 class ReviewHostTest {
 
+    // Every "GitHub" the UI shows comes from the host's name (another host's name must show through); before any host is picked the text stays neutral.
+    @Test
+    fun `the UI says the picked host's name, and a neutral word before one is picked`() {
+        assertEquals("GitHub", GhClient(java.nio.file.Path.of(".")).name)
+        assertEquals("your code host", ReviewHosts.nameOf(null))
+        assertEquals("on GitLab", CommentLook.POSTED.label("GitLab"))
+        assertEquals("GitLab sync failed · kept on this laptop", ReviewService.Sync.FAILED.text("GitLab"))
+    }
+
     @Test
     fun `the host in every remote URL shape, SSH ones marked so an alias can be resolved`() {
         assertEquals(RemoteHost("github.com", false), remoteHost("https://github.com/acme/shop.git"))

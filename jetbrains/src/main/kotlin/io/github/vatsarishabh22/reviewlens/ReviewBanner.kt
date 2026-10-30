@@ -121,7 +121,7 @@ class ReviewBanner : EditorNotificationProvider, DumbAware {
             val viewed = service.badge(change) == Badge.REVIEWED
             toggle.icon = if (viewed) BadgeIcon(Badge.REVIEWED) else BOX
             toggle.toolTipText = (if (viewed) "Viewed — click to unmark (⌥R)" else "Mark viewed (⌥R)") +
-                if (service.meta?.target?.reviewable == true && !service.syncsViewed(change)) ". Not in the PR's files on GitHub (its net change is empty), so it's ticked here only." else ""
+                if (service.meta?.target?.reviewable == true && !service.syncsViewed(change)) ". Not in the PR's files on ${service.hostName} (its net change is empty), so it's ticked here only." else ""
             toggle.foreground = if (viewed) ReviewColors.ok else ReviewColors.text
         }
         show()
@@ -146,7 +146,7 @@ class ReviewBanner : EditorNotificationProvider, DumbAware {
         val git = service.git ?: return
         val head = service.active?.head ?: return
         val session = ReviewSession(git)
-        background(project, if (fetch) "Checking GitHub for new commits" else "Listing commits", {
+        background(project, if (fetch) "Checking ${service.hostName} for new commits" else "Listing commits", {
             if (fetch) session.load(meta.target) else session.local(meta.target, head)
         }) { loaded ->
             fun scope(range: ScopeRange, label: String) = beginReview(project, session, loaded, range, label)
@@ -160,7 +160,7 @@ class ReviewBanner : EditorNotificationProvider, DumbAware {
                     val label = scopeLabel(loaded.commits, listOf(c))
                     add(ScopeItem(c.label, meta.scopeLabel == label) { scope(resolveScope(loaded.mergeBase, loaded.commits, listOf(c)), label) })
                 }
-                add(ScopeItem("Check GitHub for new commits…", false) { scopeMenu(project, meta, anchor, fetch = true) })
+                add(ScopeItem("Check ${ReviewService.of(project).hostName} for new commits…", false) { scopeMenu(project, meta, anchor, fetch = true) })
             }
             if (fetch && loaded.head == head) notify(project, "No new commits", "${meta.target.label} has nothing newer than what you're reviewing.")
             JBPopupFactory.getInstance().createPopupChooserBuilder(items)

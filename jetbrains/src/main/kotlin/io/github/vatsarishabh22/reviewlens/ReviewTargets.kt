@@ -4,7 +4,7 @@ package io.github.vatsarishabh22.reviewlens
 data class ListedTarget(val target: ReviewTarget, val title: String, val pr: PullRequest?, val requested: Boolean)
 
 /** The panel's rows; [branchesOnly] when `gh` could not list PRs, so the panel says why it shows branches (even none). */
-data class Listing(val targets: List<ListedTarget>, val branchesOnly: Boolean)
+data class Listing(val targets: List<ListedTarget>, val branchesOnly: Boolean, val hostName: String)
 
 /** What the Review panel lists: open PRs, or remote branches when this repo has no reachable GitHub. Runs CLIs: call off EDT. */
 class ReviewTargets(private val git: GitClient) {
@@ -13,13 +13,13 @@ class ReviewTargets(private val git: GitClient) {
         // picked again on every load, so signing in or out shows; no host signed in for origin, or no answer: branches stand in
         val host = ReviewHosts.refresh(git)
         val prs = host?.let { runCatching { it.openPullRequests() }.getOrNull() }
-        if (prs == null) return Listing(branches(), branchesOnly = true)
+        if (prs == null) return Listing(branches(), branchesOnly = true, ReviewHosts.nameOf(git))
         // ponytail: matches user review requests only; a request to one of the viewer's teams lists under "Other open".
         val me = runCatching { host.viewerLogin() }.getOrNull()
         return Listing(prs.map { pr ->
             val target = ReviewTarget.forPr(pr.number, pr.title, pr.headRefName, "${GitClient.REMOTE}/${pr.baseRefName}")
             ListedTarget(target, pr.title, pr, pr.reviewRequests.any { it.login != null && it.login == me })
-        }, branchesOnly = false)
+        }, branchesOnly = false, host.name)
     }
 
     /** Progress of a review this reviewer started before, counted in its own saved scope and against the PR's head now; null when never started. */

@@ -231,7 +231,7 @@ class ChangedFilesView(private val project: Project, parent: Disposable) : JPane
         val done = service.reviewedCount()
         strip.fraction = if (total == 0) 0.0 else done.toDouble() / total
         viewedText.text = "$done of $total files viewed · ${meta.scopeLabel}"
-        syncText.text = service.sync.text
+        syncText.text = service.sync.text(service.hostName)
 
         val selected = (list.selectedValue as? FileRow.File)?.change?.path
         model.clear()
@@ -274,7 +274,7 @@ class ChangedFilesView(private val project: Project, parent: Disposable) : JPane
         // a pending reply whose thread isn't listed (deleted on GitHub, or the threads didn't load) gets its own row
         val ids = service.threads.orEmpty().map { it.id }.toSet()
         val strays = service.meta?.drafts.orEmpty().filter { !it.posted && it.replyTo != null && it.replyTo !in ids }.map { draft ->
-            Remark(draft.path, null, "You", CommentLook.PENDING, if (service.threads == null) "reply" else "reply · its thread is gone from GitHub", 0, draft.body, true, draft = draft)
+            Remark(draft.path, null, "You", CommentLook.PENDING, if (service.threads == null) "reply" else "reply · its thread is gone from ${service.hostName}", 0, draft.body, true, draft = draft)
         }
         return (threads + comments + strays).sortedWith(compareBy({ it.path }, { it.kind == CommentLook.RESOLVED }, { it.line ?: Int.MAX_VALUE }))
     }
@@ -289,7 +289,7 @@ class ChangedFilesView(private val project: Project, parent: Disposable) : JPane
         }
         val pr = service.meta?.target?.reviewable == true
         remarkNote.text = when {
-            pr && service.threads == null -> "Couldn't load comments from GitHub · showing only yours"
+            pr && service.threads == null -> "Couldn't load comments from ${service.hostName} · showing only yours"
             remarkModel.isEmpty -> "Nothing here."
             else -> ""
         }
@@ -375,7 +375,7 @@ class ChangedFilesView(private val project: Project, parent: Disposable) : JPane
                     val remark = value.remark
                     cell.border = JBUI.Borders.empty(5, 18, 5, 10)
                     val replies = if (remark.replies > 0) " · ${remark.replies} repl${if (remark.replies > 1) "ies" else "y"}" else ""
-                    val meta = row(JBLabel(remark.who).apply { font = JBFont.label().asBold() }, Pill(remark.kind.label, remark.kind.fill, remark.kind.fg),
+                    val meta = row(JBLabel(remark.who).apply { font = JBFont.label().asBold() }, Pill(remark.kind.label(service.hostName), remark.kind.fill, remark.kind.fg),
                         mutedLabel(remark.where + replies),
                         *listOfNotNull(Pill("your reply pending", ReviewColors.review, ReviewColors.reviewFg).takeIf { remark.pending.isNotEmpty() }).toTypedArray(), gap = 6)
                     val body = JBLabel(previewLine(remark.body)).apply { if (remark.kind == CommentLook.RESOLVED) foreground = ReviewColors.muted }
@@ -384,7 +384,7 @@ class ChangedFilesView(private val project: Project, parent: Disposable) : JPane
                 }
                 is RemarkRow.Reply -> {
                     cell.border = JBUI.Borders.compound(JBUI.Borders.emptyLeft(22), JBUI.Borders.customLine(ReviewColors.warn, 0, 2, 0, 0), JBUI.Borders.empty(4, 12, 6, 10))
-                    val meta = row(JBLabel("You").apply { font = JBFont.label().asBold() }, CommentLook.PENDING.let { Pill(it.label, it.fill, it.fg) }, mutedLabel("reply"), gap = 6)
+                    val meta = row(JBLabel("You").apply { font = JBFont.label().asBold() }, CommentLook.PENDING.let { Pill(it.label(service.hostName), it.fill, it.fg) }, mutedLabel("reply"), gap = 6)
                     cell.add(stack(withLinks(meta), vgap(2), JBLabel(previewLine(value.draft.body))))
                 }
             }

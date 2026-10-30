@@ -167,14 +167,17 @@ class ProgressStrip : JComponent() {
 
 /**
  * How a comment reads wherever it is drawn (its card in the editor, its row in the Comments tab): someone's thread by
- * its GitHub state, or one of your drafts. The one place a state gets its words and colours.
+ * its state on the host, or one of your drafts. The one place a state gets its words and colours.
  */
-enum class CommentLook(val label: String, val fill: Color, val fg: Color, val stripe: Color) {
+enum class CommentLook(private val words: String, val fill: Color, val fg: Color, val stripe: Color) {
     OPEN("open", ReviewColors.otherSoft, ReviewColors.other, ReviewColors.other),
     RESOLVED("resolved", ReviewColors.okSoft, ReviewColors.ok, ReviewColors.ok),
     OUTDATED("outdated", ReviewColors.chip, ReviewColors.muted, ReviewColors.line),
-    POSTED("on GitHub", ReviewColors.accentSoft, ReviewColors.accent, ReviewColors.accent),
+    POSTED("on %s", ReviewColors.accentSoft, ReviewColors.accent, ReviewColors.accent),
     PENDING("Pending", ReviewColors.review, ReviewColors.reviewFg, ReviewColors.reviewLine);
+
+    /** Its words; a posted draft names the host it is on. */
+    fun label(host: String) = words.format(host)
 
     companion object {
         fun of(state: ThreadState): CommentLook = when (state) { ThreadState.OPEN -> OPEN; ThreadState.RESOLVED -> RESOLVED; ThreadState.OUTDATED -> OUTDATED }

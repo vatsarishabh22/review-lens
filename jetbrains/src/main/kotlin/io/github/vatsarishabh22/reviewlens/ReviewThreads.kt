@@ -27,7 +27,7 @@ data class ReviewThread(
     /** GitHub lets this viewer resolve it (write access, or the PR's author) / reopen it. */
     val canResolve: Boolean = false,
     val canUnresolve: Boolean = false,
-    /** The viewer resolved it (here or on github.com): a reply waiting on it is then no news to them. */
+    /** The viewer resolved it (here or on the host's website): a reply waiting on it is then no news to them. */
     val resolvedByMe: Boolean = false,
     /** The first line of a thread on several lines ([line] is the last), as GitHub moved it; null for one line. */
     val startLine: Int? = null,

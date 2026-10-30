@@ -13,7 +13,7 @@ class ReviewDrafts(private val project: Project) {
     /** The Finish review summary while it is being written; cleared once the review is posted. */
     @Volatile var summary = ""
 
-    /** Comments on [change]'s file as this scope shows it; posted ones stay visible as "on GitHub" until GitHub's own threads are loaded. */
+    /** Comments on [change]'s file as this scope shows it; posted ones stay visible as "on <host>" until the host's own threads are loaded. */
     fun on(change: FileChange): List<Draft> = mine().filter { it.path == change.path && it.blob == change.newBlob }
 
     /** Every comment (not reply) of this review the panel lists: pending ones, and posted ones while GitHub's threads aren't loaded. */
@@ -42,7 +42,7 @@ class ReviewDrafts(private val project: Project) {
      */
     fun submit(summary: String, verdict: Verdict): String {
         val meta = review.meta ?: error("No review in progress")
-        val number = meta.target.prNumber ?: error("Only a pull request can be reviewed on GitHub")
+        val number = meta.target.prNumber ?: error("Only a pull request can be reviewed on its host")
         val sending = outbox()
         val host = ReviewHosts.required(review.git!!)
         host.submitReview(number, meta.range.to, summary, verdict, sending.comments, sending.replies)

@@ -41,6 +41,7 @@ data class Checks(val state: ChecksState, val failing: Int = 0) {
 
 /** GitHub through the `gh` CLI, the host of a checkout whose `origin` is on a host `gh` is signed in to ([ReviewHosts]). */
 class GhClient(private val root: Path) : ReviewHost, ViewedSync {
+    override val name = "GitHub"
 
     /** `gh` is signed in to [host] (github.com, or a GitHub Enterprise server). */
     fun signedInTo(host: String): Boolean = runCatching { runCli(root, "gh", "auth", "status", "--hostname", host) }.isSuccess

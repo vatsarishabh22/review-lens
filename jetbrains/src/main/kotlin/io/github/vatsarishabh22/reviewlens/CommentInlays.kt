@@ -71,6 +71,7 @@ import javax.swing.SwingUtilities
  */
 @Service(Service.Level.PROJECT)
 class CommentInlays(private val project: Project) : Disposable {
+    private val host get() = ReviewService.of(project).hostName
 
     /**
      * The open comment box; its field outlives re-renders so typing survives a refresh. An EditorTextField (a small
@@ -282,7 +283,7 @@ class CommentInlays(private val project: Project) : Disposable {
             JPanel(BorderLayout(JBUI.scale(8), 0)).apply {
                 border = JBUI.Borders.empty(6, 12)
                 isOpaque = false
-                add(row(Pill(look.label, look.fill, look.fg), bold(author(0))), BorderLayout.WEST)
+                add(row(Pill(look.label(host), look.fill, look.fg), bold(author(0))), BorderLayout.WEST)
                 add(mutedLabel(previewLine(thread.comments[0].body)))
                 add(mutedLabel(if (more > 0) "+$more ▸" else "▸"), BorderLayout.EAST)
                 cursor = Cursor.getPredefinedCursor(Cursor.HAND_CURSOR)
@@ -292,12 +293,12 @@ class CommentInlays(private val project: Project) : Disposable {
         } else {
             val head = JPanel(BorderLayout()).apply {
                 isOpaque = false
-                add(row(bold(author(0)), Pill(look.label, look.fill, look.fg)), BorderLayout.WEST)
+                add(row(bold(author(0)), Pill(look.label(host), look.fill, look.fg)), BorderLayout.WEST)
                 add(row(*listOfNotNull(
                     ActionLink("Fold") { unfolded -= thread.url; editors().forEach(::render) }.takeIf { thread.resolved && mine.isEmpty() },
                     *postedLinks(editor, line, thread, thread.comments[0], open).toTypedArray(),
                     resolveLink(thread),
-                    ActionLink("Open on GitHub ↗") { BrowserUtil.browse(thread.url) },
+                    ActionLink("Open on $host ↗") { BrowserUtil.browse(thread.url) },
                 ).onEach { it.font = JBFont.small() }.toTypedArray(), gap = 12), BorderLayout.EAST)
             }
             val replies = thread.comments.drop(1).mapIndexed { i, reply ->
@@ -318,7 +319,7 @@ class CommentInlays(private val project: Project) : Disposable {
             val pending = mine.filter { it != open?.editing }.map { draft ->
                 indented(stack(JPanel(BorderLayout()).apply {
                     isOpaque = false
-                    add(row(bold("You"), CommentLook.PENDING.let { Pill(it.label, it.fill, it.fg) }), BorderLayout.WEST)
+                    add(row(bold("You"), CommentLook.PENDING.let { Pill(it.label(host), it.fill, it.fg) }), BorderLayout.WEST)
                     add(row(ActionLink("Edit") { open(editor, line, draft, thread) }, ActionLink("Delete") { drafts.delete(draft) }).apply {
                         components.filterIsInstance<ActionLink>().forEach { it.font = JBFont.small() }
                     }, BorderLayout.EAST)
@@ -395,11 +396,11 @@ class CommentInlays(private val project: Project) : Disposable {
         }
     }
 
-    /** "Delete … on GitHub?" with Cancel and Delete, under the comment whose Delete was clicked. */
+    /** "Delete … on <host>?" with Cancel and Delete, under the comment whose Delete was clicked. */
     private fun confirmRow(thread: ReviewThread, comment: ThreadComment): JComponent? {
         if (confirming != comment.id) return null
         // measured on GitHub: deleting a thread's first comment leaves its replies, so the question promises no more than this one
-        val question = if (thread.comments.firstOrNull()?.id == comment.id) "Delete this comment on GitHub?" else "Delete this reply on GitHub?"
+        val question = if (thread.comments.firstOrNull()?.id == comment.id) "Delete this comment on $host?" else "Delete this reply on $host?"
         return JPanel(BorderLayout()).apply {
             isOpaque = false; border = JBUI.Borders.emptyTop(6)
             add(JBLabel(question).apply { foreground = ReviewColors.warn; font = JBFont.small() }, BorderLayout.WEST)
@@ -429,7 +430,7 @@ class CommentInlays(private val project: Project) : Disposable {
             ApplicationManager.getApplication().invokeLater({
                 writing -= comment.id
                 sent.onFailure { error ->
-                    notify(project, if (body == null) "Couldn't delete the comment" else "Couldn't save the edit", error.message ?: "GitHub didn't answer", NotificationType.WARNING)
+                    notify(project, if (body == null) "Couldn't delete the comment" else "Couldn't save the edit", error.message ?: "$host didn't answer", NotificationType.WARNING)
                     val editor = change?.let { c -> editors().firstOrNull { changeIn(it)?.path == c.path } }
                     if (body != null && editor != null) open(editor, line, thread = thread, posted = comment, text = body)
                 }
@@ -444,7 +445,7 @@ class CommentInlays(private val project: Project) : Disposable {
         val resolve = !thread.resolved
         if (if (resolve) !thread.canResolve else !thread.canUnresolve) return null
         return ActionLink(if (resolve) "Resolve" else "Unresolve") { resolve(thread, resolve) }
-            .apply { toolTipText = if (resolve) "Resolves the conversation on GitHub now" else "Reopens the conversation on GitHub now" }
+            .apply { toolTipText = if (resolve) "Resolves the conversation on $host now" else "Reopens the conversation on $host now" }
     }
 
     /** Sends the resolve at once (spec: it can't wait for Finish), then shows what GitHub answers by reading the threads again. */
@@ -458,7 +459,7 @@ class CommentInlays(private val project: Project) : Disposable {
             service.reloadThreads()
             ApplicationManager.getApplication().invokeLater({
                 resolving -= thread.id
-                sent.onFailure { notify(project, if (resolved) "Couldn't resolve the thread" else "Couldn't reopen the thread", it.message ?: "GitHub didn't answer", NotificationType.WARNING) }
+                sent.onFailure { notify(project, if (resolved) "Couldn't resolve the thread" else "Couldn't reopen the thread", it.message ?: "$host didn't answer", NotificationType.WARNING) }
                 editors().forEach(::render)
             }, project.disposed)
         }
@@ -494,7 +495,7 @@ class CommentInlays(private val project: Project) : Disposable {
         if (drafts.isEmpty() && open == null) return null
         val comments = ReviewDrafts.of(project)
         val parts = drafts.filter { it != open?.editing }.map { draft -> // the draft being edited shows as the box instead
-            val state = if (draft.posted) mutedLabel(CommentLook.POSTED.label) else CommentLook.PENDING.let { Pill(it.label, it.fill, it.fg) }
+            val state = if (draft.posted) mutedLabel(CommentLook.POSTED.label(host)) else CommentLook.PENDING.let { Pill(it.label(host), it.fill, it.fg) }
             val who = JPanel(BorderLayout()).apply {
                 isOpaque = false
                 add(row(*listOfNotNull(JBLabel("You").apply { font = JBFont.label().asBold(); foreground = ReviewColors.editorText }, state,
@@ -526,7 +527,7 @@ class CommentInlays(private val project: Project) : Disposable {
         // a suggestion for the lines this comment covers: the author commits it from GitHub (replies and posted edits have no lines of their own here)
         val suggest = if (open.thread != null || open.posted != null) null else JButton("Suggest a change").apply {
             val first = open.startLine ?: open.editing?.startLine ?: open.line
-            toolTipText = "Puts ${span(first.takeIf { it != open.line }, open.line)} into a suggestion block to edit; the author commits it from GitHub"
+            toolTipText = "Puts ${span(first.takeIf { it != open.line }, open.line)} into a suggestion block to edit; the author commits it from $host"
             addActionListener {
                 val typed = open.text.text.trimEnd()
                 open.text.text = (if (typed.isEmpty()) "" else "$typed\n") + suggestionBlock(linesOf(open.change, first, open.line))
@@ -538,7 +539,7 @@ class CommentInlays(private val project: Project) : Disposable {
             background = ReviewColors.surface
             border = JBUI.Borders.compound(JBUI.Borders.customLineTop(ReviewColors.line), JBUI.Borders.empty(6, 10))
             // an edit of a posted comment goes to GitHub at once; everything else waits for Finish review
-            add(mutedLabel("${if (open.posted != null) "Saved on GitHub at once" else "Posted when you finish the review"} · ${KeymapUtil.getShortcutsText(CommonShortcuts.getCtrlEnter().shortcuts)} ${verb.lowercase().substringBefore(' ')} · Esc cancel"))
+            add(mutedLabel("${if (open.posted != null) "Saved on $host at once" else "Posted when you finish the review"} · ${KeymapUtil.getShortcutsText(CommonShortcuts.getCtrlEnter().shortcuts)} ${verb.lowercase().substringBefore(' ')} · Esc cancel"))
             add(row(cancel, add, gap = 8), BorderLayout.EAST)
             suggest?.let { add(it, BorderLayout.WEST) }
         }
