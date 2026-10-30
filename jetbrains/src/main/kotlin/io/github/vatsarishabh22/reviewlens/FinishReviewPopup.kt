@@ -33,6 +33,27 @@ fun showFinishReview(project: Project, anchor: JComponent?) {
     background(project, "Checking ${ReviewService.of(project).hostName} for new comments", { HostThreads.of(project).reload() }) { openFinishReview(project, anchor) }
 }
 
+/** What the Finish popup says: its fine print, the drafts warning (only when nothing is posted), and the button. */
+data class FinishWords(val fineprint: String, val keep: String?, val submit: String)
+
+/**
+ * The words for finishing with [verdict] (null: Mark as reviewed): what goes out ([outbox], plus the [started] comments
+ * of a review begun on the host's website), or why it is [held]; the [waiting] comments of other scopes; files viewed.
+ */
+fun finishWords(verdict: Verdict?, outbox: Outbox, started: Int, held: String?, waiting: Int, viewed: Int, total: Int, host: String): FinishWords {
+    val fromHost = "${draftsText(started, 0)} you started on $host"
+    val posting = when {
+        held != null -> held
+        outbox.size > 0 -> "${outbox.text} will be posted with it, as one review." + if (started > 0) " So ${if (started == 1) "is" else "are"} the $fromHost." else ""
+        started > 0 -> "The $fromHost will be posted with it."
+        else -> "No inline comments yet."
+    }
+    val later = if (waiting > 0) " $waiting more ${if (waiting == 1) "waits for the scope it was" else "wait for the scopes they were"} written in." else ""
+    // with nothing posted, the warning says what happens to the drafts instead of "will be posted"
+    val keep = if (verdict == null && outbox.size > 0) "Your ${outbox.text} won't be posted; ${if (outbox.size > 1) "they're" else "it's"} kept for next time." else null
+    return FinishWords((if (keep != null) "" else "$posting$later ") + "$viewed of $total files viewed.", keep, if (verdict == null) "Finish review" else "Submit to $host")
+}
+
 /** What changed on [host] under your pending replies: a thread resolved meanwhile (the reply still posts), or one deleted (it waits). */
 fun replyNotes(replies: List<Draft>, threads: List<ReviewThread>?, host: String): List<String> {
     if (threads == null) return emptyList()
@@ -77,21 +98,10 @@ private fun openFinishReview(project: Project, anchor: JComponent?) {
     }
     // drafts written on another scope's version of a file go out only from that scope: say so, never skip them silently
     val waiting = service.meta?.drafts.orEmpty().count { !it.posted && it.replyTo == null } - outbox.comments.size
-    // a review started on the host's website is adopted: its comments go out with yours, so say so before Submit
-    val started = slot?.started ?: 0
-    val fromHost = "${draftsText(started, 0)} you started on ${service.hostName}"
-    val held = slot?.held(outbox, scopeEnd) // said in place of "will be posted", not only on hover
-    val posting = when {
-        held != null -> held
-        outbox.size > 0 -> "${outbox.text} will be posted with it, as one review." + if (started > 0) " So ${if (started == 1) "is" else "are"} the $fromHost." else ""
-        started > 0 -> "The $fromHost will be posted with it."
-        else -> "No inline comments yet."
-    }
-    val later = if (waiting > 0) " $waiting more ${if (waiting == 1) "waits for the scope it was" else "wait for the scopes they were"} written in." else ""
-    val viewed = "${service.reviewedCount()} of ${service.changes.size} files viewed."
+    // a review started on the host's website is adopted, and a held one is said in place of "will be posted"
+    val words = { v: Verdict? -> finishWords(v, outbox, slot?.started ?: 0, slot?.held(outbox, scopeEnd), waiting, service.reviewedCount(), service.changes.size, service.hostName) }
     val fineprint = wrappingText("", JBFont.small()).apply { foreground = ReviewColors.muted }
-    val keep = wrappingText("Your ${outbox.text} won't be posted; ${if (outbox.size > 1) "they're" else "it's"} kept for next time.", JBFont.small())
-        .apply { foreground = ReviewColors.warn }
+    val keep = wrappingText("", JBFont.small()).apply { foreground = ReviewColors.warn }
     val notes = replyNotes(service.meta?.drafts.orEmpty(), HostThreads.of(project).threads, service.hostName).map { note ->
         wrappingText(note, JBFont.small()).apply { foreground = ReviewColors.warn; setSize(JBUI.scale(356), Short.MAX_VALUE.toInt()) }
     }
@@ -100,11 +110,12 @@ private fun openFinishReview(project: Project, anchor: JComponent?) {
         val blocker = v?.let { slot?.refusal(it, summary.text, outbox, scopeEnd) }
         submit.isEnabled = blocker == null
         submit.toolTipText = blocker // a greyed-out Submit says why on hover
-        submit.text = if (v == null) "Finish review" else "Submit to ${service.hostName}"
+        val said = words(v)
+        submit.text = said.submit
         summary.isEnabled = v != null // nothing is posted, so a summary has nowhere to go
-        keep.isVisible = v == null && outbox.size > 0
-        // the warning says what happens to the drafts instead of "will be posted"
-        fineprint.text = (if (keep.isVisible) "" else "$posting$later ") + viewed
+        keep.text = said.keep.orEmpty()
+        keep.isVisible = said.keep != null
+        fineprint.text = said.fineprint
         listOf(fineprint, keep).forEach { it.setSize(JBUI.scale(356), Short.MAX_VALUE.toInt()) }
         content?.let(::fitWidth)
         popup?.pack(false, true) // the drafts warning comes and goes with Mark as reviewed
@@ -127,11 +138,11 @@ private fun openFinishReview(project: Project, anchor: JComponent?) {
         keep, vgap(8),
         JPanel(FlowLayout(FlowLayout.RIGHT, JBUI.scale(8), 0)).apply { isOpaque = false; add(cancel); add(submit) },
     ).apply { border = JBUI.Borders.empty(12); fitWidth(this) }
-    popup = JBPopupFactory.getInstance().createComponentPopupBuilder(content!!, summary)
+    popup = JBPopupFactory.getInstance().createComponentPopupBuilder(content, summary)
         .setRequestFocus(true).setFocusable(true).setCancelOnClickOutside(true)
         .setCancelOnWindowDeactivation(false) // switching to another app and back keeps it open
         .createPopup()
-    if (anchor != null && anchor.isShowing) popup!!.showUnderneathOf(anchor) else popup!!.showCenteredInCurrentWindow(project)
+    if (anchor != null && anchor.isShowing) popup.showUnderneathOf(anchor) else popup.showCenteredInCurrentWindow(project)
 }
 
 /** The popup's fixed width, its height whatever the visible parts need. */

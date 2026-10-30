@@ -67,24 +67,8 @@ private sealed interface FileRow {
 private enum class Pane(val label: String) { FILES("Changed files"), PROJECT("Whole project"), COMMENTS("Comments") }
 
 
-/**
- * One thread or draft in the Comments tab; [line] is where clicking it goes, null when the version shown has no such line.
- * [pending] are your replies to the thread, [draft] is set when the row is itself your pending draft: both are edited here,
- * since the editor can show a draft only where it has a place (a thread a push moved, a deleted thread, another scope's version).
- */
-private data class Remark(val path: String, val line: Int?, val who: String, val kind: CommentLook, val where: String, val replies: Int, val body: String, val mine: Boolean,
-    val pending: List<Draft> = emptyList(), val draft: Draft? = null)
-
 private const val EDIT = "Edit"
 private const val DELETE = "Delete"
-
-/** The Comments tab's filter: each one keeps its own rows. */
-private enum class Filter(val label: String, val keeps: (Remark) -> Boolean) {
-    ALL("All", { true }),
-    OPEN("Open", { it.kind == CommentLook.OPEN }),
-    MINE("Mine", { it.mine || it.pending.isNotEmpty() }),
-    PENDING("Pending", { it.kind == CommentLook.PENDING || it.pending.isNotEmpty() }),
-}
 
 private sealed interface RemarkRow {
     data class File(val path: String) : RemarkRow
@@ -114,7 +98,7 @@ class ChangedFilesView(private val project: Project, parent: Disposable) : JPane
     private val cards = CardLayout()
     private val body = JPanel(cards)
     private var pane = Pane.FILES
-    private var filter = Filter.ALL
+    private var filter = RemarkFilter.ALL
     private lateinit var tabs: SegmentedButton<Pane>
     private var syncing = false
 
@@ -128,8 +112,8 @@ class ChangedFilesView(private val project: Project, parent: Disposable) : JPane
         }.apply { isOpaque = false }
         val filters = panel {
             row {
-                segmentedButton(Filter.entries) { text = it.label }
-                    .apply { selectedItem = Filter.ALL }
+                segmentedButton(RemarkFilter.entries) { text = it.label }
+                    .apply { selectedItem = RemarkFilter.ALL }
                     .whenItemSelected { filter = it; fillRemarks() }
             }
         }.apply { isOpaque = false; border = JBUI.Borders.empty(6, 12, 0, 12) }
@@ -247,7 +231,7 @@ class ChangedFilesView(private val project: Project, parent: Disposable) : JPane
 
     /** Opens the Comments tab with every thread listed, for the editor's "Show in Comments". */
     fun showComments() {
-        filter = Filter.ALL
+        filter = RemarkFilter.ALL
         tabs.selectedItem = Pane.COMMENTS
         fillRemarks()
     }
@@ -258,26 +242,7 @@ class ChangedFilesView(private val project: Project, parent: Disposable) : JPane
     }
 
     /** Everyone's threads and your drafts, by file in path order; within a file open before resolved, then by line. */
-    private fun remarks(): List<Remark> {
-        val end = service.meta?.range?.to ?: return emptyList()
-        val blobs = service.changes.associate { it.path to it.newBlob }
-        val drafts = ReviewDrafts.of(project)
-        val threads = HostThreads.of(project).threads.orEmpty().map { thread ->
-            Remark(thread.path, thread.lineAt(end), if (thread.mine) "You" else thread.comments[0].author, CommentLook.of(thread.state), thread.where, thread.comments.size - 1,
-                thread.comments[0].body, thread.mine, drafts.repliesTo(thread))
-        }
-        val comments = drafts.mine().map { draft ->
-            val current = blobs[draft.path] == draft.blob
-            Remark(draft.path, draft.line.takeIf { current }, "You", if (draft.posted) CommentLook.POSTED else CommentLook.PENDING,
-                span(draft.startLine, draft.line) + if (current) "" else " of an earlier version", 0, draft.body, true, draft = draft.takeUnless { it.posted })
-        }
-        // a pending reply whose thread isn't listed (deleted on GitHub, or the threads didn't load) gets its own row
-        val ids = HostThreads.of(project).threads.orEmpty().map { it.id }.toSet()
-        val strays = service.meta?.drafts.orEmpty().filter { !it.posted && it.replyTo != null && it.replyTo !in ids }.map { draft ->
-            Remark(draft.path, null, "You", CommentLook.PENDING, if (HostThreads.of(project).threads == null) "reply" else "reply · its thread is gone from ${service.hostName}", 0, draft.body, true, draft = draft)
-        }
-        return (threads + comments + strays).sortedWith(compareBy({ it.path }, { it.kind == CommentLook.RESOLVED }, { it.line ?: Int.MAX_VALUE }))
-    }
+    private fun remarks(): List<Remark> = remarks(HostThreads.of(project).threads, service.meta?.drafts.orEmpty(), service.changes, service.meta?.range?.to, service.hostName)
 
     private fun remarkCount() = remarks().size
 
@@ -375,11 +340,11 @@ class ChangedFilesView(private val project: Project, parent: Disposable) : JPane
                     val remark = value.remark
                     cell.border = JBUI.Borders.empty(5, 18, 5, 10)
                     val replies = if (remark.replies > 0) " · ${remark.replies} repl${if (remark.replies > 1) "ies" else "y"}" else ""
-                    val meta = row(JBLabel(remark.who).apply { font = JBFont.label().asBold() }, Pill(remark.kind.label(service.hostName), remark.kind.fill, remark.kind.fg),
+                    val meta = row(JBLabel(remark.who).apply { font = JBFont.label().asBold() }, CommentLook.of(remark.kind).let { Pill(it.label(service.hostName), it.fill, it.fg) },
                         mutedLabel(remark.where + replies),
                         *listOfNotNull(Pill("your reply pending", ReviewColors.review, ReviewColors.reviewFg).takeIf { remark.pending.isNotEmpty() }).toTypedArray(), gap = 6)
-                    val body = JBLabel(previewLine(remark.body)).apply { if (remark.kind == CommentLook.RESOLVED) foreground = ReviewColors.muted }
-                    cell.add(JBLabel(Dot(remark.kind.fg)).apply { verticalAlignment = JBLabel.TOP; border = JBUI.Borders.emptyTop(4) }, BorderLayout.WEST)
+                    val body = JBLabel(previewLine(remark.body)).apply { if (remark.kind == RemarkKind.RESOLVED) foreground = ReviewColors.muted }
+                    cell.add(JBLabel(Dot(CommentLook.of(remark.kind).fg)).apply { verticalAlignment = JBLabel.TOP; border = JBUI.Borders.emptyTop(4) }, BorderLayout.WEST)
                     cell.add(stack(if (remark.draft != null) withLinks(meta) else meta, vgap(2), body))
                 }
                 is RemarkRow.Reply -> {

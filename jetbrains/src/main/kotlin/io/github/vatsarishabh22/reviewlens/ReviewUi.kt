@@ -184,7 +184,10 @@ enum class CommentLook(private val words: String, val fill: Color, val fg: Color
     fun label(host: String) = words.format(host)
 
     companion object {
-        fun of(state: ThreadState): CommentLook = when (state) { ThreadState.OPEN -> OPEN; ThreadState.RESOLVED -> RESOLVED; ThreadState.OUTDATED -> OUTDATED }
+        fun of(state: ThreadState): CommentLook = of(RemarkKind.of(state))
+        fun of(kind: RemarkKind): CommentLook = when (kind) {
+            RemarkKind.OPEN -> OPEN; RemarkKind.RESOLVED -> RESOLVED; RemarkKind.OUTDATED -> OUTDATED; RemarkKind.POSTED -> POSTED; RemarkKind.PENDING -> PENDING
+        }
     }
 }
 

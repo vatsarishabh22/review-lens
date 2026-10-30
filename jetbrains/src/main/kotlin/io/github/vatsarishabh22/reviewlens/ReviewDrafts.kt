@@ -16,11 +16,11 @@ class ReviewDrafts(private val project: Project) {
     /** Comments on [change]'s file as this scope shows it; posted ones stay visible as "on <host>" until the host's own threads are loaded. */
     fun on(change: FileChange): List<Draft> = mine().filter { it.path == change.path && it.blob == change.newBlob }
 
-    /** Every comment (not reply) of this review the panel lists: pending ones, and posted ones while GitHub's threads aren't loaded. */
-    fun mine(): List<Draft> = review.meta?.drafts.orEmpty().filter { it.replyTo == null && (!it.posted || HostThreads.of(project).threads == null) }
+    /** [ownComments] of this review. */
+    fun mine(): List<Draft> = ownComments(review.meta?.drafts.orEmpty(), HostThreads.of(project).threads)
 
-    /** Your pending replies to [thread], shown inside its card. */
-    fun repliesTo(thread: ReviewThread): List<Draft> = review.meta?.drafts.orEmpty().filter { !it.posted && it.replyTo == thread.id }
+    /** [pendingReplies] to [thread]. */
+    fun repliesTo(thread: ReviewThread): List<Draft> = pendingReplies(review.meta?.drafts.orEmpty(), thread)
 
     /** What Finish review would post now: comments on the versions this scope shows, and replies to threads GitHub still has. */
     fun outbox(): Outbox = review.meta?.drafts.orEmpty().let { Outbox(toPost(it, review.changes), repliesToPost(it, HostThreads.of(project).threads)) }

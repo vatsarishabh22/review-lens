@@ -45,6 +45,12 @@ enum class Verdict(val label: String, val hint: String, val done: String, val po
     REQUEST_CHANGES("Request changes", "Must be addressed before merging", "changes requested", "Requested changes"),
 }
 
+/** Your comments (not replies) the lists show: pending ones, and posted ones while the host's [threads] aren't loaded. */
+fun ownComments(drafts: List<Draft>, threads: List<ReviewThread>?): List<Draft> = drafts.filter { it.replyTo == null && (!it.posted || threads == null) }
+
+/** Your pending replies to [thread], shown inside its card and under its row. */
+fun pendingReplies(drafts: List<Draft>, thread: ReviewThread): List<Draft> = drafts.filter { !it.posted && it.replyTo == thread.id }
+
 /** The comments Finish review sends: pending ones written on the file versions this scope shows; the rest wait for their scope. */
 fun toPost(drafts: List<Draft>, changes: List<FileChange>): List<Draft> {
     val blobs = changes.associate { it.path to it.newBlob }
