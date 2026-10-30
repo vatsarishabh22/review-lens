@@ -1,0 +1,51 @@
+{
+  "rule": "suggestion",
+  "about": "A comment body in order: its text, and each ```suggestion block's lines (an empty block deletes the lines).",
+  "cases": [
+    {
+      "name": "plain text",
+      "given": {
+        "body": "int() raises on \"1,200\"."
+      },
+      "expect": [
+        {
+          "text": "int() raises on \"1,200\"."
+        }
+      ]
+    },
+    {
+      "name": "text and suggestions in order, an empty one included",
+      "given": {
+        "body": "Both fields:\n```suggestion\n    a = 1\n    b = 2\n```\nthen this.\n```suggestion\n```"
+      },
+      "expect": [
+        {
+          "text": "Both fields:"
+        },
+        {
+          "suggestion": [
+            "    a = 1",
+            "    b = 2"
+          ]
+        },
+        {
+          "text": "then this."
+        },
+        {
+          "suggestion": []
+        }
+      ]
+    },
+    {
+      "name": "a code block is not a suggestion",
+      "given": {
+        "body": "```python\nx = 1\n```"
+      },
+      "expect": [
+        {
+          "text": "```python\nx = 1\n```"
+        }
+      ]
+    }
+  ]
+}

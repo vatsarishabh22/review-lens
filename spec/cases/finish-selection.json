@@ -1,0 +1,194 @@
+{
+  "rule": "finish-selection",
+  "about": "What Finish review posts: pending comments on the file versions this scope shows, and every pending reply whose thread the host still has (`threads` null: not known, so try).",
+  "cases": [
+    {
+      "name": "only pending comments on the version this scope shows are posted",
+      "given": {
+        "changes": [
+          {
+            "path": "a.py",
+            "newBlob": "a2"
+          },
+          {
+            "path": "b.py",
+            "newBlob": "b2"
+          }
+        ],
+        "threads": [
+          "T1"
+        ],
+        "drafts": [
+          {
+            "path": "a.py",
+            "line": 7,
+            "blob": "a2",
+            "body": "now"
+          },
+          {
+            "path": "a.py",
+            "line": 9,
+            "blob": "a2",
+            "body": "sent before",
+            "posted": true
+          },
+          {
+            "path": "b.py",
+            "line": 3,
+            "blob": "b1",
+            "body": "written on an older version"
+          },
+          {
+            "path": "c.py",
+            "line": 1,
+            "blob": "c1",
+            "body": "file not in this scope"
+          },
+          {
+            "path": "a.py",
+            "line": 7,
+            "blob": "a2",
+            "body": "a reply goes with its thread",
+            "replyTo": "T1"
+          }
+        ]
+      },
+      "expect": {
+        "comments": [
+          "now"
+        ],
+        "replies": [
+          "a reply goes with its thread"
+        ]
+      }
+    },
+    {
+      "name": "every pending reply posts while its thread exists, whatever scope or blob",
+      "given": {
+        "changes": [
+          {
+            "path": "a.py",
+            "newBlob": "a2"
+          },
+          {
+            "path": "b.py",
+            "newBlob": "b2"
+          }
+        ],
+        "threads": [
+          "T1",
+          "T2"
+        ],
+        "drafts": [
+          {
+            "path": "a.py",
+            "line": 7,
+            "blob": "a1",
+            "body": "on an older blob still posts",
+            "replyTo": "T1"
+          },
+          {
+            "path": "a.py",
+            "line": 7,
+            "blob": "a2",
+            "body": "resolved since",
+            "replyTo": "T2"
+          },
+          {
+            "path": "a.py",
+            "line": 7,
+            "blob": "a2",
+            "body": "thread deleted",
+            "replyTo": "T3"
+          },
+          {
+            "path": "a.py",
+            "line": 7,
+            "blob": "a2",
+            "body": "sent",
+            "posted": true,
+            "replyTo": "T1"
+          },
+          {
+            "path": "a.py",
+            "line": 7,
+            "blob": "a2",
+            "body": "a comment"
+          }
+        ]
+      },
+      "expect": {
+        "comments": [
+          "a comment"
+        ],
+        "replies": [
+          "on an older blob still posts",
+          "resolved since"
+        ]
+      }
+    },
+    {
+      "name": "threads unknown: every pending reply is tried",
+      "given": {
+        "changes": [
+          {
+            "path": "a.py",
+            "newBlob": "a2"
+          },
+          {
+            "path": "b.py",
+            "newBlob": "b2"
+          }
+        ],
+        "threads": null,
+        "drafts": [
+          {
+            "path": "a.py",
+            "line": 7,
+            "blob": "a1",
+            "body": "on an older blob still posts",
+            "replyTo": "T1"
+          },
+          {
+            "path": "a.py",
+            "line": 7,
+            "blob": "a2",
+            "body": "resolved since",
+            "replyTo": "T2"
+          },
+          {
+            "path": "a.py",
+            "line": 7,
+            "blob": "a2",
+            "body": "thread deleted",
+            "replyTo": "T3"
+          },
+          {
+            "path": "a.py",
+            "line": 7,
+            "blob": "a2",
+            "body": "sent",
+            "posted": true,
+            "replyTo": "T1"
+          },
+          {
+            "path": "a.py",
+            "line": 7,
+            "blob": "a2",
+            "body": "a comment"
+          }
+        ]
+      },
+      "expect": {
+        "comments": [
+          "a comment"
+        ],
+        "replies": [
+          "on an older blob still posts",
+          "resolved since",
+          "thread deleted"
+        ]
+      }
+    }
+  ]
+}

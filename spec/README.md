@@ -77,6 +77,25 @@ Each editor's test suite loads every file in `fixtures/` through its **real** st
 back. The VS Code suite also validates every fixture against `state.schema.json`. Change the shape here first, then
 in every editor, in the same PR.
 
+[`cases/`](cases) holds the rules every editor implements as shared cases: one file per rule,
+`{"rule", "about", "cases": [{"name", "given", "expect"}]}`, the inputs real `git`/`gh` output where they read one.
+Each editor runs every file through its **real** function (one small adapter per rule) and must give `expect`
+exactly; `{"error": true}` means the input is refused, `null` that there is no answer. A file with no adapter, or an
+adapter with no file, fails the run, so a new rule can't be skipped. `cases/github/` is GitHub's wire, run only by a
+GitHub client. Change a rule here first, then in every editor, in the same PR.
+
+| File | Rule |
+|---|---|
+| `scope` | Picked commits → `from`, `to`, the scope label |
+| `since-last-review` | "Since your last review" range, or none |
+| `viewed-merge`, `viewed-sync` | One checklist from this laptop's ticks and the host's Viewed answer; re-sending queued ticks |
+| `finish-selection` | Which comments and replies Finish posts |
+| `state-key` | `pr-<n>` / `branch-<name>` |
+| `badge` | ⭐ / ✅ / 🔄 |
+| `git-changes`, `git-blame` | `git diff --raw/--numstat -z`, `git blame --porcelain` |
+| `suggestion` | A comment body's text and suggestion blocks |
+| `github/viewed-answer`, `github/refusal`, `github/checks` | GitHub's Viewed answer, error body, checks rollup |
+
 [`code-files.json`](code-files.json) is the one list of which files are code (GitHub Linguist's names and extensions),
 for the impact map's "not available" line; every editor reads it as is, and the JetBrains suite checks each extension
 sits in one row.

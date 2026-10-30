@@ -1,0 +1,58 @@
+{
+  "rule": "badge",
+  "about": "A file's badge from `reviewed` (README, Badges): ⭐ not viewed · ✅ viewed at the current version · 🔄 changed since viewed.",
+  "cases": [
+    {
+      "name": "never viewed",
+      "given": {
+        "reviewed": {
+          "a.py": "a2"
+        },
+        "change": {
+          "path": "b.py",
+          "newBlob": "b2"
+        }
+      },
+      "expect": "⭐"
+    },
+    {
+      "name": "viewed at the current version",
+      "given": {
+        "reviewed": {
+          "a.py": "a2"
+        },
+        "change": {
+          "path": "a.py",
+          "newBlob": "a2"
+        }
+      },
+      "expect": "✅"
+    },
+    {
+      "name": "viewed at an older version",
+      "given": {
+        "reviewed": {
+          "a.py": "a1"
+        },
+        "change": {
+          "path": "a.py",
+          "newBlob": "a2"
+        }
+      },
+      "expect": "🔄"
+    },
+    {
+      "name": "the host says changed since viewed",
+      "given": {
+        "reviewed": {
+          "a.py": "dismissed"
+        },
+        "change": {
+          "path": "a.py",
+          "newBlob": "a2"
+        }
+      },
+      "expect": "🔄"
+    }
+  ]
+}

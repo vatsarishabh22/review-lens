@@ -1,0 +1,34 @@
+{
+  "rule": "github/refusal",
+  "about": "GitHub's reason from an error body (real 422/404 shapes), or null when the text is not GitHub's JSON.",
+  "cases": [
+    {
+      "name": "errors as strings",
+      "given": {
+        "body": "{\"message\":\"Unprocessable Entity\",\"errors\":[\"Path could not be resolved\"],\"status\":\"422\"}"
+      },
+      "expect": "Path could not be resolved"
+    },
+    {
+      "name": "errors as objects",
+      "given": {
+        "body": "{\"message\":\"Validation Failed\",\"errors\":[{\"message\":\"Line could not be resolved\"}]}"
+      },
+      "expect": "Line could not be resolved"
+    },
+    {
+      "name": "no errors: the message",
+      "given": {
+        "body": "{\"message\":\"Not Found\",\"status\":\"404\"}"
+      },
+      "expect": "Not Found"
+    },
+    {
+      "name": "not GitHub's JSON",
+      "given": {
+        "body": "error connecting to api.github.com"
+      },
+      "expect": null
+    }
+  ]
+}
