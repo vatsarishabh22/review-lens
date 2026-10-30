@@ -39,21 +39,11 @@ fun suggestionBlock(lines: List<String>) = "```suggestion\n" + lines.joinToStrin
 
 private val SUGGESTION = Regex("```suggestion[^\\n]*\\n(.*?)\\n?```", RegexOption.DOT_MATCHES_ALL)
 
-/** The three ways GitHub lets a review end; [name] is GitHub's own `event` value, [done] how the PR list says it was posted, [posted] how the finish message does. */
+/** The three ways a review can end; [done] how the PR list says it was posted, [posted] how the finish message does. */
 enum class Verdict(val label: String, val hint: String, val done: String, val posted: String) {
     COMMENT("Comment", "Feedback without a verdict", "commented", "Commented"),
     APPROVE("Approve", "Ready to merge", "approved", "Approved"),
     REQUEST_CHANGES("Request changes", "Must be addressed before merging", "changes requested", "Requested changes"),
-}
-
-/**
- * Why Submit is greyed out, or null when GitHub will take the review. GitHub refuses Approve and Request changes on
- * your own pull request, and an empty Comment or Request changes (a 422 with a blank reason, measured on PR #1).
- */
-fun submitBlocker(verdict: Verdict, summary: String, comments: Int, ownPullRequest: Boolean): String? = when {
-    ownPullRequest && verdict != Verdict.COMMENT -> "GitHub doesn't let you approve or request changes on your own pull request."
-    verdict != Verdict.APPROVE && summary.isBlank() && comments == 0 -> "Add a summary or an inline comment to post a ${verdict.label.lowercase()} review."
-    else -> null
 }
 
 /** The comments Finish review sends: pending ones written on the file versions this scope shows; the rest wait for their scope. */
@@ -94,7 +84,9 @@ fun startReviewBody(pullRequestId: String, commit: String, comments: List<Draft>
 /** A comment on several lines also names its first line, on the same side. */
 private fun range(comment: Draft) = comment.startLine?.let { mapOf("startLine" to it, "startSide" to "RIGHT") }.orEmpty()
 fun replyBody(reviewId: String, reply: Draft) = graphqlBody(ADD_REPLY, mapOf("review" to reviewId, "thread" to reply.replyTo, "body" to reply.body))
-fun submitBody(reviewId: String, verdict: Verdict, summary: String) = graphqlBody(SUBMIT_REVIEW, mapOf("review" to reviewId, "event" to verdict.name, "body" to summary.ifBlank { null }))
+fun submitBody(reviewId: String, verdict: Verdict, summary: String) = graphqlBody(SUBMIT_REVIEW, mapOf("review" to reviewId, "event" to githubEvent(verdict), "body" to summary.ifBlank { null }))
+/** GitHub's own `PullRequestReviewEvent` for a verdict, spelled here so renaming a [Verdict] can't change what GitHub is sent. */
+private fun githubEvent(verdict: Verdict) = when (verdict) { Verdict.COMMENT -> "COMMENT"; Verdict.APPROVE -> "APPROVE"; Verdict.REQUEST_CHANGES -> "REQUEST_CHANGES" }
 fun deleteReviewBody(reviewId: String) = graphqlBody(DELETE_REVIEW, mapOf("review" to reviewId))
 /** Adds a new comment to a pending review someone else started; GitHub anchors it at the PR's latest push (it takes no commit). */
 fun addThreadBody(reviewId: String, comment: Draft) = graphqlBody(ADD_THREAD, mapOf("review" to reviewId, "path" to comment.path, "line" to comment.line, "body" to comment.body) + range(comment))
@@ -103,32 +95,6 @@ fun deleteCommentBody(commentId: String) = graphqlBody(DELETE_COMMENT, mapOf("co
 fun editCommentBody(commentId: String, body: String) = graphqlBody(UPDATE_COMMENT, mapOf("comment" to commentId, "body" to body))
 /** Resolves a thread, or reopens it ([resolved] false), on GitHub at once: GitHub can't hold it in a pending review. */
 fun resolveBody(threadId: String, resolved: Boolean) = graphqlBody(if (resolved) RESOLVE_THREAD else UNRESOLVE_THREAD, mapOf("thread" to threadId))
-
-/** Your pending review on a PR: GitHub keeps one per person, so Finish review adds to it rather than starting another. */
-data class PendingReview(val id: String, val comments: Int)
-
-/** Where Finish review's comments go: the PR, its latest push ([head]), and your pending review if one exists. */
-data class ReviewSlot(val pullRequestId: String, val head: String, val pending: PendingReview?) {
-    /**
-     * Why [comments] new comments on a scope ending at [scopeEnd] can't join [pending], or null. What is added to a pending
-     * review lands on the PR's latest push whatever line it was written for (measured on rl-thread-test#1), so a scope
-     * ending earlier would put them on the wrong lines. Replies sit on their threads and always can.
-     */
-    fun blocker(scopeEnd: String, comments: Int): String? = if (pending == null || comments == 0 || scopeEnd == head) null
-        else "You have a review in progress on github.com, and comments added to it land on the latest push. Review up to the latest push to add yours, or submit that one on github.com first."
-}
-
-/** Reads `PR_id<TAB>head<TAB>pendingId<TAB>comments`; the last two are empty and 0 when there is no pending review. */
-fun parseReviewSlot(text: String): ReviewSlot {
-    val (pr, head, pending, comments) = text.trim().split('\t').let { it + List(4 - it.size) { "" } }
-    require(pr.isNotEmpty() && head.isNotEmpty()) { "GitHub did not return this pull request" }
-    return ReviewSlot(pr, head, pending.ifEmpty { null }?.let { PendingReview(it, comments.toIntOrNull() ?: 0) })
-}
-
-// reviews(states: PENDING) lists only the viewer's own: nobody else's pending review is visible
-const val REVIEW_SLOT_QUERY = "query(\$owner:String!,\$name:String!,\$number:Int!){repository(owner:\$owner,name:\$name){pullRequest(number:\$number)" +
-    "{id headRefOid reviews(states:PENDING,first:1){nodes{id comments{totalCount}}}}}}"
-const val REVIEW_SLOT_JQ = ".data.repository.pullRequest | [.id, .headRefOid, (.reviews.nodes[0].id // \"\"), (.reviews.nodes[0].comments.totalCount // 0 | tostring)] | @tsv"
 
 private const val START_REVIEW = "mutation(\$pr:ID!,\$commit:GitObjectID!,\$threads:[DraftPullRequestReviewThread]){addPullRequestReview(input:{pullRequestId:\$pr,commitOID:\$commit,threads:\$threads}){pullRequestReview{id}}}"
 private const val ADD_REPLY = "mutation(\$review:ID!,\$thread:ID!,\$body:String!){addPullRequestReviewThreadReply(input:{pullRequestReviewId:\$review,pullRequestReviewThreadId:\$thread,body:\$body}){comment{id}}}"

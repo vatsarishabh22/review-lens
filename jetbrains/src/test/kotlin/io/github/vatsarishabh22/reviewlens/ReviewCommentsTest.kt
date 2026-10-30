@@ -129,21 +129,31 @@ class ReviewCommentsTest {
         assertEquals("PRR_1", vars(deleteReviewBody("PRR_1"))["review"].asString)
     }
 
+    private val c = Draft("a.py", 7, "a2", "c")
+    private val r = Draft("a.py", 7, "a2", "r", replyTo = "T1")
+    private fun box(comments: Int = 0, replies: Int = 0) = Outbox(List(comments) { c }, List(replies) { r })
+    private fun slot(pending: PendingReview? = null, own: Boolean = false) = GitHubSlot("PR_1", "h2", pending, own)
+
     @Test
     fun `an empty Comment or Request changes is held back with its reason, an empty Approve is not`() {
-        assertEquals("Add a summary or an inline comment to post a comment review.", submitBlocker(Verdict.COMMENT, " ", 0, false))
-        assertEquals("Add a summary or an inline comment to post a request changes review.", submitBlocker(Verdict.REQUEST_CHANGES, "", 0, false))
-        assertNull(submitBlocker(Verdict.COMMENT, "", 1, false)) // PR #1 probe: comments alone are accepted
-        assertNull(submitBlocker(Verdict.COMMENT, "Looks good", 0, false))
-        assertNull(submitBlocker(Verdict.APPROVE, "", 0, false))
+        assertEquals("Add a summary or an inline comment to post a comment review.", slot().refusal(Verdict.COMMENT, " ", box(), "h2"))
+        assertEquals("Add a summary or an inline comment to post a request changes review.", slot().refusal(Verdict.REQUEST_CHANGES, "", box(), "h2"))
+        assertNull(slot().refusal(Verdict.COMMENT, "", box(comments = 1), "h2")) // PR #1 probe: comments alone are accepted
+        assertNull(slot().refusal(Verdict.COMMENT, "", box(replies = 1), "h2"))
+        assertNull(slot(PendingReview("PRR_9", 1)).refusal(Verdict.COMMENT, "", box(), "h2")) // the adopted review's comment counts
+        assertNull(slot().refusal(Verdict.COMMENT, "Looks good", box(), "h2"))
+        assertNull(slot().refusal(Verdict.APPROVE, "", box(), "h2"))
     }
 
     @Test
-    fun `on your own pull request only a comment review goes`() {
+    fun `on your own pull request only a comment review goes, greyed before anything is written`() {
         val own = "GitHub doesn't let you approve or request changes on your own pull request."
-        assertEquals(own, submitBlocker(Verdict.APPROVE, "LGTM", 2, true))
-        assertEquals(own, submitBlocker(Verdict.REQUEST_CHANGES, "x", 0, true))
-        assertNull(submitBlocker(Verdict.COMMENT, "x", 0, true))
+        assertEquals(own, slot(own = true).denied(Verdict.APPROVE))
+        assertEquals(own, slot(own = true).denied(Verdict.REQUEST_CHANGES))
+        assertNull(slot(own = true).denied(Verdict.COMMENT))
+        assertNull(slot().denied(Verdict.APPROVE))
+        assertEquals(own, slot(own = true).refusal(Verdict.APPROVE, "LGTM", box(comments = 2), "h2"))
+        assertNull(slot(own = true).refusal(Verdict.COMMENT, "x", box(), "h2"))
     }
 
     @Test
@@ -155,20 +165,23 @@ class ReviewCommentsTest {
     }
 
     @Test
-    fun `the review slot reads the PR, its latest push and your pending review, or none`() {
-        assertEquals(ReviewSlot("PR_1", "h2", null), parseReviewSlot("PR_1\th2\t\t0\n"))
-        assertEquals(ReviewSlot("PR_1", "h2", PendingReview("PRR_9", 2)), parseReviewSlot("PR_1\th2\tPRR_9\t2\n"))
+    fun `the review slot reads the PR, its latest push, your pending review or none, and whether you opened it`() {
+        assertEquals(GitHubSlot("PR_1", "h2", null, false), parseReviewSlot("PR_1\th2\t\t0\tfalse\n"))
+        assertEquals(GitHubSlot("PR_1", "h2", PendingReview("PRR_9", 2), true), parseReviewSlot("PR_1\th2\tPRR_9\t2\ttrue\n"))
+        assertEquals(2, parseReviewSlot("PR_1\th2\tPRR_9\t2\ttrue\n").started)
         assertThrows(IllegalArgumentException::class.java) { parseReviewSlot("") }
     }
 
     @Test
-    fun `a github_com review is joined only when its new comments would land on the lines they were written for`() {
-        val slot = ReviewSlot("PR_1", "h2", PendingReview("PRR_9", 1))
-        assertNull(slot.blocker("h2", 3)) // scope ends at the latest push: adopt
-        assertNull(slot.blocker("h1", 0)) // replies only: they sit on their threads
-        assertNull(slot.copy(pending = null).blocker("h1", 3)) // no pending review: a new one is pinned to h1
-        assertEquals("You have a review in progress on github.com, and comments added to it land on the latest push. " +
-            "Review up to the latest push to add yours, or submit that one on github.com first.", slot.blocker("h1", 1))
+    fun `a review started on GitHub is joined only when its new comments would land on the lines they were written for`() {
+        val held = "You have a review in progress on GitHub, and comments added to it land on the latest push. " +
+            "Review up to the latest push to add yours, or submit that one on GitHub first."
+        val pending = slot(PendingReview("PRR_9", 1))
+        assertNull(pending.held(box(comments = 3), "h2")) // scope ends at the latest push: adopt
+        assertNull(pending.held(box(replies = 1), "h1")) // replies only: they sit on their threads
+        assertNull(slot().held(box(comments = 3), "h1")) // no pending review: a new one is pinned to h1
+        assertEquals(held, pending.held(box(comments = 1), "h1"))
+        assertEquals("held wins, even over your own PR's refusal", held, slot(PendingReview("PRR_9", 1), own = true).refusal(Verdict.APPROVE, "LGTM", box(comments = 1), "h1"))
     }
 
     @Test

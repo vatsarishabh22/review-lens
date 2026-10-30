@@ -46,8 +46,6 @@ class ReviewService(private val project: Project) : Disposable {
     @Volatile private var hostKeepsViewed = true
     /** The PR's files on GitHub, read at load; null when unknown (a branch, or GitHub didn't answer). */
     @Volatile private var pullRequestFiles: Set<String>? = null
-    /** The viewer opened this PR (from GitHub at load); false when unknown, so GitHub's own refusal still applies. */
-    @Volatile var ownPullRequest = false; private set
     private var syncFailureShown = false
 
     val isActive get() = meta != null
@@ -83,7 +81,6 @@ class ReviewService(private val project: Project) : Disposable {
             onSuccess = { states ->
                 pullRequestId = states.pullRequestId
                 pullRequestFiles = states.files.keys
-                ownPullRequest = states.ownPullRequest
                 syncViewed(meta, states.files, changes) { path, viewed -> runCatching { viewedSync!!.setViewed(states.pullRequestId, path, viewed) }.isSuccess }
                     .also { sync = if (it.unsent == null) Sync.HOST else Sync.FAILED; if (it != meta) ReviewMeta.save(git, it) }
             },

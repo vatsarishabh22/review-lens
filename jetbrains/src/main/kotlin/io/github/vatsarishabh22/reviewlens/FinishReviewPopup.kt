@@ -56,12 +56,14 @@ private fun openFinishReview(project: Project, anchor: JComponent?) {
         lineWrap = true; wrapStyleWord = true; font = JBFont.label(); emptyText.text = "Leave a summary (optional)"
     }
     val group = ButtonGroup()
-    // null is "Mark as reviewed": no host event, so own-PR and empty-review rules don't apply to it
+    // null is "Mark as reviewed": nothing goes to the host, so none of its rules apply; the slot was read just before this opened
+    val slot = service.reviewSlot
+    val scopeEnd = service.meta?.range?.to.orEmpty()
     val choices = (Verdict.entries + null).associateWith { v ->
         JRadioButton(v?.label ?: "Mark as reviewed", v == Verdict.COMMENT).apply {
             isOpaque = false; group.add(this)
-            isEnabled = v == null || v == Verdict.COMMENT || !service.ownPullRequest
-            if (!isEnabled) toolTipText = submitBlocker(v!!, "", 0, ownPullRequest = true) // why it is greyed, on hover
+            toolTipText = v?.let { slot?.denied(it) } // why it is greyed, on hover
+            isEnabled = toolTipText == null
         }
     }
     var popup: JBPopup? = null
@@ -76,10 +78,9 @@ private fun openFinishReview(project: Project, anchor: JComponent?) {
     // drafts written on another scope's version of a file go out only from that scope: say so, never skip them silently
     val waiting = service.meta?.drafts.orEmpty().count { !it.posted && it.replyTo == null } - outbox.comments.size
     // a review started on the host's website is adopted: its comments go out with yours, so say so before Submit
-    val slot = service.reviewSlot
-    val started = slot?.pending?.comments ?: 0
+    val started = slot?.started ?: 0
     val fromHost = "${draftsText(started, 0)} you started on ${service.hostName}"
-    val held = slot?.blocker(service.meta?.range?.to.orEmpty(), outbox.comments.size) // said in place of "will be posted", not only on hover
+    val held = slot?.held(outbox, scopeEnd) // said in place of "will be posted", not only on hover
     val posting = when {
         held != null -> held
         outbox.size > 0 -> "${outbox.text} will be posted with it, as one review." + if (started > 0) " So ${if (started == 1) "is" else "are"} the $fromHost." else ""
@@ -96,7 +97,7 @@ private fun openFinishReview(project: Project, anchor: JComponent?) {
     }
     val update = {
         val v = verdict()
-        val blocker = v?.let { held ?: submitBlocker(it, summary.text, outbox.size + started, service.ownPullRequest) }
+        val blocker = v?.let { slot?.refusal(it, summary.text, outbox, scopeEnd) }
         submit.isEnabled = blocker == null
         submit.toolTipText = blocker // a greyed-out Submit says why on hover
         submit.text = if (v == null) "Finish review" else "Submit to ${service.hostName}"

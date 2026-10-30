@@ -20,7 +20,7 @@ interface ReviewHost {
 
     fun reviewThreads(number: Int): List<ReviewThread>
 
-    /** The review's id and latest push, and the viewer's own unfinished review on it, if any. */
+    /** What the host will take on review [number] now; read again each time Finish opens. */
     fun reviewSlot(number: Int): ReviewSlot
 
     /** Posts [comments], [replies], [summary] and [verdict] as one review at [commit]; a refusal undoes what it added and throws the host's reason. */
@@ -37,6 +37,24 @@ interface ReviewHost {
 
     /** The host's own "Viewed" checkboxes, or null where it keeps none to sync with (GitLab): ticks then stay on this laptop. */
     val viewed: ViewedSync?
+}
+
+/**
+ * The host's answer to "what will you take on this review now": the rules, their data and their words are the host's
+ * own (GitHub's: [GitHubSlot]). Pure, so the Finish popup can ask on every keystroke on EDT.
+ */
+interface ReviewSlot {
+    /** Comments the viewer began on the host's website, which Finish posts with theirs. */
+    val started: Int
+
+    /** Why [verdict] can't end this review whatever is written (greys its choice), or null. */
+    fun denied(verdict: Verdict): String?
+
+    /** Why the [outbox] can't post from a scope ending at [scopeEnd] whatever the verdict (said in place of "will be posted"), or null. */
+    fun held(outbox: Outbox, scopeEnd: String): String?
+
+    /** Why the host won't take this review as it is now (greys Submit), or null. */
+    fun refusal(verdict: Verdict, summary: String, outbox: Outbox, scopeEnd: String): String?
 }
 
 /** A host's per-viewer "Viewed" checkboxes on a review's files. */

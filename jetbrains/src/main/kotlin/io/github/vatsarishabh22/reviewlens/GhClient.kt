@@ -75,7 +75,7 @@ class GhClient(private val root: Path) : ReviewHost, ViewedSync {
     }
 
     /** The PR's id and latest push, and your own pending review on it (started on github.com or anywhere else), if any. */
-    override fun reviewSlot(number: Int): ReviewSlot = parseReviewSlot(runCli(root, "gh", "api", "graphql", "-F", "owner={owner}", "-F", "name={repo}",
+    override fun reviewSlot(number: Int): GitHubSlot = parseReviewSlot(runCli(root, "gh", "api", "graphql", "-F", "owner={owner}", "-F", "name={repo}",
         "-F", "number=$number", "-f", "query=$REVIEW_SLOT_QUERY", "--jq", REVIEW_SLOT_JQ))
 
     /**
@@ -86,9 +86,9 @@ class GhClient(private val root: Path) : ReviewHost, ViewedSync {
      */
     override fun submitReview(number: Int, commit: String, summary: String, verdict: Verdict, comments: List<Draft>, replies: List<Draft>) {
         val slot = reviewSlot(number)
-        slot.blocker(commit, comments.size)?.let { throw CliException(it) }
+        slot.refusal(verdict, summary, Outbox(comments, replies), commit)?.let { throw CliException(it) }
         val adopted = slot.pending?.id
-        val review = adopted ?: graphql(startReviewBody(slot.pullRequestId, commit, comments), ".data.addPullRequestReview.pullRequestReview.id")
+        val review = adopted ?: graphql(startReviewBody(slot.id, commit, comments), ".data.addPullRequestReview.pullRequestReview.id")
         val added = mutableListOf<String>()
         try {
             if (adopted != null) comments.forEach { added += graphql(addThreadBody(review, it), ".data.addPullRequestReviewThread.thread.comments.nodes[0].id") }
@@ -132,32 +132,64 @@ class GhClient(private val root: Path) : ReviewHost, ViewedSync {
         summarizeChecks(runCli(root, "gh", "pr", "view", number.toString(), "--json", "statusCheckRollup"))
 }
 
+/** Your pending review on a PR: GitHub keeps one per person, so Finish review adds to it rather than starting another. */
+data class PendingReview(val id: String, val comments: Int)
+
+/** GitHub's [ReviewSlot]: the PR's id, its latest push ([head]), your pending review if one exists, and whether you opened the PR. */
+data class GitHubSlot(val id: String, val head: String, val pending: PendingReview?, val ownPullRequest: Boolean) : ReviewSlot {
+    override val started get() = pending?.comments ?: 0
+
+    /** GitHub refuses Approve and Request changes on your own pull request. */
+    override fun denied(verdict: Verdict) =
+        if (ownPullRequest && verdict != Verdict.COMMENT) "GitHub doesn't let you approve or request changes on your own pull request." else null
+
+    /**
+     * New comments can't join [pending] from a scope ending before [head]: what is added to a pending review lands on the
+     * PR's latest push whatever line it was written for (measured on rl-thread-test#1). Replies sit on their threads and always can.
+     */
+    override fun held(outbox: Outbox, scopeEnd: String) = if (pending == null || outbox.comments.isEmpty() || scopeEnd == head) null
+        else "You have a review in progress on GitHub, and comments added to it land on the latest push. Review up to the latest push to add yours, or submit that one on GitHub first."
+
+    /** Then [denied], then GitHub's 422 on an empty Comment or Request changes (a blank reason, measured on PR #1). */
+    override fun refusal(verdict: Verdict, summary: String, outbox: Outbox, scopeEnd: String) = held(outbox, scopeEnd) ?: denied(verdict)
+        ?: if (verdict != Verdict.APPROVE && summary.isBlank() && outbox.size + started == 0) "Add a summary or an inline comment to post a ${verdict.label.lowercase()} review." else null
+}
+
+/** Reads `PR_id<TAB>head<TAB>pendingId<TAB>comments<TAB>own`; pendingId is empty and comments 0 when there is no pending review. */
+fun parseReviewSlot(text: String): GitHubSlot {
+    val (pr, head, pending, comments, own) = text.trim().split('\t').let { it + List(5 - it.size) { "" } }
+    require(pr.isNotEmpty() && head.isNotEmpty()) { "GitHub did not return this pull request" }
+    return GitHubSlot(pr, head, pending.ifEmpty { null }?.let { PendingReview(it, comments.toIntOrNull() ?: 0) }, own == "true")
+}
+
+// reviews(states: PENDING) lists only the viewer's own: nobody else's pending review is visible
+private const val REVIEW_SLOT_QUERY = "query(\$owner:String!,\$name:String!,\$number:Int!){repository(owner:\$owner,name:\$name){pullRequest(number:\$number)" +
+    "{id headRefOid viewerDidAuthor reviews(states:PENDING,first:1){nodes{id comments{totalCount}}}}}}"
+private const val REVIEW_SLOT_JQ = ".data.repository.pullRequest | [.id, .headRefOid, (.reviews.nodes[0].id // \"\"), (.reviews.nodes[0].comments.totalCount // 0 | tostring), (.viewerDidAuthor | tostring)] | @tsv"
+
 /** GitHub's own per-viewer state of a PR file; DISMISSED = "new changes since last viewed" (our 🔄). */
 enum class ViewedState { VIEWED, UNVIEWED, DISMISSED }
 
-/** [ownPullRequest]: the viewer opened it, so GitHub allows only Comment reviews. */
-data class ViewedStates(val pullRequestId: String, val files: Map<String, ViewedState>, val ownPullRequest: Boolean = false)
+data class ViewedStates(val pullRequestId: String, val files: Map<String, ViewedState>)
 
-private const val VIEWED_QUERY = "query(\$owner:String!,\$name:String!,\$number:Int!,\$endCursor:String){viewer{login} repository(owner:\$owner,name:\$name)" +
-    "{pullRequest(number:\$number){id author{login} files(first:100,after:\$endCursor){pageInfo{hasNextPage endCursor} nodes{path viewerViewedState}}}}}"
+private const val VIEWED_QUERY = "query(\$owner:String!,\$name:String!,\$number:Int!,\$endCursor:String){repository(owner:\$owner,name:\$name)" +
+    "{pullRequest(number:\$number){id files(first:100,after:\$endCursor){pageInfo{hasNextPage endCursor} nodes{path viewerViewedState}}}}}"
 private const val VIEWED_JQ = ".data as \$d | \$d.repository.pullRequest as \$p | (\"#id\\t\" + \$p.id), " +
-    "(\"#own\\t\" + ((\$p.author.login // \"\") == \$d.viewer.login | tostring)), (\$p.files.nodes[] | \"\\(.path)\\t\\(.viewerViewedState)\")"
+    "(\$p.files.nodes[] | \"\\(.path)\\t\\(.viewerViewedState)\")"
 
-/** Reads `#id<TAB>PR_…`, `#own<TAB>true|false`, then `path<TAB>STATE` lines (the `#` lines repeat per page). */
+/** Reads `#id<TAB>PR_…`, then `path<TAB>STATE` lines (the `#` lines repeat per page). */
 fun parseViewedStates(text: String): ViewedStates {
     var id = ""
-    var own = false
     val files = LinkedHashMap<String, ViewedState>()
     text.lines().filter { '\t' in it }.forEach { line ->
         val (key, value) = line.split('\t', limit = 2)
         when (key) {
             "#id" -> id = value
-            "#own" -> own = value == "true"
             else -> runCatching { ViewedState.valueOf(value) }.getOrNull()?.let { files[key] = it }
         }
     }
     require(id.isNotEmpty()) { "GitHub did not return this pull request" }
-    return ViewedStates(id, files, own)
+    return ViewedStates(id, files)
 }
 
 /** GitHub's reason from an error body (`{"message":"Unprocessable Entity","errors":["Path could not be resolved"]}`), or null. */
