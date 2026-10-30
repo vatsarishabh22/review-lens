@@ -104,11 +104,7 @@ class ReviewService(private val project: Project) : Disposable {
 
     fun changeFor(file: VirtualFile): FileChange? = relativePath(file)?.let { path -> changes.find { it.path == path } }
 
-    fun badge(change: FileChange): Badge = when (meta?.reviewed?.get(change.path)) {
-        null -> Badge.TODO
-        change.newBlob -> Badge.REVIEWED
-        else -> Badge.CHANGED_SINCE
-    }
+    fun badge(change: FileChange): Badge = badgeOf(meta?.reviewed.orEmpty(), change)
 
     /** Your pending review on GitHub as Finish review last read it; null when it wasn't read or GitHub didn't answer. */
     @Volatile var reviewSlot: ReviewSlot? = null; private set

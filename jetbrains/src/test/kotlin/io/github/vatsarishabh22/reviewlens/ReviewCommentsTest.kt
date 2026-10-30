@@ -8,9 +8,6 @@ import org.junit.Test
 /** Drafts, the outbox Finish review posts, and the words around them; what GitHub is sent is GitHubWireTest's. */
 class ReviewCommentsTest {
 
-    private fun change(path: String, blob: String) = FileChange(path, null, 'M', blob, 1, 1)
-    private val scope = listOf(change("a.py", "a2"), change("b.py", "b2"))
-
     @Test
     fun `the PR list says reviewed only when every file is viewed, with the last posted verdict`() {
         assertEquals("Resume · 3 of 4 viewed", ReviewProgress(3, 4, Verdict.APPROVE).label) // new commits re-open it
@@ -49,29 +46,8 @@ class ReviewCommentsTest {
         assertEquals(0, Outbox(emptyList(), emptyList()).size)
     }
 
-    @Test
-    fun `only pending comments on the version this scope shows are posted`() {
-        val now = Draft("a.py", 7, "a2", "now")
-        val posted = Draft("a.py", 9, "a2", "sent before", posted = true)
-        val otherScope = Draft("b.py", 3, "b1", "written on an older version")
-        val notInScope = Draft("c.py", 1, "c1", "file not in this scope")
-        val reply = Draft("a.py", 7, "a2", "a reply goes with its thread", replyTo = "T1")
-        assertEquals(listOf(now), toPost(listOf(now, posted, otherScope, notInScope, reply), scope))
-    }
-
     private fun thread(id: String, resolved: Boolean = false, by: String? = null, byMe: Boolean = false) =
         ReviewThread(id, "a.py", 7, 7, false, "abc", resolved, by, "u$id", false, listOf(ThreadComment("lee", "why?")), resolvedByMe = byMe)
-
-    @Test
-    fun `every pending reply posts while its thread exists, whatever scope or blob, resolved or not`() {
-        val open = Draft("a.py", 7, "a1", "on an older blob still posts", replyTo = "T1")
-        val toResolved = Draft("a.py", 7, "a2", "resolved since", replyTo = "T2")
-        val gone = Draft("a.py", 7, "a2", "thread deleted", replyTo = "T3")
-        val sent = Draft("a.py", 7, "a2", "sent", posted = true, replyTo = "T1")
-        val drafts = listOf(open, toResolved, gone, sent, Draft("a.py", 7, "a2", "a comment"))
-        assertEquals(listOf(open, toResolved), repliesToPost(drafts, listOf(thread("T1"), thread("T2", resolved = true))))
-        assertEquals("threads unknown: try, GitHub refuses a missing one", listOf(open, toResolved, gone), repliesToPost(drafts, null))
-    }
 
     @Test
     fun `Finish review says what changed under your replies since the review loaded`() {
@@ -111,11 +87,7 @@ class ReviewCommentsTest {
     }
 
     @Test
-    fun `a body splits into its text and each suggestion's lines, which Suggest a change writes back the same way`() {
-        assertEquals(listOf(BodyPart.Text("int() raises on \"1,200\".")), bodyParts("int() raises on \"1,200\"."))
-        val body = "Both fields:\n" + suggestionBlock(listOf("    a = 1", "    b = 2")) + "\nthen this.\n```suggestion\n```"
-        assertEquals(listOf(BodyPart.Text("Both fields:"), BodyPart.Suggestion(listOf("    a = 1", "    b = 2")), BodyPart.Text("then this."), BodyPart.Suggestion(emptyList())), bodyParts(body))
-        assertEquals("a code block is not a suggestion", listOf(BodyPart.Text("```python\nx = 1\n```")), bodyParts("```python\nx = 1\n```"))
-    }
+    fun `Suggest a change writes the block the suggestion cases read back`() =
+        assertEquals("```suggestion\n    a = 1\n    b = 2\n```", suggestionBlock(listOf("    a = 1", "    b = 2")))
 
 }

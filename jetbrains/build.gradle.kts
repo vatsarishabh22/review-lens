@@ -40,7 +40,7 @@ dependencies {
 java { toolchain { languageVersion = JavaLanguageVersion.of(25) } }
 tasks.withType<JavaCompile> { options.release = 21 }
 // SpecFixturesTest reads the editors' shared state examples; a fixture change must re-run it
-tasks.test { inputs.dir("../spec/fixtures") }
+tasks.test { inputs.dir("../spec") } // the fixtures and the cases the suites run: an edit there alone re-runs the tests
 // spec/code-files.json is the editors' shared list of which files are code; the plugin ships it as /spec/code-files.json
 tasks.processResources { from("../spec") { include("code-files.json"); into("spec") } }
 tasks.withType<KotlinCompile> {

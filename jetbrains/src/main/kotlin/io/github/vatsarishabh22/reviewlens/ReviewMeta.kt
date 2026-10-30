@@ -115,6 +115,13 @@ fun ReviewMeta.headMoved(head: String?): Boolean = !head.isNullOrEmpty() && head
 
 enum class Badge(val symbol: String) { TODO("⭐"), REVIEWED("✅"), CHANGED_SINCE("🔄") }
 
+/** A file's badge from the ticks: never ticked ⭐, ticked at its current blob ✅, else (an older blob, or "dismissed") 🔄. */
+fun badgeOf(reviewed: Map<String, String>, change: FileChange): Badge = when (reviewed[change.path]) {
+    null -> Badge.TODO
+    change.newBlob -> Badge.REVIEWED
+    else -> Badge.CHANGED_SINCE
+}
+
 /** The impact map's ticks on one function: the [places] checked (each `path#name`), while its text hashed to [hash]. */
 data class CheckedFunction(val hash: String, val places: List<String>)
 

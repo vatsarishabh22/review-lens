@@ -31,17 +31,6 @@ class GitHubWireTest {
         assertEquals("viewer unknown: nothing waits", false, parsePullRequests(ghList, null)[1].requested)
     }
 
-    @Test
-    fun `reads GitHub's answer across pages and skips states it does not know`() {
-        val text = "#id\tPR_1\n.github/a.yml\tVIEWED\n.github/b.yml\tUNVIEWED\n#id\tPR_1\nsrc/c.kt\tDISMISSED\nsrc/d.kt\tSOMETHING_NEW\n"
-        val states = parseViewedStates(text)
-        assertEquals("PR_1", states.pullRequestId)
-        assertEquals(mapOf(".github/a.yml" to ViewedState.VIEWED, ".github/b.yml" to ViewedState.UNVIEWED, "src/c.kt" to ViewedState.DISMISSED), states.files)
-    }
-
-    @Test(expected = IllegalArgumentException::class)
-    fun `an answer without the pull request is refused`() { parseViewedStates("a.yml\tVIEWED\n") }
-
     private fun vars(body: String) = Gson().fromJson(body, JsonObject::class.java).also { assertTrue(it["query"].asString.startsWith("mutation")) }["variables"].asJsonObject
 
     @Test
@@ -91,14 +80,6 @@ class GitHubWireTest {
         assertNull(slot().denied(Verdict.APPROVE))
         assertEquals(own, slot(own = true).refusal(Verdict.APPROVE, "LGTM", box(comments = 2), "h2"))
         assertNull(slot(own = true).refusal(Verdict.COMMENT, "x", box(), "h2"))
-    }
-
-    @Test
-    fun `GitHub's reasons are read from its error body`() {
-        assertEquals("Path could not be resolved", githubRefusal("""{"message":"Unprocessable Entity","errors":["Path could not be resolved"],"status":"422"}"""))
-        assertEquals("Line could not be resolved", githubRefusal("""{"message":"Validation Failed","errors":[{"message":"Line could not be resolved"}]}"""))
-        assertEquals("Not Found", githubRefusal("""{"message":"Not Found","status":"404"}"""))
-        assertNull(githubRefusal("error connecting to api.github.com"))
     }
 
     @Test
