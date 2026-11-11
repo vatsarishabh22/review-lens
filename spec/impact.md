@@ -1,7 +1,10 @@
 # Impact: who else depends on this change
 
 Status: **shipped** in JetBrains 0.1.4 for Python, Java and Kotlin; its ticks are `checked` in
-[`state.schema.json`](state.schema.json). VS Code: not built yet.
+[`state.schema.json`](state.schema.json). VS Code: implemented through document-symbol and reference providers,
+with code lenses, inline comment peeks, and persisted checks. The integration suite proves TypeScript references
+using VS Code's built-in language extension. Other languages require compatible language extensions; removed
+functions are outside the VS Code v1 scope.
 
 A diff shows the lines that changed. It doesn't show **who depends on them**. For each function the review's scope
 changed, Review Lens shows the places that use it and that this PR didn't touch, as real code you can read and tick

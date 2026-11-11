@@ -48,6 +48,11 @@ jobs:
       - run: npm ci
       # compiles the extension, checks its state reader against spec/fixtures and the fixtures against the schema
       - run: npm test
+      - run: npx playwright install --with-deps chromium
+      - run: npm run test:ui
+        env:
+          PLAYWRIGHT_CHANNEL: chromium
+      - run: xvfb-run -a npm run test:integration
       - run: npm run package -- --out review-lens-vscode.vsix
       - uses: actions/upload-artifact@v4
         with:
