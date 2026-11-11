@@ -23,7 +23,8 @@ test("active review loads whole", () => {
 });
 
 test("every PR and branch state file loads whole", () => {
-  const names = readdirSync(fixtures).filter((n) => n !== "active.json");
+  // stacks.json is the list's counts, not a review's state; this editor doesn't list stacks yet
+  const names = readdirSync(fixtures).filter((n) => n !== "active.json" && n !== "stacks.json");
   ok(names.length > 0, `no fixtures found in ${fixtures}`);
   for (const name of names) {
     const { gitDir, json } = install(name);

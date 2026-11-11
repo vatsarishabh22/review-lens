@@ -14,6 +14,7 @@ private data class GhRequest(val login: String?)
 private data class GhPullRequest(
     val number: Int, val title: String, val headRefName: String, val headRefOid: String, val baseRefName: String, val author: GhUser,
     val body: String?, val additions: Int, val deletions: Int, val changedFiles: Int, val updatedAt: String, val reviewRequests: List<GhRequest>?,
+    val isCrossRepository: Boolean = false,
 )
 
 /**
@@ -22,7 +23,23 @@ private data class GhPullRequest(
  */
 fun parsePullRequests(json: String, viewer: String?): List<PullRequest> = Gson().fromJson(json, Array<GhPullRequest>::class.java).map {
     PullRequest(it.number, it.title, it.headRefName, it.headRefOid, it.baseRefName, Person(it.author.login, it.author.name?.ifBlank { null } ?: it.author.login),
-        it.body.orEmpty(), it.additions, it.deletions, it.changedFiles, it.updatedAt, viewer != null && it.reviewRequests.orEmpty().any { r -> r.login == viewer })
+        it.body.orEmpty(), it.additions, it.deletions, it.changedFiles, it.updatedAt, viewer != null && it.reviewRequests.orEmpty().any { r -> r.login == viewer },
+        fromFork = it.isCrossRepository)
+}
+
+/**
+ * Each open PR's commits (newest last), the stack rule's input (spec/README.md, Stacks). Its own call: `gh pr list --json
+ * commits` asks for every commit's authors too, which GitHub refuses past 500,000 nodes (100 PRs did, measured).
+ * ponytail: the last 100 commits of the newest 100 PRs; a parent further back is missed and the PR compares with its base.
+ */
+internal const val COMMIT_IDS_QUERY = "query(\$owner:String!,\$name:String!){repository(owner:\$owner,name:\$name){pullRequests(states:OPEN,first:100,orderBy:{field:CREATED_AT,direction:DESC})" +
+    "{nodes{number commits(last:100){nodes{commit{oid}}}}}}}"
+internal const val COMMIT_IDS_JQ = ".data.repository.pullRequests.nodes[] | \"\\(.number)\\t\\([.commits.nodes[].commit.oid] | join(\",\"))\""
+
+/** Reads `number<TAB>oid,oid,…` lines into each PR's commits. */
+fun parseCommitIds(text: String): Map<Int, List<String>> = text.lines().filter { '\t' in it }.associate { line ->
+    val (number, oids) = line.split('\t', limit = 2)
+    number.toInt() to oids.split(',').filter { it.isNotEmpty() }
 }
 
 /** Reads `PR_id<TAB>head<TAB>pendingId<TAB>comments<TAB>own`; pendingId is empty and comments 0 when there is no pending review. */

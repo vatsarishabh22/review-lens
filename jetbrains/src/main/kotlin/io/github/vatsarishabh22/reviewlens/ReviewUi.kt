@@ -17,11 +17,16 @@ import com.intellij.util.ui.UIUtil
 import java.awt.BasicStroke
 import java.awt.Color
 import java.awt.Component
+import java.awt.Cursor
 import java.awt.Dimension
 import java.awt.Font
 import java.awt.Graphics
 import java.awt.Graphics2D
+import java.awt.LayoutManager
+import java.awt.Rectangle
 import java.awt.RenderingHints
+import java.awt.event.MouseAdapter
+import java.awt.event.MouseEvent
 import java.awt.geom.Path2D
 import java.awt.geom.RoundRectangle2D
 import javax.swing.Box
@@ -31,7 +36,10 @@ import javax.swing.JButton
 import javax.swing.JComponent
 import javax.swing.JPanel
 import javax.swing.JTextPane
+import javax.swing.Scrollable
 import javax.swing.SwingConstants
+import javax.swing.SwingUtilities
+import javax.swing.border.Border
 import javax.swing.text.SimpleAttributeSet
 import javax.swing.text.StyleConstants
 
@@ -195,6 +203,46 @@ enum class CommentLook(private val words: String, val fill: Color, val fg: Color
     }
 }
 
+/** A vertical stack that tracks its scroll pane's width, so wrapped text reflows and long titles end in "…" instead of scrolling sideways. */
+class ScrollStack(border: Border) : JPanel(), Scrollable {
+    init {
+        layout = BoxLayout(this, BoxLayout.Y_AXIS)
+        this.border = border
+    }
+
+    override fun getPreferredScrollableViewportSize(): Dimension = preferredSize
+    override fun getScrollableUnitIncrement(r: Rectangle, o: Int, d: Int) = JBUI.scale(16)
+    override fun getScrollableBlockIncrement(r: Rectangle, o: Int, d: Int) = r.height
+    override fun getScrollableTracksViewportWidth() = true
+    override fun getScrollableTracksViewportHeight() = false
+}
+
+/** A list row you click to open: a hand cursor, a shade while the pointer is over it, and a pick from anywhere on it. */
+abstract class PickRow(layout: LayoutManager) : JPanel(layout) {
+    protected var hover = false
+        private set
+
+    init {
+        isOpaque = false
+        alignmentX = LEFT_ALIGNMENT
+        cursor = Cursor.getPredefinedCursor(Cursor.HAND_CURSOR)
+    }
+
+    /** [onPick] on a click on this row or any of [parts] (labels take their own clicks); the shade follows the pointer. */
+    protected fun pickOn(onPick: () -> Unit, vararg parts: JComponent) {
+        val mouse = object : MouseAdapter() {
+            override fun mouseClicked(e: MouseEvent) = onPick()
+            override fun mouseEntered(e: MouseEvent) { hover = true; repaint() }
+            override fun mouseExited(e: MouseEvent) {
+                if (!contains(SwingUtilities.convertPoint(e.component, e.point, this@PickRow))) { hover = false; repaint() }
+            }
+        }
+        (listOf(this) + parts).forEach { it.addMouseListener(mouse) }
+    }
+
+    override fun getMaximumSize() = Dimension(Int.MAX_VALUE, preferredSize.height)
+}
+
 fun files(n: Int) = if (n == 1) "1 file" else "$n files"
 
 fun mutedLabel(text: String = "", small: Boolean = true) = JBLabel(text).apply {
@@ -208,7 +256,11 @@ fun sectionLabel(text: String) = JBLabel(text.uppercase()).apply {
 }
 
 /** Plain text that wraps to the panel's width (no HTML, so nothing from a PR body can render as markup). */
-fun wrappingText(text: String, font: Font = JBFont.label()) = JBTextArea(text).apply {
+fun wrappingText(text: String, font: Font = JBFont.label()) = object : JBTextArea(text) {
+    // display only: its caret (the look and feel's own) scrolls itself into view as it is shown, so a list of these (a
+    // PR's 31 commits) dragged the panel to its bottom as it loaded; text nobody edits never asks to be scrolled to
+    override fun scrollRectToVisible(rect: Rectangle) = Unit
+}.apply {
     isEditable = false
     isFocusable = false
     lineWrap = true

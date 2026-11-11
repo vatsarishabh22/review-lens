@@ -5,10 +5,20 @@ import java.nio.file.Path
 /** Git operations on the repository checked out at [root]. */
 class GitClient(val root: Path) {
 
-    /** Fetches a review's [head] (the host's refspec source) into `refs/review-lens/<key>`, plus its [base] branch; returns that ref. */
-    fun fetchReview(head: String, key: String, base: String): String {
-        val ref = "refs/review-lens/$key"
-        git("fetch", "--no-tags", REMOTE, "+$head:$ref", "+refs/heads/$base:refs/remotes/$REMOTE/$base")
+    /**
+     * Where Review Lens keeps a review's commits apart from every branch: the fetched head, a stack's merge base, a
+     * review's start. ponytail: never deleted, like the state file beside it; a few small refs per PR ever reviewed.
+     */
+    fun reviewRef(key: String) = "refs/review-lens/$key"
+
+    /**
+     * Fetches a review's [head] (the host's refspec source) into [reviewRef], plus its [base] branch, and a stack
+     * [parent]'s head (its refspec source and state key) in the same call; returns the review's ref.
+     */
+    fun fetchReview(head: String, key: String, base: String, parent: Pair<String, String>? = null): String {
+        val ref = reviewRef(key)
+        git("fetch", "--no-tags", REMOTE, "+$head:$ref", "+refs/heads/$base:refs/remotes/$REMOTE/$base",
+            *listOfNotNull(parent?.let { (source, parentKey) -> "+$source:${reviewRef(parentKey)}" }).toTypedArray())
         return ref
     }
 
@@ -25,6 +35,22 @@ class GitClient(val root: Path) {
         runCatching { git("symbolic-ref", "--short", "refs/remotes/$REMOTE/HEAD") }.getOrDefault("$REMOTE/main")
 
     fun mergeBase(a: String, b: String): String = git("merge-base", a, b)
+
+    fun isAncestor(a: String, b: String): Boolean = runCatching { git("merge-base", "--is-ancestor", a, b) }.isSuccess
+
+    /**
+     * A commit of [a] merged with [b] (both full ids, both its parents), on no branch: kept from git's cleanup under [pin]
+     * and reused while its parents are the same; null when they conflict (merge-tree exits 1) or git is older than 2.38.
+     */
+    fun mergeCommit(a: String, b: String, pin: String): String? = runCatching {
+        if (runCatching { git("rev-parse", "$pin^1", "$pin^2").lines() }.getOrNull() == listOf(a, b)) return@runCatching git("rev-parse", pin)
+        val tree = git("merge-tree", "--write-tree", a, b)
+        git("-c", "user.name=Review Lens", "-c", "user.email=review-lens@localhost", "commit-tree", tree, "-p", a, "-p", b, "-m", "Review Lens: $a merged with $b")
+            .also { pin(pin, it) }
+    }.getOrNull()
+
+    /** Keeps [rev] from git's cleanup under [ref] (a commit on no branch would go after about two weeks). */
+    fun pin(ref: String, rev: String) = git("update-ref", ref, rev)
 
     /** Commits in `from..to`, newest first, with author and commit time (epoch seconds). */
     fun commits(from: String, to: String): List<Commit> =

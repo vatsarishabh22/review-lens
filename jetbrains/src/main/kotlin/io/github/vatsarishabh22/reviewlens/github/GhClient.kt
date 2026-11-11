@@ -1,5 +1,6 @@
 package io.github.vatsarishabh22.reviewlens.github
 
+import com.intellij.openapi.application.ApplicationManager
 import io.github.vatsarishabh22.reviewlens.*
 import java.nio.file.Files
 import java.nio.file.Path
@@ -17,11 +18,19 @@ class GhClient(private val root: Path) : ReviewHost, ViewedSync {
 
     private fun viewerLogin(): String = runCli(root, "gh", "api", "user", "--jq", ".login")
 
-    /** Open PRs without their checks: checks double the call's time (2.65 s vs 5.43 s for 70 PRs) and only the detail shows them. */
+    /**
+     * Open PRs without their checks: checks double the call's time (2.65 s vs 5.43 s for 70 PRs) and only the detail shows
+     * them. Their commits come from a second call run alongside (1.4 to 1.8 s for 22 PRs, measured); when it fails the
+     * list shows no stacks.
+     */
     override fun openPullRequests(): List<PullRequest> {
+        val commits = ApplicationManager.getApplication().executeOnPooledThread<Map<Int, List<String>>> { runCatching { parseCommitIds(runCli(root, "gh", "api", "graphql",
+            "-F", "owner={owner}", "-F", "name={repo}", "-f", "query=$COMMIT_IDS_QUERY", "--jq", COMMIT_IDS_JQ)) }.getOrNull().orEmpty() }
         val json = runCli(root, "gh", "pr", "list", "--state", "open", "--limit", "100", "--json",
-            "number,title,headRefName,headRefOid,baseRefName,author,body,additions,deletions,changedFiles,updatedAt,reviewRequests")
-        return parsePullRequests(json, runCatching { viewerLogin() }.getOrNull())
+            "number,title,headRefName,headRefOid,baseRefName,author,body,additions,deletions,changedFiles,updatedAt,reviewRequests,isCrossRepository")
+        val prs = parsePullRequests(json, runCatching { viewerLogin() }.getOrNull())
+        val ids = commits.get()
+        return prs.map { it.copy(commits = ids[it.number].orEmpty()) }
     }
 
     /** This viewer's GitHub "Viewed" ticks for PR [number], every page; owner and repo come from the checkout's remote. */
@@ -92,6 +101,10 @@ class GhClient(private val root: Path) : ReviewHost, ViewedSync {
             Files.deleteIfExists(file)
         }
     }
+
+    // ponytail: GitHub lists up to 300 files in a compare; a stacked PR adding more counts 300 in the list
+    override fun changedFiles(from: String, to: String): Int =
+        runCli(root, "gh", "api", "repos/{owner}/{repo}/compare/$from...$to", "--jq", ".files | length").trim().toInt()
 
     override fun checks(number: Int): Checks =
         summarizeChecks(runCli(root, "gh", "pr", "view", number.toString(), "--json", "statusCheckRollup"))

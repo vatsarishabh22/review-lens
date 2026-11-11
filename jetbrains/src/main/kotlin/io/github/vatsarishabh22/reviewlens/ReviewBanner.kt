@@ -1,6 +1,7 @@
 package io.github.vatsarishabh22.reviewlens
 
 import com.intellij.icons.AllIcons
+import com.intellij.notification.NotificationType
 import com.intellij.openapi.util.Disposer
 import com.intellij.openapi.util.Key
 import com.intellij.openapi.fileEditor.FileEditor
@@ -139,22 +140,24 @@ class ReviewBanner : EditorNotificationProvider, DumbAware {
         val head = service.active?.head ?: return
         val session = ReviewSession(git)
         background(project, if (fetch) "Checking ${service.hostName} for new commits" else "Listing commits", {
-            if (fetch) session.load(meta.target) else session.local(meta.target, head)
+            if (fetch) session.current(meta.target).let { (target, parent) -> session.load(target, parent) } else session.local(meta.target, head, meta.parentHead)
         }) { loaded ->
             fun scope(range: ScopeRange, label: String) = beginReview(project, session, loaded, range, label)
             val all = scopeLabel(loaded.commits, emptyList())
             val items = buildList {
-                add(ScopeItem(all, meta.scopeLabel == all) { scope(resolveScope(loaded.mergeBase, loaded.commits, emptyList()), all) })
+                add(ScopeItem(all, meta.scopeLabel == all) { scope(resolveScope(loaded.start, loaded.commits, emptyList()), all) })
                 sinceLastReview(loaded.head, loaded.commits, meta.seenHead)?.let { (range, label) ->
                     add(ScopeItem(label, meta.scopeLabel == label) { scope(range, label) })
                 }
                 loaded.commits.forEach { c ->
                     val label = scopeLabel(loaded.commits, listOf(c))
-                    add(ScopeItem(c.label, meta.scopeLabel == label) { scope(resolveScope(loaded.mergeBase, loaded.commits, listOf(c)), label) })
+                    add(ScopeItem(c.label, meta.scopeLabel == label) { scope(resolveScope(loaded.start, loaded.commits, listOf(c)), label) })
                 }
                 add(ScopeItem("Check ${ReviewService.of(project).hostName} for new commits…", false) { scopeMenu(project, meta, anchor, fetch = true) })
             }
             if (fetch && loaded.head == head) notify(project, "No new commits", "${meta.target.label} has nothing newer than what you're reviewing.")
+            // a stacked PR that can only compare with its base says why: the menu below lists its parent's commits too
+            if (fetch) loaded.note?.let { notify(project, "${meta.target.label} is compared with its base", it, NotificationType.WARNING) }
             JBPopupFactory.getInstance().createPopupChooserBuilder(items)
                 .setRenderer(object : SimpleListCellRenderer<ScopeItem>() {
                     // the factory shortcuts (create) are scheduled for removal in 2026.2; customize is the class's own hook

@@ -120,6 +120,13 @@
             "null"
           ]
         },
+        "parentHead": {
+          "type": [
+            "string",
+            "null"
+          ],
+          "description": "its stack parent's head at its last load (spec/README.md, Stacks); replaced on every load"
+        },
         "unsent": {
           "type": [
             "object",
@@ -221,6 +228,55 @@
           }
         }
       }
+    },
+    "stacks": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "parents",
+        "counts"
+      ],
+      "description": "stacks.json: the parents the last list saw, and each stacked PR's own file count by <parent head>..<head> (spec/README.md, Stacks)",
+      "properties": {
+        "counts": {
+          "type": "object",
+          "propertyNames": {
+            "pattern": "^[0-9a-f]{40}\\.\\.[0-9a-f]{40}$"
+          },
+          "additionalProperties": {
+            "type": "integer",
+            "minimum": 0
+          }
+        },
+        "parents": {
+          "type": "object",
+          "propertyNames": {
+            "pattern": "^[0-9]+$"
+          },
+          "description": "PR number -> the parent the last list saw it built on, and that parent's head then",
+          "additionalProperties": {
+            "type": "object",
+            "additionalProperties": false,
+            "required": [
+              "number",
+              "head"
+            ],
+            "properties": {
+              "number": {
+                "type": "integer"
+              },
+              "head": {
+                "type": "string",
+                "pattern": "^[0-9a-f]{40}$"
+              },
+              "onBranch": {
+                "type": "boolean",
+                "description": "stacked the host's way: never a moved parent"
+              }
+            }
+          }
+        }
+      }
     }
   },
   "oneOf": [
@@ -229,6 +285,9 @@
     },
     {
       "$ref": "#/$defs/pr"
+    },
+    {
+      "$ref": "#/$defs/stacks"
     }
   ]
 }

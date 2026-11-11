@@ -65,6 +65,14 @@ class SpecCasesTest(private val rule: String) {
                 val p = ReviewProgress(g["viewed"].asInt, g["total"].asInt, g.str("verdict")?.let(Verdict::valueOf), g["headMoved"].asBoolean, g["drafts"].asInt, g["ticked"].asBoolean)
                 JsonObject().apply { addProperty("label", p.label); addProperty("button", p.startLabel(g["sinceOffered"].asBoolean)); addProperty("done", p.done) }
             },
+            "stack-parent" to { g ->
+                val seen = g.getAsJsonObject("seen").entrySet().associate { (n, s) -> n.toInt() to SeenParent(s.asJsonObject["number"].asInt, s.asJsonObject.str("head")!!, s.asJsonObject["onBranch"].asBoolean) }
+                val view = stackView(g.getAsJsonArray("prs").map { it.asJsonObject }.map { p ->
+                    PullRequest(p["number"].asInt, "t", p.str("head")!!, p.str("headSha")!!, p.str("base")!!, Person("a", "a"), commits = p.strings("commits"), fromFork = p["fromFork"].asBoolean)
+                }, seen)
+                tree(linkedMapOf("parents" to view.parents.entries.associate { (n, p) -> n.toString() to linkedMapOf("number" to p.number, "moved" to p.moved, "onBranch" to p.onBranch) },
+                    "seen" to view.seen.mapKeys { it.key.toString() }))
+            },
             "since-last-review" to { g -> sinceLastReview(g.str("head")!!, commits(g.strings("commits")), g.str("seenHead"))?.let { (r, label) -> range(r, label) } ?: JsonNull.INSTANCE },
             "viewed-merge" to { g -> tree(mergeViewed(g.map("local"), g.states("host"), g.changes("changes"), g.flags("unsent"))) },
             "viewed-sync" to { g ->

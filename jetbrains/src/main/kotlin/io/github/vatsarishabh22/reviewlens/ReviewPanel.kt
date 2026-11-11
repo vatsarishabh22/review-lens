@@ -26,10 +26,11 @@ class ReviewPanel(private val project: Project, private val toolWindow: ToolWind
 
     private val service = ReviewService.of(project)
     private val list = PrListView(::openDetail, ::loadList)
-    private val detail = PrDetailView(project) { show(LIST) }
+    private val detail = PrDetailView(project, { show(LIST) }) { n -> listing?.targets?.find { it.pr?.number == n }?.let(::openDetail) }
     private val files = ChangedFilesView(project, this)
     private var git: GitClient? = null
     private var progress: Map<String, ReviewProgress> = emptyMap()
+    private var listing: Listing? = null
     private var wasActive: Boolean? = null
 
     init {
@@ -61,7 +62,21 @@ class ReviewPanel(private val project: Project, private val toolWindow: ToolWind
         }, failed = list::failed) { (git, listing, progress) ->
             this.git = git
             this.progress = progress
+            this.listing = listing
             list.show(listing, progress)
+            fillStackCounts(git, listing)
+        }
+    }
+
+    /** A stacked PR's own size: the kept ones at once, the rest from the host, all at once, while the list is already up. */
+    private fun fillStackCounts(git: GitClient, listing: Listing) {
+        if (listing.stackKeys.isEmpty()) return
+        val counts = StackStore(git)
+        list.counts(counts.counts())
+        background(project, "Counting stacked pull requests", {
+            ReviewHosts.of(git)?.let { host -> counts.fill(listing.stackKeys.values, host::changedFiles) }
+        }) { filled ->
+            if (filled != null && this.listing === listing) list.counts(filled)
         }
     }
 

@@ -253,7 +253,7 @@ class ReviewLifecycleTest {
         val session = ReviewSession(GitClient(repo))
         val local = target.copy(base = "main") // the fixture repo has no remote
         val loaded = session.local(local, head)
-        session.begin(loaded, resolveScope(loaded.mergeBase, loaded.commits, emptyList()), "All commits (1)")
+        session.begin(loaded, resolveScope(loaded.start, loaded.commits, emptyList()), "All commits (1)")
         assertEquals(head, ReviewMeta.load(GitClient(repo), local.key)!!.seenHead)
     }
 
@@ -264,7 +264,7 @@ class ReviewLifecycleTest {
         val session = ReviewSession(git)
         val local = target.copy(base = "main")
         val loaded = session.local(local, head)
-        val range = resolveScope(loaded.mergeBase, loaded.commits, emptyList())
+        val range = resolveScope(loaded.start, loaded.commits, emptyList())
         session.begin(loaded, range, "All commits (1)")
         ReviewMeta.save(git, ReviewMeta.load(git, local.key)!!.copy(reviewed = mapOf("app.py" to "b"), unsent = mapOf("app.py" to true)))
         session.begin(loaded, range, "Commit abc1234")

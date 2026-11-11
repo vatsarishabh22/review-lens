@@ -8,6 +8,8 @@ import java.nio.file.Path
  * One PR's review state, kept across sessions in `.git/review-lens/<key>.json` (outside the working tree).
  * [reviewed] maps a path to the blob it had when marked reviewed, so a later change to that file un-reviews it.
  * [seenHead] is the PR head the reviewer last started or re-scoped on: "Since your last review" starts there.
+ * [parentHead] is its stack parent's head at its last load, so the review bar's scope menu works out where its own
+ * changes start without asking the host; every load replaces it.
  * [unsent] holds ticks GitHub has not confirmed yet (path → viewed); they are re-sent first and win until confirmed.
  * [drafts] are the reviewer's inline comments, kept here (across exit) until Finish review posts them.
  * [verdict] is the last verdict GitHub accepted from this reviewer (Mark as reviewed leaves it), for the PR list.
@@ -20,6 +22,7 @@ data class ReviewMeta(
     val scopeLabel: String,
     val reviewed: Map<String, String> = emptyMap(),
     val seenHead: String? = null,
+    val parentHead: String? = null,
     val unsent: Map<String, Boolean>? = null,
     val drafts: List<Draft>? = null,
     val verdict: Verdict? = null,

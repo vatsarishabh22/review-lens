@@ -1,0 +1,1428 @@
+{
+  "rule": "stack-parent",
+  "about": "Open PRs (head branch, head commit, base branch, commits, `fromFork`: opened from another repository) and the parents the last list saw (`seen`: PR number → its parent's number, that parent's head then, and `onBranch`) → each PR's parent with `moved` when that parent changed after the PR was built on it and `onBranch` when stacked the host's way, and the `seen` to write for the next list (spec/README.md, Stacks).",
+  "cases": [
+    {
+      "name": "a chain seen for the first time: each PR's parent is the closest PR whose head it holds, and it is written down",
+      "given": {
+        "prs": [
+          {
+            "number": 11,
+            "head": "b11",
+            "headSha": "a2",
+            "base": "main",
+            "commits": [
+              "a1",
+              "a2"
+            ],
+            "fromFork": false
+          },
+          {
+            "number": 12,
+            "head": "b12",
+            "headSha": "b2",
+            "base": "main",
+            "commits": [
+              "a1",
+              "a2",
+              "b1",
+              "b2"
+            ],
+            "fromFork": false
+          },
+          {
+            "number": 13,
+            "head": "b13",
+            "headSha": "c1",
+            "base": "main",
+            "commits": [
+              "a1",
+              "a2",
+              "b1",
+              "b2",
+              "c1"
+            ],
+            "fromFork": false
+          }
+        ],
+        "seen": {}
+      },
+      "expect": {
+        "parents": {
+          "12": {
+            "number": 11,
+            "moved": false,
+            "onBranch": false
+          },
+          "13": {
+            "number": 12,
+            "moved": false,
+            "onBranch": false
+          }
+        },
+        "seen": {
+          "12": {
+            "number": 11,
+            "head": "a2",
+            "onBranch": false
+          },
+          "13": {
+            "number": 12,
+            "head": "b2",
+            "onBranch": false
+          }
+        }
+      }
+    },
+    {
+      "name": "a deep stack whose commit lists the host cut at 100: the closest parent is the head sitting latest in the PR's own commits, whatever the list order",
+      "given": {
+        "prs": [
+          {
+            "number": 17,
+            "head": "b17",
+            "headSha": "c100",
+            "base": "main",
+            "commits": [
+              "c1",
+              "c2",
+              "c3",
+              "c4",
+              "c5",
+              "c6",
+              "c7",
+              "c8",
+              "c9",
+              "c10",
+              "c11",
+              "c12",
+              "c13",
+              "c14",
+              "c15",
+              "c16",
+              "c17",
+              "c18",
+              "c19",
+              "c20",
+              "c21",
+              "c22",
+              "c23",
+              "c24",
+              "c25",
+              "c26",
+              "c27",
+              "c28",
+              "c29",
+              "c30",
+              "c31",
+              "c32",
+              "c33",
+              "c34",
+              "c35",
+              "c36",
+              "c37",
+              "c38",
+              "c39",
+              "c40",
+              "c41",
+              "c42",
+              "c43",
+              "c44",
+              "c45",
+              "c46",
+              "c47",
+              "c48",
+              "c49",
+              "c50",
+              "c51",
+              "c52",
+              "c53",
+              "c54",
+              "c55",
+              "c56",
+              "c57",
+              "c58",
+              "c59",
+              "c60",
+              "c61",
+              "c62",
+              "c63",
+              "c64",
+              "c65",
+              "c66",
+              "c67",
+              "c68",
+              "c69",
+              "c70",
+              "c71",
+              "c72",
+              "c73",
+              "c74",
+              "c75",
+              "c76",
+              "c77",
+              "c78",
+              "c79",
+              "c80",
+              "c81",
+              "c82",
+              "c83",
+              "c84",
+              "c85",
+              "c86",
+              "c87",
+              "c88",
+              "c89",
+              "c90",
+              "c91",
+              "c92",
+              "c93",
+              "c94",
+              "c95",
+              "c96",
+              "c97",
+              "c98",
+              "c99",
+              "c100"
+            ],
+            "fromFork": false
+          },
+          {
+            "number": 18,
+            "head": "b18",
+            "headSha": "c130",
+            "base": "main",
+            "commits": [
+              "c31",
+              "c32",
+              "c33",
+              "c34",
+              "c35",
+              "c36",
+              "c37",
+              "c38",
+              "c39",
+              "c40",
+              "c41",
+              "c42",
+              "c43",
+              "c44",
+              "c45",
+              "c46",
+              "c47",
+              "c48",
+              "c49",
+              "c50",
+              "c51",
+              "c52",
+              "c53",
+              "c54",
+              "c55",
+              "c56",
+              "c57",
+              "c58",
+              "c59",
+              "c60",
+              "c61",
+              "c62",
+              "c63",
+              "c64",
+              "c65",
+              "c66",
+              "c67",
+              "c68",
+              "c69",
+              "c70",
+              "c71",
+              "c72",
+              "c73",
+              "c74",
+              "c75",
+              "c76",
+              "c77",
+              "c78",
+              "c79",
+              "c80",
+              "c81",
+              "c82",
+              "c83",
+              "c84",
+              "c85",
+              "c86",
+              "c87",
+              "c88",
+              "c89",
+              "c90",
+              "c91",
+              "c92",
+              "c93",
+              "c94",
+              "c95",
+              "c96",
+              "c97",
+              "c98",
+              "c99",
+              "c100",
+              "c101",
+              "c102",
+              "c103",
+              "c104",
+              "c105",
+              "c106",
+              "c107",
+              "c108",
+              "c109",
+              "c110",
+              "c111",
+              "c112",
+              "c113",
+              "c114",
+              "c115",
+              "c116",
+              "c117",
+              "c118",
+              "c119",
+              "c120",
+              "c121",
+              "c122",
+              "c123",
+              "c124",
+              "c125",
+              "c126",
+              "c127",
+              "c128",
+              "c129",
+              "c130"
+            ],
+            "fromFork": false
+          },
+          {
+            "number": 20,
+            "head": "b20",
+            "headSha": "c190",
+            "base": "main",
+            "commits": [
+              "c91",
+              "c92",
+              "c93",
+              "c94",
+              "c95",
+              "c96",
+              "c97",
+              "c98",
+              "c99",
+              "c100",
+              "c101",
+              "c102",
+              "c103",
+              "c104",
+              "c105",
+              "c106",
+              "c107",
+              "c108",
+              "c109",
+              "c110",
+              "c111",
+              "c112",
+              "c113",
+              "c114",
+              "c115",
+              "c116",
+              "c117",
+              "c118",
+              "c119",
+              "c120",
+              "c121",
+              "c122",
+              "c123",
+              "c124",
+              "c125",
+              "c126",
+              "c127",
+              "c128",
+              "c129",
+              "c130",
+              "c131",
+              "c132",
+              "c133",
+              "c134",
+              "c135",
+              "c136",
+              "c137",
+              "c138",
+              "c139",
+              "c140",
+              "c141",
+              "c142",
+              "c143",
+              "c144",
+              "c145",
+              "c146",
+              "c147",
+              "c148",
+              "c149",
+              "c150",
+              "c151",
+              "c152",
+              "c153",
+              "c154",
+              "c155",
+              "c156",
+              "c157",
+              "c158",
+              "c159",
+              "c160",
+              "c161",
+              "c162",
+              "c163",
+              "c164",
+              "c165",
+              "c166",
+              "c167",
+              "c168",
+              "c169",
+              "c170",
+              "c171",
+              "c172",
+              "c173",
+              "c174",
+              "c175",
+              "c176",
+              "c177",
+              "c178",
+              "c179",
+              "c180",
+              "c181",
+              "c182",
+              "c183",
+              "c184",
+              "c185",
+              "c186",
+              "c187",
+              "c188",
+              "c189",
+              "c190"
+            ],
+            "fromFork": false
+          },
+          {
+            "number": 19,
+            "head": "b19",
+            "headSha": "c160",
+            "base": "main",
+            "commits": [
+              "c61",
+              "c62",
+              "c63",
+              "c64",
+              "c65",
+              "c66",
+              "c67",
+              "c68",
+              "c69",
+              "c70",
+              "c71",
+              "c72",
+              "c73",
+              "c74",
+              "c75",
+              "c76",
+              "c77",
+              "c78",
+              "c79",
+              "c80",
+              "c81",
+              "c82",
+              "c83",
+              "c84",
+              "c85",
+              "c86",
+              "c87",
+              "c88",
+              "c89",
+              "c90",
+              "c91",
+              "c92",
+              "c93",
+              "c94",
+              "c95",
+              "c96",
+              "c97",
+              "c98",
+              "c99",
+              "c100",
+              "c101",
+              "c102",
+              "c103",
+              "c104",
+              "c105",
+              "c106",
+              "c107",
+              "c108",
+              "c109",
+              "c110",
+              "c111",
+              "c112",
+              "c113",
+              "c114",
+              "c115",
+              "c116",
+              "c117",
+              "c118",
+              "c119",
+              "c120",
+              "c121",
+              "c122",
+              "c123",
+              "c124",
+              "c125",
+              "c126",
+              "c127",
+              "c128",
+              "c129",
+              "c130",
+              "c131",
+              "c132",
+              "c133",
+              "c134",
+              "c135",
+              "c136",
+              "c137",
+              "c138",
+              "c139",
+              "c140",
+              "c141",
+              "c142",
+              "c143",
+              "c144",
+              "c145",
+              "c146",
+              "c147",
+              "c148",
+              "c149",
+              "c150",
+              "c151",
+              "c152",
+              "c153",
+              "c154",
+              "c155",
+              "c156",
+              "c157",
+              "c158",
+              "c159",
+              "c160"
+            ],
+            "fromFork": false
+          }
+        ],
+        "seen": {}
+      },
+      "expect": {
+        "parents": {
+          "18": {
+            "number": 17,
+            "moved": false,
+            "onBranch": false
+          },
+          "19": {
+            "number": 18,
+            "moved": false,
+            "onBranch": false
+          },
+          "20": {
+            "number": 19,
+            "moved": false,
+            "onBranch": false
+          }
+        },
+        "seen": {
+          "18": {
+            "number": 17,
+            "head": "c100",
+            "onBranch": false
+          },
+          "19": {
+            "number": 18,
+            "head": "c130",
+            "onBranch": false
+          },
+          "20": {
+            "number": 19,
+            "head": "c160",
+            "onBranch": false
+          }
+        }
+      }
+    },
+    {
+      "name": "the parent was pushed to and the PR not rebuilt, with a note: the parent moved",
+      "given": {
+        "prs": [
+          {
+            "number": 11,
+            "head": "b11",
+            "headSha": "a2",
+            "base": "main",
+            "commits": [
+              "a1",
+              "a2"
+            ],
+            "fromFork": false
+          },
+          {
+            "number": 12,
+            "head": "b12",
+            "headSha": "b3",
+            "base": "main",
+            "commits": [
+              "a1",
+              "a2",
+              "b1",
+              "b2",
+              "b3"
+            ],
+            "fromFork": false
+          },
+          {
+            "number": 13,
+            "head": "b13",
+            "headSha": "c1",
+            "base": "main",
+            "commits": [
+              "a1",
+              "a2",
+              "b1",
+              "b2",
+              "c1"
+            ],
+            "fromFork": false
+          }
+        ],
+        "seen": {
+          "12": {
+            "number": 11,
+            "head": "a2",
+            "onBranch": false
+          },
+          "13": {
+            "number": 12,
+            "head": "b2",
+            "onBranch": false
+          }
+        }
+      },
+      "expect": {
+        "parents": {
+          "12": {
+            "number": 11,
+            "moved": false,
+            "onBranch": false
+          },
+          "13": {
+            "number": 12,
+            "moved": true,
+            "onBranch": false
+          }
+        },
+        "seen": {
+          "12": {
+            "number": 11,
+            "head": "a2",
+            "onBranch": false
+          },
+          "13": {
+            "number": 12,
+            "head": "b2",
+            "onBranch": false
+          }
+        }
+      }
+    },
+    {
+      "name": "the same push with no note: the exact fact finds the PR below, and the PR is wider than its own",
+      "given": {
+        "prs": [
+          {
+            "number": 11,
+            "head": "b11",
+            "headSha": "a2",
+            "base": "main",
+            "commits": [
+              "a1",
+              "a2"
+            ],
+            "fromFork": false
+          },
+          {
+            "number": 12,
+            "head": "b12",
+            "headSha": "b3",
+            "base": "main",
+            "commits": [
+              "a1",
+              "a2",
+              "b1",
+              "b2",
+              "b3"
+            ],
+            "fromFork": false
+          },
+          {
+            "number": 13,
+            "head": "b13",
+            "headSha": "c1",
+            "base": "main",
+            "commits": [
+              "a1",
+              "a2",
+              "b1",
+              "b2",
+              "c1"
+            ],
+            "fromFork": false
+          }
+        ],
+        "seen": {}
+      },
+      "expect": {
+        "parents": {
+          "12": {
+            "number": 11,
+            "moved": false,
+            "onBranch": false
+          },
+          "13": {
+            "number": 11,
+            "moved": false,
+            "onBranch": false
+          }
+        },
+        "seen": {
+          "12": {
+            "number": 11,
+            "head": "a2",
+            "onBranch": false
+          },
+          "13": {
+            "number": 11,
+            "head": "a2",
+            "onBranch": false
+          }
+        }
+      }
+    },
+    {
+      "name": "after the gap, the PR rebuilt on its real parent: the exact fact finds it, the old note doesn't hold it back",
+      "given": {
+        "prs": [
+          {
+            "number": 11,
+            "head": "b11",
+            "headSha": "a2",
+            "base": "main",
+            "commits": [
+              "a1",
+              "a2"
+            ],
+            "fromFork": false
+          },
+          {
+            "number": 12,
+            "head": "b12",
+            "headSha": "b3",
+            "base": "main",
+            "commits": [
+              "a1",
+              "a2",
+              "b1",
+              "b2",
+              "b3"
+            ],
+            "fromFork": false
+          },
+          {
+            "number": 13,
+            "head": "b13",
+            "headSha": "c2",
+            "base": "main",
+            "commits": [
+              "a1",
+              "a2",
+              "b1",
+              "b2",
+              "b3",
+              "c2"
+            ],
+            "fromFork": false
+          }
+        ],
+        "seen": {
+          "12": {
+            "number": 11,
+            "head": "a2",
+            "onBranch": false
+          },
+          "13": {
+            "number": 11,
+            "head": "a2",
+            "onBranch": false
+          }
+        }
+      },
+      "expect": {
+        "parents": {
+          "12": {
+            "number": 11,
+            "moved": false,
+            "onBranch": false
+          },
+          "13": {
+            "number": 12,
+            "moved": false,
+            "onBranch": false
+          }
+        },
+        "seen": {
+          "12": {
+            "number": 11,
+            "head": "a2",
+            "onBranch": false
+          },
+          "13": {
+            "number": 12,
+            "head": "b3",
+            "onBranch": false
+          }
+        }
+      }
+    },
+    {
+      "name": "a PR built on the moved parent's old head sits above it: that closer PR is the parent",
+      "given": {
+        "prs": [
+          {
+            "number": 12,
+            "head": "b12",
+            "headSha": "b3",
+            "base": "main",
+            "commits": [
+              "b1",
+              "b2",
+              "b3"
+            ],
+            "fromFork": false
+          },
+          {
+            "number": 14,
+            "head": "b14",
+            "headSha": "d1",
+            "base": "main",
+            "commits": [
+              "b1",
+              "b2",
+              "d1"
+            ],
+            "fromFork": false
+          },
+          {
+            "number": 13,
+            "head": "b13",
+            "headSha": "c1",
+            "base": "main",
+            "commits": [
+              "b1",
+              "b2",
+              "d1",
+              "c1"
+            ],
+            "fromFork": false
+          }
+        ],
+        "seen": {
+          "13": {
+            "number": 12,
+            "head": "b2",
+            "onBranch": false
+          }
+        }
+      },
+      "expect": {
+        "parents": {
+          "13": {
+            "number": 14,
+            "moved": false,
+            "onBranch": false
+          }
+        },
+        "seen": {
+          "13": {
+            "number": 14,
+            "head": "d1",
+            "onBranch": false
+          }
+        }
+      }
+    },
+    {
+      "name": "the PR rebuilt on its parent's new head: built on it, and the note takes the new head",
+      "given": {
+        "prs": [
+          {
+            "number": 11,
+            "head": "b11",
+            "headSha": "a2",
+            "base": "main",
+            "commits": [
+              "a1",
+              "a2"
+            ],
+            "fromFork": false
+          },
+          {
+            "number": 12,
+            "head": "b12",
+            "headSha": "b3",
+            "base": "main",
+            "commits": [
+              "a1",
+              "a2",
+              "b1",
+              "b2",
+              "b3"
+            ],
+            "fromFork": false
+          },
+          {
+            "number": 13,
+            "head": "b13",
+            "headSha": "c2",
+            "base": "main",
+            "commits": [
+              "a1",
+              "a2",
+              "b1",
+              "b2",
+              "b3",
+              "c2"
+            ],
+            "fromFork": false
+          }
+        ],
+        "seen": {
+          "12": {
+            "number": 11,
+            "head": "a2",
+            "onBranch": false
+          },
+          "13": {
+            "number": 12,
+            "head": "b2",
+            "onBranch": false
+          }
+        }
+      },
+      "expect": {
+        "parents": {
+          "12": {
+            "number": 11,
+            "moved": false,
+            "onBranch": false
+          },
+          "13": {
+            "number": 12,
+            "moved": false,
+            "onBranch": false
+          }
+        },
+        "seen": {
+          "12": {
+            "number": 11,
+            "head": "a2",
+            "onBranch": false
+          },
+          "13": {
+            "number": 12,
+            "head": "b3",
+            "onBranch": false
+          }
+        }
+      }
+    },
+    {
+      "name": "the parent merged: its note is dropped and the exact fact decides",
+      "given": {
+        "prs": [
+          {
+            "number": 11,
+            "head": "b11",
+            "headSha": "a2",
+            "base": "main",
+            "commits": [
+              "a1",
+              "a2"
+            ],
+            "fromFork": false
+          },
+          {
+            "number": 13,
+            "head": "b13",
+            "headSha": "c1",
+            "base": "main",
+            "commits": [
+              "b1",
+              "b2",
+              "c1"
+            ],
+            "fromFork": false
+          }
+        ],
+        "seen": {
+          "12": {
+            "number": 11,
+            "head": "a2",
+            "onBranch": false
+          },
+          "13": {
+            "number": 12,
+            "head": "b2",
+            "onBranch": false
+          }
+        }
+      },
+      "expect": {
+        "parents": {},
+        "seen": {}
+      }
+    },
+    {
+      "name": "the parent merged while the PR below is still open: the PR now sits on that one",
+      "given": {
+        "prs": [
+          {
+            "number": 11,
+            "head": "b11",
+            "headSha": "a2",
+            "base": "main",
+            "commits": [
+              "a1",
+              "a2"
+            ],
+            "fromFork": false
+          },
+          {
+            "number": 13,
+            "head": "b13",
+            "headSha": "c1",
+            "base": "main",
+            "commits": [
+              "a1",
+              "a2",
+              "b1",
+              "b2",
+              "c1"
+            ],
+            "fromFork": false
+          }
+        ],
+        "seen": {
+          "12": {
+            "number": 11,
+            "head": "a2",
+            "onBranch": false
+          },
+          "13": {
+            "number": 12,
+            "head": "b2",
+            "onBranch": false
+          }
+        }
+      },
+      "expect": {
+        "parents": {
+          "13": {
+            "number": 11,
+            "moved": false,
+            "onBranch": false
+          }
+        },
+        "seen": {
+          "13": {
+            "number": 11,
+            "head": "a2",
+            "onBranch": false
+          }
+        }
+      }
+    },
+    {
+      "name": "the PR was rebuilt somewhere else and holds neither head: the note is dropped",
+      "given": {
+        "prs": [
+          {
+            "number": 11,
+            "head": "b11",
+            "headSha": "a2",
+            "base": "main",
+            "commits": [
+              "a1",
+              "a2"
+            ],
+            "fromFork": false
+          },
+          {
+            "number": 12,
+            "head": "b12",
+            "headSha": "b2",
+            "base": "main",
+            "commits": [
+              "a1",
+              "a2",
+              "b1",
+              "b2"
+            ],
+            "fromFork": false
+          },
+          {
+            "number": 13,
+            "head": "b13",
+            "headSha": "x1",
+            "base": "main",
+            "commits": [
+              "x0",
+              "x1"
+            ],
+            "fromFork": false
+          }
+        ],
+        "seen": {
+          "12": {
+            "number": 11,
+            "head": "a2",
+            "onBranch": false
+          },
+          "13": {
+            "number": 12,
+            "head": "b2",
+            "onBranch": false
+          }
+        }
+      },
+      "expect": {
+        "parents": {
+          "12": {
+            "number": 11,
+            "moved": false,
+            "onBranch": false
+          }
+        },
+        "seen": {
+          "12": {
+            "number": 11,
+            "head": "a2",
+            "onBranch": false
+          }
+        }
+      }
+    },
+    {
+      "name": "stacked the host's way, on the parent's branch: that parent",
+      "given": {
+        "prs": [
+          {
+            "number": 7,
+            "head": "base-work",
+            "headSha": "x9",
+            "base": "main",
+            "commits": [
+              "x9"
+            ],
+            "fromFork": false
+          },
+          {
+            "number": 8,
+            "head": "b8",
+            "headSha": "y1",
+            "base": "base-work",
+            "commits": [
+              "y1"
+            ],
+            "fromFork": false
+          }
+        ],
+        "seen": {}
+      },
+      "expect": {
+        "parents": {
+          "8": {
+            "number": 7,
+            "moved": false,
+            "onBranch": true
+          }
+        },
+        "seen": {
+          "8": {
+            "number": 7,
+            "head": "x9",
+            "onBranch": true
+          }
+        }
+      }
+    },
+    {
+      "name": "notes of PRs no longer open are dropped",
+      "given": {
+        "prs": [
+          {
+            "number": 11,
+            "head": "b11",
+            "headSha": "a2",
+            "base": "main",
+            "commits": [
+              "a1",
+              "a2"
+            ],
+            "fromFork": false
+          }
+        ],
+        "seen": {
+          "12": {
+            "number": 11,
+            "head": "a2",
+            "onBranch": false
+          },
+          "13": {
+            "number": 12,
+            "head": "b2",
+            "onBranch": false
+          }
+        }
+      },
+      "expect": {
+        "parents": {},
+        "seen": {}
+      }
+    },
+    {
+      "name": "unrelated PRs have no parent",
+      "given": {
+        "prs": [
+          {
+            "number": 1,
+            "head": "b1",
+            "headSha": "a1",
+            "base": "main",
+            "commits": [
+              "a1"
+            ],
+            "fromFork": false
+          },
+          {
+            "number": 2,
+            "head": "b2",
+            "headSha": "b1",
+            "base": "main",
+            "commits": [
+              "b1"
+            ],
+            "fromFork": false
+          }
+        ],
+        "seen": {}
+      },
+      "expect": {
+        "parents": {},
+        "seen": {}
+      }
+    },
+    {
+      "name": "the host gave no commits: no stacks",
+      "given": {
+        "prs": [
+          {
+            "number": 1,
+            "head": "b1",
+            "headSha": "a1",
+            "base": "main",
+            "commits": [],
+            "fromFork": false
+          },
+          {
+            "number": 2,
+            "head": "b2",
+            "headSha": "b1",
+            "base": "main",
+            "commits": [],
+            "fromFork": false
+          }
+        ],
+        "seen": {}
+      },
+      "expect": {
+        "parents": {},
+        "seen": {}
+      }
+    },
+    {
+      "name": "stacked the host's way, the parent pushed to and the PR not rebuilt: still on its branch, never moved",
+      "given": {
+        "prs": [
+          {
+            "number": 7,
+            "head": "base-work",
+            "headSha": "x2",
+            "base": "main",
+            "commits": [
+              "x1",
+              "x2"
+            ],
+            "fromFork": false
+          },
+          {
+            "number": 8,
+            "head": "b8",
+            "headSha": "y1",
+            "base": "base-work",
+            "commits": [
+              "x1",
+              "y1"
+            ],
+            "fromFork": false
+          }
+        ],
+        "seen": {
+          "8": {
+            "number": 7,
+            "head": "x1",
+            "onBranch": true
+          }
+        }
+      },
+      "expect": {
+        "parents": {
+          "8": {
+            "number": 7,
+            "moved": false,
+            "onBranch": true
+          }
+        },
+        "seen": {
+          "8": {
+            "number": 7,
+            "head": "x2",
+            "onBranch": true
+          }
+        }
+      }
+    },
+    {
+      "name": "two open PRs at the same head (the next opened before its first push): neither is the other's parent",
+      "given": {
+        "prs": [
+          {
+            "number": 12,
+            "head": "b12",
+            "headSha": "b2",
+            "base": "main",
+            "commits": [
+              "a1",
+              "b1",
+              "b2"
+            ],
+            "fromFork": false
+          },
+          {
+            "number": 13,
+            "head": "b13",
+            "headSha": "b2",
+            "base": "main",
+            "commits": [
+              "a1",
+              "b1",
+              "b2"
+            ],
+            "fromFork": false
+          },
+          {
+            "number": 11,
+            "head": "b11",
+            "headSha": "a1",
+            "base": "main",
+            "commits": [
+              "a1"
+            ],
+            "fromFork": false
+          }
+        ],
+        "seen": {}
+      },
+      "expect": {
+        "parents": {
+          "12": {
+            "number": 11,
+            "moved": false,
+            "onBranch": false
+          },
+          "13": {
+            "number": 11,
+            "moved": false,
+            "onBranch": false
+          }
+        },
+        "seen": {
+          "12": {
+            "number": 11,
+            "head": "a1",
+            "onBranch": false
+          },
+          "13": {
+            "number": 11,
+            "head": "a1",
+            "onBranch": false
+          }
+        }
+      }
+    },
+    {
+      "name": "a PR from a fork's main is no one's parent, though every other PR's base is a branch named main",
+      "given": {
+        "prs": [
+          {
+            "number": 1,
+            "head": "main",
+            "headSha": "f1",
+            "base": "main",
+            "commits": [
+              "f1"
+            ],
+            "fromFork": true
+          },
+          {
+            "number": 2,
+            "head": "b2",
+            "headSha": "a1",
+            "base": "main",
+            "commits": [
+              "a1"
+            ],
+            "fromFork": false
+          },
+          {
+            "number": 3,
+            "head": "b3",
+            "headSha": "b1",
+            "base": "main",
+            "commits": [
+              "b1"
+            ],
+            "fromFork": false
+          }
+        ],
+        "seen": {}
+      },
+      "expect": {
+        "parents": {},
+        "seen": {}
+      }
+    }
+  ]
+}

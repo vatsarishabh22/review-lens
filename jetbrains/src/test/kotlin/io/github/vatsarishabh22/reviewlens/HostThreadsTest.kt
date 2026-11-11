@@ -26,6 +26,7 @@ class HostThreadsTest {
         override fun reviewSlot(number: Int): ReviewSlot = slot ?: throw CliException("not read here")
         override fun submitReview(number: Int, commit: String, summary: String, verdict: Verdict, comments: List<Draft>, replies: List<Draft>) = Unit
         override fun checks(number: Int) = Checks(ChecksState.NONE)
+        override fun changedFiles(from: String, to: String) = 0
         override fun resolveThread(threadId: String, resolved: Boolean) = record("resolve $threadId $resolved", threadId)
         override fun editComment(commentId: String, body: String) = record("edit $commentId $body", commentId)
         override fun deleteComment(commentId: String) = record("delete $commentId", commentId)

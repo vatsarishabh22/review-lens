@@ -47,20 +47,77 @@ doesn't mark changed (a rebase that changed none of them) is not news.
 
 ### Stacks
 
-A stack is PRs built branch on branch. The host doesn't always know: teams often point every PR at `main`. So a PR's
-**parent** is the open PR whose head is in this PR's commits (`commits[].oid`, newest first) and that sits highest
-among them (when several are, the one with the most commits: the others are below it), or the open PR whose head branch is this PR's `baseRefName`. A PR with a parent
-compares from the parent's head: it shows only what it adds, and its commit list, file count and changes are its own.
-That is exact when the PR took no newer base than its parent; when it merged a newer base, `from` is the merge of the
-parent's head with that base (`git merge-tree --write-tree`), and when that merge conflicts or isn't available, the PR
-compares with its base as before and says so. When the parent's head is no longer in the PR's commits (it changed and
-the PR wasn't rebuilt on it), the PR also compares with its base and says "#*parent* changed under it". A merged
-parent drops out of the stack: its changes are in the base. The stack is worked out again on every list and every load,
-never saved, so a restack or a merge can't leave a stale `from` behind.
+A stack is PRs built branch on branch. The host doesn't always know: teams often point every PR at `main`. Review Lens
+works the stack out from one exact fact, and writes down what it saw so it never has to guess later.
 
-The list shows a stack as one group in build order, bottom first, "Stack · n PRs · r of n reviewed", in **Waiting on
-you** when any PR in it asks for your review (else Other open): one PR asking brings the rest along, so the order stays
-whole.
+**Stacked the host's way.** When this PR's `baseRefName` is another open PR's head branch, that PR is its parent, before
+anything else: the host says so itself. Only a PR from this repository counts (`isCrossRepository` false): a PR's base
+branch lives here, so a fork's same-named branch (a contributor's `main`) is never anyone's parent. Git already compares from where the PR left that branch, so the PR compares with
+its base as any PR does: it is grouped, says "on top of #*p*", is never said to have a moved parent, and the note keeps
+that (`onBranch`), so a later look that can't ask the host still knows.
+
+**The exact fact.** A PR is built on another open PR when that PR's head is in this PR's commits (`commits[].oid`). A
+PR at this PR's own head is never its parent (a PR opened before its first push, or one branch sent to two bases): each
+would hold the other's head, and the PR would show nothing to review.
+When several are (a whole stack below it), the parent is the closest: the one whose head sits latest in this PR's
+commits. Positions in this PR's own list, never the other PRs' list lengths: the host sends each PR's last 100 commits,
+so in a deep stack every list is 100 long.
+
+**The note.** Each list writes what it saw to `stacks.json` (`parents`): "#13 sits on #12, seen at #12's head `abc`".
+On the next list, the note speaks only for a parent that moved; every other time the exact fact decides, so a PR
+rebuilt on a closer parent is seen at once. A PR the exact fact finds above the noted one (its head sits later in this
+PR's commits than the head the note saw) is closer, and wins:
+
+| The note says #13 sits on #12 at `abc`, and now | #13's parent |
+|---|---|
+| #12's head is still `abc` | #12, built on it as it is |
+| #12's head moved, and #13 holds its new head (#13 was rebuilt on it) | #12, built on it; the note takes the new head |
+| #12's head moved, and #13 still holds `abc` (pushed to, #13 not rebuilt) | #12, **moved**: "#12 changed under it" |
+| #12 is no longer open (merged or closed) | The note is dropped; the exact fact decides again (a merged parent's changes are in the base) |
+| #13 no longer holds `abc` (it was rebuilt somewhere else) | The note is dropped; the exact fact decides again |
+
+With no note, the exact fact decides and is written down; with neither, the PR has no parent. Notes of PRs no longer
+open are dropped at each list.
+
+A wider grouping, said rather than guessed: a long-lived branch with its own PR (a release PR `develop` → `main`) is the
+parent of every PR into that branch, so they all show as one card on top of it, the release PR first. Every diff is
+right (each PR compares with `develop`); only the grouping is wider than a stack. Telling a release branch from a
+stack's would take a guess, and Review Lens doesn't guess.
+
+The one gap: a stack Review Lens never saw whole. When #12 was pushed to before any list saw #13 on it, there is no
+note, and the exact fact finds the next PR down, #11. #13 then sits on #11 and also shows the changes of the #12 it was
+built on: true, never hidden, only wider than its own.
+
+**Comparing.** A PR built on its parent compares from the parent's head: it shows only what it adds, and its commit
+list, file count and changes are its own. That is exact when the PR took no newer base than its parent; when it merged a
+newer base, `from` is the merge of the parent's head with that base (`git merge-tree --write-tree`), and when that merge
+conflicts or isn't available, the PR compares with its base as before and says so. That merge is a commit on no branch,
+kept from git's cleanup under `refs/review-lens/<key>-base` and made again only when the parent's head or the base moves.
+Starting or re-scoping a review keeps its own `range.from` under `refs/review-lens/<key>-from` too, so the saved range
+still resolves weeks later, whatever was made since. A PR whose parent moved compares with its base and says
+"#*parent* changed under it". The parent's head at the last load is saved (`parentHead` in `<key>.json`, replaced on
+every load), so the review bar's scope menu works out the same starting point without asking the host. "Check for new
+commits" asks the host for the stack again, and for the PR's base branch as it is now (a merged parent's branch is
+gone, and the host has moved the PR onto the parent's base); when it can't, it uses the parent the last list wrote down, and a PR that
+can only compare with its base says why in a balloon.
+
+In the list, a stacked PR counts its own files, not the host's count against the base: what it adds on top of its
+parent's head. The list shows at once with the counts kept in `stacks.json`, asks the host for the missing ones
+(GitHub: `gh api repos/{owner}/{repo}/compare/<parent head>...<head>`, all at once), and shows them as they come. The
+bottom PR, a PR whose parent moved and a PR stacked the host's way compare with their base, so the host's own count is
+theirs. A PR that merged a newer base than its parent counts that base's changes too in the list (the host has no merge
+of the two to count from); its detail and its review count exactly what it adds.
+
+The list shows a stack as one card, named by its bottom PR's title (always there, whatever the team calls its branches),
+in **Waiting on you** when any PR in it asks for your review (else Other open): one PR asking brings the rest along, so
+the order stays whole. Its header stays put: the name on its own line, "Stack of n PRs", "r of n reviewed" and one bar segment per PR (green
+reviewed, blue next). Below it every PR sits on a rail in build order, bottom first: ✓ reviewed, the **next** one (the
+lowest not reviewed) highlighted with "Next · k of n", the rest hollow, and "#*p* changed under it" on a PR whose parent
+moved. Two PRs built on the same parent follow one another on the rail, a PR's children after it by number; a row whose
+parent isn't the row above it says "on #*p*". The rows scroll inside the card past a fixed height (about seven rows),
+opened scrolled to the next one, so a long stack never pushes the other PRs out of the list; what scrolled out is
+counted over the card's top and bottom edges ("↑ 10 reviewed above", "↓ 2 more below"), a row more than half hidden
+counting as out.
 
 ### Viewed sync
 
@@ -86,10 +143,11 @@ Everything lives in `.git/review-lens/`, outside the working tree, as JSON. The 
 | File | Lifetime | Holds |
 |---|---|---|
 | `active.json` | From Start to Exit | The review in progress: target, head, `review/<key>` branch, the ref to go back to, the stash message (or `null`) |
-| `<key>.json` | Kept across reviews | One PR's scope (`range`, `scopeLabel`), ticks (`reviewed`, `unsent`), `seenHead` for "since your last review", `drafts`, `checked`: the impact map's ticks per changed function, kept with a hash of its text ([impact.md](impact.md)), and `verdict`: the last event GitHub accepted (`COMMENT`, `APPROVE`, `REQUEST_CHANGES`), absent until one is posted |
+| `<key>.json` | Kept across reviews | One PR's scope (`range`, `scopeLabel`), ticks (`reviewed`, `unsent`), `seenHead` for "since your last review", `parentHead`: its stack parent's head at its last load (see [Stacks](#stacks)), `drafts`, `checked`: the impact map's ticks per changed function, kept with a hash of its text ([impact.md](impact.md)), and `verdict`: the last event GitHub accepted (`COMMENT`, `APPROVE`, `REQUEST_CHANGES`), absent until one is posted |
+| `stacks.json` | Rewritten at each list | `parents`: what the last list saw, PR number → its parent's `number`, that parent's `head` then, and `onBranch` when it is stacked the host's way (see [Stacks](#stacks)); `counts`: each stacked PR's own file count, keyed by `<parent head>..<head>`. Two commit ids fix the answer, so an entry never goes stale; a push makes a new key, and keys no PR in the list uses any more are dropped. See [Stacks](#stacks) |
 
 `<key>` is `pr-<number>` for a PR, or `branch-<name>` for a branch, with anything outside `[A-Za-z0-9._-]` replaced
-by `_`. The prefixes keep a branch named `active` or `pr-7` from overwriting another file.
+by `_`. The prefixes keep a branch named `active`, `stacks` or `pr-7` from overwriting another file.
 
 ### The Finish review payload
 

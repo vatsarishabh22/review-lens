@@ -1,0 +1,12 @@
+{
+  "parents": {
+    "4": {
+      "number": 3,
+      "head": "b6b52f2e82049c4ed9984a0296eda9bdc2188f88",
+      "onBranch": false
+    }
+  },
+  "counts": {
+    "b6b52f2e82049c4ed9984a0296eda9bdc2188f88..d2abd608faa7b1a3392b6b71e7b72a19a04fe867": 1
+  }
+}

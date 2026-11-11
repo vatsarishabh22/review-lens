@@ -26,6 +26,7 @@ class HostViewedTest {
         override fun reviewSlot(number: Int): ReviewSlot = error("unused")
         override fun submitReview(number: Int, commit: String, summary: String, verdict: Verdict, comments: List<Draft>, replies: List<Draft>) = Unit
         override fun checks(number: Int) = Checks(ChecksState.NONE)
+        override fun changedFiles(from: String, to: String) = 0
         override fun resolveThread(threadId: String, resolved: Boolean) = Unit
         override fun editComment(commentId: String, body: String) = Unit
         override fun deleteComment(commentId: String) = Unit

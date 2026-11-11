@@ -34,12 +34,17 @@ import javax.swing.SwingConstants
  * One PR before its review starts: what it is, Start review (with the park card when the reviewer has uncommitted
  * work, then the start steps), and the scope list. Loads the PR's commits and checks when opened.
  */
-class PrDetailView(private val project: Project, private val onBack: () -> Unit) : JPanel(BorderLayout()) {
+class PrDetailView(private val project: Project, private val onBack: () -> Unit, private val onOpen: (Int) -> Unit) : JPanel(BorderLayout()) {
 
-    private val content = StackPanel()
+    private val content = ScrollStack(JBUI.Borders.empty(8, 14, 16, 14))
     private val actionSlot = JPanel(BorderLayout()).apply { isOpaque = false; alignmentX = LEFT_ALIGNMENT }
     private val scopeSlot = JPanel(BorderLayout()).apply { isOpaque = false; alignmentX = LEFT_ALIGNMENT }
     private val checksLabel = JBLabel().apply { font = JBFont.small() }
+    /** "on top of #p" and the file counts wait for the fetch: in a stack they are the PR's own, not the host's whole-PR numbers. */
+    private val onTop = JPanel(BorderLayout()).apply { isOpaque = false }
+    private val stackSlot = JPanel(BorderLayout()).apply { isOpaque = false; alignmentX = LEFT_ALIGNMENT }
+    private val statsSlot = JPanel(BorderLayout()).apply { isOpaque = false; alignmentX = LEFT_ALIGNMENT }
+    private var own: List<FileChange>? = null
 
     private var listed: ListedTarget? = null
     private var session: ReviewSession? = null
@@ -58,15 +63,20 @@ class PrDetailView(private val project: Project, private val onBack: () -> Unit)
 
     /** Shows [target] and starts fetching it; [progress] when the reviewer has started this PR before. */
     fun open(git: GitClient, target: ListedTarget, progress: ReviewProgress?) {
-        listed = target; this.progress = progress; loaded = null; picked = emptySet(); since = null; sinceChosen = false; fetchFailed = false
+        listed = target; this.progress = progress; loaded = null; own = null; picked = emptySet(); since = null; sinceChosen = false; fetchFailed = false
         session = ReviewSession(git)
         build()
         val session = session!!
         background(project, "Fetching ${target.target.label}", {
-            session.load(target.target).let { it to sinceLastReview(it.head, it.commits, ReviewMeta.load(git, target.target.key)?.seenHead) }
-        }, failed = { if (listed === target) { fetchFailed = true; showStart(); showScope() } }) { (result, sinceRange) ->
+            val loaded = session.load(target.target, target.parent)
+            Triple(loaded, sinceLastReview(loaded.head, loaded.commits, ReviewMeta.load(git, target.target.key)?.seenHead),
+                loaded.parent?.let { git.changes(ScopeRange(loaded.start, loaded.head)) })
+        }, failed = { if (listed === target) { fetchFailed = true; showStart(); showScope() } }) { (result, sinceRange, ownChanges) ->
             // new commits since a finished review: what's new is the scope to review, already chosen
-            if (listed === target) { loaded = result; since = sinceRange; sinceChosen = sinceRange != null && progress?.newCommits == true; showStart(); showScope() }
+            if (listed === target) {
+                loaded = result; own = ownChanges; since = sinceRange; sinceChosen = sinceRange != null && progress?.newCommits == true
+                showStack(); showStats(); showStart(); showScope()
+            }
         }
         target.pr?.let { pr ->
             checksLabel.text = ""
@@ -87,35 +97,58 @@ class PrDetailView(private val project: Project, private val onBack: () -> Unit)
         val pr = target.pr
         content.removeAll()
         content.add(JButton("All pull requests", AllIcons.Actions.Back).apply { addActionListener { onBack() } }.let { row(it) })
-        content.gap(10)
+        content.add(vgap(10))
         content.add(titleText(target.title, pr?.let { ReviewTarget.refOf(it.number) }, JBFont.label().biggerOn(2f)))
-        content.gap(6)
+        content.add(vgap(6))
         val base = target.target.base.removePrefix("${GitClient.REMOTE}/")
         if (pr != null) {
             content.add(row(JBLabel(pr.author.name, AvatarIcon(pr.author.name, pr.author.login, 18), SwingConstants.LEFT)
                 .apply { foreground = ReviewColors.muted; font = JBFont.small() }, mutedLabel("wants to merge"), gap = 4))
-            content.gap(4)
+            content.add(vgap(4))
         }
         content.add(row(Pill(target.target.head.removePrefix("${GitClient.REMOTE}/"), ReviewColors.chip, ReviewColors.text, mono = true),
-            mutedLabel("into"), Pill(base, ReviewColors.chip, ReviewColors.text, mono = true), gap = 6))
-        pr?.body?.let(::markdownHtml)?.let { content.gap(10); content.add(PrDescription(it)) }
+            mutedLabel("into"), Pill(base, ReviewColors.chip, ReviewColors.text, mono = true), onTop, gap = 6))
+        content.add(stackSlot)
+        pr?.body?.let(::markdownHtml)?.let { content.add(vgap(10)); content.add(PrDescription(it)) }
         if (pr != null) {
-            content.gap(10)
-            content.add(row(mutedLabel(files(pr.changedFiles)),
-                JBLabel("+${pr.additions}").apply { foreground = ReviewColors.add; font = JBFont.small() },
-                JBLabel("−${pr.deletions}").apply { foreground = ReviewColors.del; font = JBFont.small() }, checksLabel))
-            content.gap(2)
+            content.add(vgap(10))
+            content.add(statsSlot)
+            content.add(vgap(2))
             content.add(row(mutedLabel("Updated ${ago(Instant.parse(pr.updatedAt).toEpochMilli())}")))
         }
-        content.gap(12)
+        content.add(vgap(12))
         content.add(actionSlot)
-        content.gap(14)
+        content.add(vgap(14))
         content.add(row(sectionLabel("What to review")))
-        content.gap(6)
+        content.add(vgap(6))
         content.add(scopeSlot)
+        showStack()
+        showStats()
         showStart()
         showScope()
         content.revalidate(); content.repaint()
+    }
+
+    /** "on top of #p", a link to it; or, when it can only compare with its base, why. */
+    private fun showStack() {
+        val loaded = loaded
+        onTop.removeAll(); stackSlot.removeAll()
+        loaded?.parent?.let { p -> onTop.add(row(mutedLabel("· on top of"), ActionLink(ReviewTarget.refOf(p)) { onOpen(p) }, gap = 4)) }
+        loaded?.note?.let { stackSlot.add(wrappingText(it, JBFont.small()).apply { foreground = ReviewColors.warn; border = JBUI.Borders.emptyTop(6) }) }
+        listOf(onTop, stackSlot).forEach { it.revalidate(); it.repaint() }
+    }
+
+    /** The host's counts for the whole PR, or a stacked PR's own once fetched. */
+    private fun showStats() {
+        val pr = listed?.pr ?: return
+        val own = own
+        val (count, added, deleted) = if (own != null) Triple(own.size, own.sumOf { it.added ?: 0 }, own.sumOf { it.deleted ?: 0 })
+            else Triple(pr.changedFiles, pr.additions, pr.deletions)
+        statsSlot.removeAll()
+        statsSlot.add(row(mutedLabel(files(count)),
+            JBLabel("+$added").apply { foreground = ReviewColors.add; font = JBFont.small() },
+            JBLabel("−$deleted").apply { foreground = ReviewColors.del; font = JBFont.small() }, checksLabel))
+        statsSlot.revalidate(); statsSlot.repaint()
     }
 
     private fun showStart() {
@@ -187,7 +220,7 @@ class PrDetailView(private val project: Project, private val onBack: () -> Unit)
         }.flatMap { listOf(it, vgap(6)) }.toTypedArray()))
         showSteps(1)
         val picks = picked.map { loaded.commits[it] }
-        val (range, label) = since?.takeIf { sinceChosen } ?: (resolveScope(loaded.mergeBase, loaded.commits, picks) to scopeLabel(loaded.commits, picks))
+        val (range, label) = since?.takeIf { sinceChosen } ?: (resolveScope(loaded.start, loaded.commits, picks) to scopeLabel(loaded.commits, picks))
         beginReview(project, session!!, loaded, range, label,
             progress = { step -> showSteps(steps.indexOfFirst { if (step == StartStep.PARK) it.startsWith("Parking") else it.startsWith("Checking out") }) },
             failed = ::showStart,
@@ -208,7 +241,8 @@ class PrDetailView(private val project: Project, private val onBack: () -> Unit)
         }
         val base = listed!!.target.base.removePrefix("${GitClient.REMOTE}/")
         val all = JRadioButton().apply { isSelected = picked.isEmpty() && !sinceChosen; isOpaque = false }
-        box.add(scopeRow(all, stack(JBLabel("All commits").apply { font = JBFont.label().asBold() }, mutedLabel("The whole PR against $base"))) {
+        val whole = loaded.parent?.let { "Everything this PR adds on top of ${ReviewTarget.refOf(it)}" } ?: "The whole PR against $base"
+        box.add(scopeRow(all, stack(JBLabel("All commits").apply { font = JBFont.label().asBold() }, mutedLabel(whole))) {
             picked = emptySet(); sinceChosen = false; showScope()
         })
         since?.let { (range, _) ->
@@ -260,18 +294,3 @@ private fun divider() = JPanel().apply {
 }
 
 
-/** A vertical stack that tracks the scroll pane's width, so wrapped text reflows instead of scrolling sideways. */
-private class StackPanel : JPanel(), Scrollable {
-    init {
-        layout = BoxLayout(this, BoxLayout.Y_AXIS)
-        border = JBUI.Borders.empty(8, 14, 16, 14)
-    }
-
-    fun gap(height: Int) { add(vgap(height)) }
-
-    override fun getPreferredScrollableViewportSize(): Dimension = preferredSize
-    override fun getScrollableUnitIncrement(r: Rectangle, o: Int, d: Int) = JBUI.scale(16)
-    override fun getScrollableBlockIncrement(r: Rectangle, o: Int, d: Int) = r.height
-    override fun getScrollableTracksViewportWidth() = true
-    override fun getScrollableTracksViewportHeight() = false
-}

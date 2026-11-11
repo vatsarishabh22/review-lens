@@ -34,8 +34,15 @@ class SpecFixturesTest {
     }
 
     @Test
+    fun `the stacked PRs' counts load whole`() {
+        val text = install("stacks.json")
+        val store = StackStore(git)
+        assertSameJson(text, mapOf("parents" to store.parents(), "counts" to store.counts()))
+    }
+
+    @Test
     fun `every PR and branch state file loads whole`() {
-        val files = Files.list(fixtures).use { s -> s.map { it.fileName.toString() }.filter { it != "active.json" }.toList() }
+        val files = Files.list(fixtures).use { s -> s.map { it.fileName.toString() }.filter { it != "active.json" && it != "stacks.json" }.toList() }
         assertTrue("no fixtures found in $fixtures", files.isNotEmpty())
         for (name in files) assertSameJson(install(name), ReviewMeta.load(git, name.removeSuffix(".json"))!!)
     }

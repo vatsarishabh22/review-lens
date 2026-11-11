@@ -1,12 +1,18 @@
 package io.github.vatsarishabh22.reviewlens
 
-/** A row of the panel's list: a PR from `gh`, or a remote branch when `gh` can't list PRs ([pr] is null). */
-data class ListedTarget(val target: ReviewTarget, val title: String, val pr: PullRequest?) {
+/** A row of the panel's list: a PR from `gh`, or a remote branch when `gh` can't list PRs ([pr] is null); [parent] in a stack. */
+data class ListedTarget(val target: ReviewTarget, val title: String, val pr: PullRequest?, val parent: StackParent? = null) {
     val requested get() = pr?.requested == true
 }
 
-/** The panel's rows; [branchesOnly] when `gh` could not list PRs, so the panel says why it shows branches (even none). */
-data class Listing(val targets: List<ListedTarget>, val branchesOnly: Boolean, val hostName: String)
+/**
+ * The panel's rows; [branchesOnly] when `gh` could not list PRs, so the panel says why it shows branches (even none);
+ * [stacks]: the rows built on one another, each bottom first; [stackKeys]: a stacked PR's key in [StackStore].
+ */
+data class Listing(
+    val targets: List<ListedTarget>, val branchesOnly: Boolean, val hostName: String,
+    val stacks: List<List<ListedTarget>> = emptyList(), val stackKeys: Map<Int, String> = emptyMap(),
+)
 
 /** What the Review panel lists: open PRs, or remote branches when this repo has no reachable GitHub. Runs CLIs: call off EDT. */
 class ReviewTargets(private val git: GitClient) {
@@ -16,9 +22,14 @@ class ReviewTargets(private val git: GitClient) {
         val host = ReviewHosts.refresh(git)
         val prs = host?.let { runCatching { it.openPullRequests() }.getOrNull() }
         if (prs == null) return Listing(branches(), branchesOnly = true, ReviewHosts.nameOf(git))
-        return Listing(prs.map { pr ->
-            ListedTarget(ReviewTarget.forPr(pr.number, pr.title, pr.head, "${GitClient.REMOTE}/${pr.base}"), pr.title, pr)
-        }, branchesOnly = false, host.name)
+        // what this list sees is written down, so a parent pushed to before the next list is said to have moved, not guessed
+        val parents = StackStore(git).observe(prs)
+        val targets = prs.map { pr ->
+            ListedTarget(ReviewTarget.forPr(pr.number, pr.title, pr.head, "${GitClient.REMOTE}/${pr.base}"), pr.title, pr, parents[pr.number])
+        }
+        val byNumber = targets.associateBy { it.pr!!.number }
+        val stacks = stacks(prs, parents).map { stack -> stack.map { byNumber.getValue(it.number) } }
+        return Listing(targets, branchesOnly = false, host.name, stacks, StackStore.keys(prs, parents))
     }
 
     /**

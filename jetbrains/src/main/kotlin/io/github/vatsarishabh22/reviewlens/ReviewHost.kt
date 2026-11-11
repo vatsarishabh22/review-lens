@@ -28,6 +28,9 @@ interface ReviewHost {
 
     fun checks(number: Int): Checks
 
+    /** How many files [to] changes on top of [from] (two commits), counted by the host without fetching either. */
+    fun changedFiles(from: String, to: String): Int
+
     /** Resolves thread [threadId], or reopens it, on the host at once; a refusal throws the host's reason. */
     fun resolveThread(threadId: String, resolved: Boolean)
 
@@ -85,12 +88,14 @@ data class Person(val login: String, val name: String)
 /**
  * An open review on the host in the host's neutral words; each host maps its own answer to it. [head] is the branch
  * under review and [headSha] its commit on the host now (a review whose head moved on shows "New commits since your
- * review"); [requested]: the host asks the viewer to review it ("Waiting on you").
+ * review"); [requested]: the host asks the viewer to review it ("Waiting on you"); [commits]: its commit ids, oldest
+ * first, for finding its stack (empty when the host didn't say); [fromFork]: opened from another repository, so its
+ * [head] is a branch there, never one this repository's PRs can be based on.
  */
 data class PullRequest(
     val number: Int, val title: String, val head: String, val headSha: String, val base: String, val author: Person,
     val body: String = "", val additions: Int = 0, val deletions: Int = 0, val changedFiles: Int = 0, val updatedAt: String = "",
-    val requested: Boolean = false,
+    val requested: Boolean = false, val commits: List<String> = emptyList(), val fromFork: Boolean = false,
 )
 
 /**
