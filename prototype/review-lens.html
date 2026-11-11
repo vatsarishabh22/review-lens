@@ -123,14 +123,36 @@ button.mark:hover { background: var(--panel-2); }
 .detail { padding: 4px 14px 16px; display: grid; gap: 12px; }
 .detail h2 { font-size: 15px; line-height: 1.35; margin: 0; text-wrap: balance; }
 .detail .meta { color: var(--muted); font-size: 12px; display: flex; flex-wrap: wrap; gap: 6px; align-items: center; }
-/* a stack in the PR list: its PRs in build order, bottom first, each counted on top of the one below */
-.stack { margin: 2px 8px 8px; border: 1px solid var(--line); border-radius: 8px; overflow: hidden; }
-.stack-head { display: flex; justify-content: space-between; padding: 6px 10px; font-size: 11px; font-weight: 600; color: var(--muted); background: var(--panel-2); }
-.stack-head span { font-weight: 400; }
-.stack .pr.in-stack { position: relative; padding-left: 30px; }
-.stack .pos { position: absolute; left: 9px; top: 12px; width: 15px; height: 15px; border-radius: 50%; font-size: 10px; display: grid; place-items: center; color: var(--muted); border: 1px solid var(--line); background: var(--win); }
-.stack .pr.next .pos { color: #fff; background: var(--accent); border-color: var(--accent); }
-.stack .pr.in-stack + .pr.in-stack::before { content: ""; position: absolute; left: 16px; top: -12px; height: 22px; border-left: 1px dashed var(--line); }
+/* a stack in the PR list: one card, its header fixed, its PRs on a rail in build order (bottom first), scrolling inside
+   past about seven rows so a long stack never pushes the other PRs out of the list */
+.stack { margin: 2px 8px 8px; border: 1px solid var(--line); border-radius: 8px; overflow: hidden; background: var(--win); }
+.stack-head { padding: 8px 10px 7px; display: grid; gap: 6px; border-bottom: 1px solid var(--line); }
+.stack-title { display: flex; align-items: center; gap: 6px; font-size: 12px; min-width: 0; }
+.stack-title b { font-weight: 600; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; min-width: 0; }
+.stack-sub { display: flex; justify-content: space-between; color: var(--muted); font-size: 11px; margin-top: -3px; }
+.stack-bar { display: flex; gap: 2px; }
+.stack-bar i { flex: 1; height: 4px; border-radius: 2px; background: var(--line); }
+.stack-bar i.ok { background: var(--ok); } .stack-bar i.next { background: var(--accent); }
+.stack-rows { max-height: 322px; overflow-y: auto; padding: 4px 0; position: relative; }
+/* what scrolled out of the card is counted at its edge (scrollbars hide on macOS); a click scrolls it into view */
+.stack-more { position: sticky; z-index: 1; display: flex; justify-content: center; padding: 5px 0; font-size: 11px; color: var(--accent); cursor: pointer; font-weight: 600; }
+.stack-more.up { top: -4px; margin-bottom: -26px; background: linear-gradient(var(--win) 60%, transparent); }
+.stack-more.down { bottom: -4px; margin-top: -26px; background: linear-gradient(transparent, var(--win) 40%); }
+.stack-more[hidden] { display: none; }
+.rail { display: grid; grid-template-columns: 16px 1fr; gap: 1px 10px; margin: 0 6px; padding: 6px 6px; border-radius: 6px; cursor: pointer; position: relative; }
+.rail:hover { background: var(--hover); }
+.rail.next { background: var(--accent-soft); padding: 8px 6px; }
+.rail.sel { box-shadow: inset 0 0 0 1px var(--accent); }
+.rail::before { content: ""; position: absolute; left: 13.5px; top: -6px; bottom: -6px; border-left: 1px dashed var(--line); }
+.rail.first::before { top: 14px; } .rail.last::before { bottom: calc(100% - 14px); }
+.rail .dot { grid-row: span 3; position: relative; width: 12px; height: 12px; margin: 3px 2px 0; border-radius: 50%; box-sizing: border-box; border: 1.5px solid var(--muted); background: var(--win); display: grid; place-items: center; }
+.rail.ok .dot { background: var(--ok); border-color: var(--ok); }
+.rail.ok .dot svg { width: 8px; height: 8px; stroke: var(--win); stroke-width: 3; fill: none; }
+.rail.next .dot { background: var(--accent); border-color: var(--accent); box-shadow: 0 0 0 3px color-mix(in srgb, var(--accent) 30%, transparent); }
+.rail .lbl { font-size: 10px; font-weight: 700; letter-spacing: .04em; color: var(--accent); }
+.rail .t { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; min-width: 0; }
+.rail.ok .t { color: var(--muted); } .rail.next .t { font-weight: 600; }
+.rail .m { color: var(--muted); font-size: 11px; display: flex; gap: 6px; flex-wrap: wrap; align-items: center; }
 .stack-warn, .warn-text { color: var(--warn); font-size: 12px; }
 .meta .link { color: var(--accent); font-weight: 600; }
 .branch-chip { font: 11px var(--mono); background: var(--panel-2); border-radius: 4px; padding: 1px 5px; color: var(--fg); }
@@ -376,7 +398,7 @@ div.cm-row .jump { text-align: left; }
     <button class="chip-btn" id="opt-wide" title="The changed function is used in 8 tests">Impact: widely used</button>
     <button class="chip-btn" id="opt-slow" title="The search for record_parse passes 3 s and stops">Impact: too many places</button>
     <button class="chip-btn" id="opt-noimpact" title="The same review in an IDE that can't read Python, such as WebStorm">Impact: IDE without Python</button>
-    <span class="chip-btn">Stack: <label><input type="radio" name="stack" value="open" checked> as is</label> <label><input type="radio" name="stack" value="merged"> #144 merged</label> <label><input type="radio" name="stack" value="moved"> #147 changed, #148 not updated</label></span>
+    <span class="chip-btn">Stack: <label><input type="radio" name="stack" value="open" checked> as is</label> <label><input type="radio" name="stack" value="merged"> #144 merged</label> <label><input type="radio" name="stack" value="moved"> #147 changed, #148 not updated</label> <label><input type="radio" name="stack" value="long"> 16 PRs</label> <label><input type="radio" name="stack" value="branch"> two on #146</label></span>
     <button class="chip-btn" id="opt-reset">Reset</button>
   </div>
 </div>
@@ -516,6 +538,12 @@ const DIRTY = ["M  src/app/modules/payments/refunds.py", "M  tests/test_refunds.
 // #147's head and shows its own changes only, unless #147 changed after #148 was built on it.
 const PARENT = { n: 147, commits: [0] };
 const STACK = [144, 145, 146, 147, 148];
+// the scenario bar's "two on #146": a second PR built on #146, listed after #146's other line (#147, #148)
+const SIBLING = { n: 150, title: "feat(bucket): lifecycle rules for old exports", who: "bob", files: 2, on: 146 };
+// the scenario bar's "16 PRs": eleven reviewed PRs below #144, so the card scrolls and opens at the next one
+const LONG = ["parse the ledger CSV", "validate the column count", "trim cells", "normalise dates", "amounts in minor units", "reject duplicate rows",
+  "map columns by header", "keep the source line", "collect row errors", "report errors per file", "stream large files"]
+  .map((t, i) => ({ n: 133 + i, title: `feat(ledger): ${t}`, who: i % 2 ? "bob" : "alice", files: 1 + (i % 3), demo: { text: "✓ Approved", done: true } }));
 // the scenario bar's stack state, kept across Reset like the other options: "open", "merged" (#144), "moved" (#147)
 const stackMode = () => document.querySelector('input[name="stack"]:checked')?.value || "open";
 const shown = i => S.stack === "moved" || !PARENT.commits.includes(i);
@@ -680,23 +708,38 @@ function projectTree(highlight) {
 // A PR's word in the list: the sample PR's real status, the stack's sample statuses
 const listStatus = pr => pr.n === 148 ? (S.mode === "normal" ? status() : null) : pr.demo || null;
 function prList() {
-  // in a stack, each row counts only what that PR adds on top of the one below it
-  const item = (pr, pos, next) => {
-    const st = listStatus(pr), inStack = pos != null;
-    const pill = st ? `<span class="pill ${st.done ? "done" : "resume"}">${st.text}</span>` : next ? '<span class="pill req">Next</span>' : "";
-    const stats = pr.n === 148 ? `${ownFiles().length} files` : `${pr.files} files`;
-    const changed = pr.n === 148 && S.stack === "moved" ? '<span class="warn-text">#147 changed under it</span>' : "";
-    return `<div class="pr ${inStack ? "in-stack" : ""} ${next ? "next" : ""} ${S.pr === pr.n && S.panel !== "list" ? "sel" : ""}" data-act="pick-pr" data-n="${pr.n}">${inStack ? `<span class="pos">${pos}</span>` : ""}${avatar(pr.who)}
+  const item = pr => {
+    const st = listStatus(pr);
+    const pill = st ? `<span class="pill ${st.done ? "done" : "resume"}">${st.text}</span>` : "";
+    return `<div class="pr ${S.pr === pr.n && S.panel !== "list" ? "sel" : ""}" data-act="pick-pr" data-n="${pr.n}">${avatar(pr.who)}
       <div class="t">${esc(pr.title)}</div>
-      <div class="m"><span>#${pr.n}</span><span>${person(pr.who).name}</span><span>${stats}</span>
-      ${pill}${pr.requested && !(pr.n === 148 && S.submitted) && !(inStack && st) ? '<span class="pill req">Review requested</span>' : ""}${changed}</div></div>`;
+      <div class="m"><span>#${pr.n}</span><span>${person(pr.who).name}</span><span>${pr.files} files</span>
+      ${pill}${pr.requested ? '<span class="pill req">Review requested</span>' : ""}</div></div>`;
   };
-  const stack = STACK.filter(n => !(S.stack === "merged" && n === 144)).map(n => PRS.find(p => p.n === n));
+  const stack = (S.stack === "long" ? LONG : []).concat(STACK.filter(n => !(S.stack === "merged" && n === 144)).map(n => PRS.find(p => p.n === n)), S.stack === "branch" ? [SIBLING] : []);
   const done = stack.filter(pr => listStatus(pr)?.done).length, next = stack.find(pr => !listStatus(pr)?.done);
   // a stack stays whole: one PR in it asking for you brings the rest along, in the section of the one that asked
   const waiting = stack.some(pr => pr.requested && !(pr.n === 148 && S.submitted));
-  const group = `<div class="stack"><div class="stack-head">Stack · ${stack.length} PRs · ${done} of ${stack.length} reviewed<span>review in order</span></div>
-    ${stack.map((pr, i) => item(pr, i + 1, pr === next)).join("")}</div>`;
+  const rail = (pr, i) => {
+    const st = listStatus(pr), ok = !!st?.done, isNext = pr === next;
+    const count = pr.n === 148 ? ownFiles().length : pr.files, stats = `${count} ${count === 1 ? "file" : "files"}`;
+    const pill = st && !ok ? `<span class="pill resume">${st.text}</span>` : ok ? `<span>${st.text.replace("✓ ", "").toLowerCase()}</span>` : "";
+    const asked = pr.requested && !(pr.n === 148 && S.submitted) && !st ? '<span class="pill req">Review requested</span>' : "";
+    const changed = pr.n === 148 && S.stack === "moved" ? '<span class="warn-text">#147 changed under it</span>' : "";
+    // the second of two PRs on one parent: its parent isn't the row above it
+    const on = pr.on ? `<span>on #${pr.on}</span>` : "";
+    return `<div class="rail ${i === 0 ? "first" : ""} ${i === stack.length - 1 ? "last" : ""} ${ok ? "ok" : ""} ${isNext ? "next" : ""} ${S.pr === pr.n && S.panel !== "list" ? "sel" : ""}" data-act="pick-pr" data-n="${pr.n}">
+      <span class="dot">${ok ? '<svg viewBox="0 0 16 16"><path d="M3 8.5l3.5 3.5 6.5-8"/></svg>' : ""}</span>
+      ${isNext ? `<span class="lbl">NEXT · ${i + 1} OF ${stack.length}</span>` : ""}
+      <div class="t">${esc(pr.title)}</div>
+      <div class="m"><span>#${pr.n}</span>${on}<span>${stats}</span>${pill}${asked}${changed}</div></div>`;
+  };
+  // named by its bottom PR's title: always there, whatever the team calls its branches
+  const group = `<div class="stack"><div class="stack-head">
+      <div class="stack-title"><b>${esc(stack[0].title)}</b></div>
+      <div class="stack-sub"><span>Stack of ${stack.length} PRs</span><span>${done} of ${stack.length} reviewed</span></div>
+      <div class="stack-bar" aria-label="${done} of ${stack.length} reviewed">${stack.map(pr => `<i class="${listStatus(pr)?.done ? "ok" : pr === next ? "next" : ""}"></i>`).join("")}</div></div>
+    <div class="stack-rows"><div class="stack-more up" hidden></div>${stack.map(rail).join("")}<div class="stack-more down" hidden></div></div></div>`;
   return `<div class="search">${I.search}<input id="pr-search" placeholder="Search pull requests" aria-label="Search pull requests"></div>
     <div class="section-label">Waiting on you</div>${waiting ? group : ""}${PRS.filter(p => p.requested && !STACK.includes(p.n)).map(p => item(p)).join("")}
     <div class="section-label">Other open</div>${waiting ? "" : group}${PRS.filter(p => !p.requested && !STACK.includes(p.n)).map(p => item(p)).join("")}`;
@@ -1009,8 +1052,26 @@ function verdictChanged() {
 }
 function render() {
   const ed = document.getElementById("ed"), scroll = ed ? ed.scrollTop : 0;
+  const rows = document.querySelector(".stack-rows"), rowsAt = rows && !stackFresh ? rows.scrollTop : null;
+  stackFresh = false;
   document.getElementById("ide").innerHTML = titlebar() + `<div class="body">${stripe()}${tool()}<main class="editor-area">${tabs()}${reviewbar()}${editor()}</main></div>` + statusbar() + toast();
   const ed2 = document.getElementById("ed"); if (ed2 && keepScroll) ed2.scrollTop = scroll;
+  // the stack card keeps where the reviewer scrolled it; shown afresh, it opens at the next PR to review
+  const rows2 = document.querySelector(".stack-rows");
+  if (rows2) {
+    const nx = rows2.querySelector(".rail.next"); rows2.scrollTop = rowsAt ?? (nx ? nx.offsetTop - 40 : 0);
+    const up = rows2.querySelector(".stack-more.up"), down = rows2.querySelector(".stack-more.down"), rails = [...rows2.querySelectorAll(".rail")];
+    const edges = () => {
+      const top = rows2.scrollTop, bottom = top + rows2.clientHeight;
+      const above = rails.filter(r => r.offsetTop + r.offsetHeight / 2 < top + 24), below = rails.filter(r => r.offsetTop + r.offsetHeight / 2 > bottom - 24);
+      const word = rs => rs.every(r => r.classList.contains("ok")) ? "reviewed" : "more";
+      up.hidden = !above.length; up.textContent = `↑ ${above.length} ${word(above)} above`;
+      down.hidden = !below.length; down.textContent = `↓ ${below.length} ${word(below)} below`;
+    };
+    up.onclick = () => rows2.scrollBy({ top: -rows2.clientHeight + 60, behavior: "smooth" });
+    down.onclick = () => rows2.scrollBy({ top: rows2.clientHeight - 60, behavior: "smooth" });
+    rows2.onscroll = edges; edges();
+  }
   // from the Review panel, Finish review floats over the window under its button, as an IDE popup does
   const anchor = S.pop === "submit" && S.popAt === "panel" && document.querySelector('.rv-actions [data-pop="submit"]');
   if (anchor) {
@@ -1022,7 +1083,7 @@ function render() {
   if (scrollTo) document.querySelector(`.ln[data-line="${scrollTo}"]`)?.scrollIntoView({ block: "center" });
   scrollTo = null;
 }
-let keepScroll = false, scrollTo = null;
+let keepScroll = false, scrollTo = null, stackFresh = true;
 const grow = t => { t.style.height = "auto"; t.style.height = Math.min(t.scrollHeight, 260) + "px"; };
 
 // ---------- behaviour ----------
@@ -1250,7 +1311,7 @@ document.addEventListener("keydown", e => {
 });
 document.getElementById("opt-dirty").addEventListener("change", e => { S.dirty = e.target.checked; render(); });
 document.getElementById("opt-reset").addEventListener("click", () => { S = fresh(); render(); });
-document.querySelectorAll('input[name="stack"]').forEach(r => r.addEventListener("change", () => { S.stack = stackMode(); if (S.scope !== "since") { S.scope = "all"; S.picked = new Set(); } render(); }));
+document.querySelectorAll('input[name="stack"]').forEach(r => r.addEventListener("change", () => { S.stack = stackMode(); stackFresh = true; if (S.scope !== "since") { S.scope = "all"; S.picked = new Set(); } render(); }));
 document.getElementById("opt-wide").addEventListener("click", () => { S.impactWide = !S.impactWide; render(); });
 document.getElementById("opt-slow").addEventListener("click", () => { S.impactSlow = !S.impactSlow; render(); });
 document.getElementById("opt-noimpact").addEventListener("click", () => { S.noImpact = !S.noImpact; render(); });
