@@ -19,6 +19,8 @@ class ReviewStartup : ProjectActivity {
         service.reload()
         val review = service.active ?: return
         withContext(Dispatchers.EDT) {
+            // which tabs were open before the review is not saved: treat every restored one as the reviewer's, so a tick never closes it
+            service.rememberOpenTabs()
             refreshViews(project) // tabs restored at startup opened before the review was known, without their Diff view
             val windows = ToolWindowManager.getInstance(project)
             windows.invokeLater { windows.getToolWindow(TOOL_WINDOW_ID)?.activate(null) }

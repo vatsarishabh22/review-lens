@@ -78,6 +78,9 @@ class CommentInlays(private val project: Project) : Disposable {
     private class Box(val change: FileChange, val line: Int, val text: EditorTextField, val editing: Draft? = null, val thread: ReviewThread? = null, val posted: ThreadComment? = null, val startLine: Int? = null)
 
     private var box: Box? = null
+
+    /** The comment box on [path] holds text not added yet: its tab stays open whatever else happens. */
+    fun holdsText(path: String) = box?.let { it.change.path == path && it.text.text.isNotBlank() } == true
     private val plus = HashMap<Editor, RangeHighlighter>()
     private val blocks = HashMap<Editor, List<Inlay<*>>>()
     /** What each editor's blocks were built from: a refresh that changes none of it (a tick, a sync) leaves them, and the box's focus, alone. */

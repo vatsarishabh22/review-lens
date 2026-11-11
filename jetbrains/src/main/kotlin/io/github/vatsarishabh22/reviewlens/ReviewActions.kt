@@ -31,10 +31,8 @@ class MarkReviewedAction : ReviewAction() {
     override fun actionPerformed(e: AnActionEvent) {
         val project = e.project ?: return
         val change = currentChange(e) ?: return
-        val service = ReviewService.of(project)
-        service.toggleReviewed(change)
-        // Marking moves on, so a review is a run of ⌥R presses.
-        if (service.badge(change) == Badge.REVIEWED) service.nextUnreviewed(change.path)?.let { openChange(project, it) }
+        // marking moves on and closes the tab, so a review is a run of ⌥R presses
+        viewedFromFile(project, change, currentFile(e))
     }
 }
 

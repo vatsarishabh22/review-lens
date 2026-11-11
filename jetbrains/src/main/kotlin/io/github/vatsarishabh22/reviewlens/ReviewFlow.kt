@@ -13,6 +13,7 @@ import com.intellij.openapi.application.ApplicationManager
 import com.intellij.openapi.application.ModalityState
 import com.intellij.openapi.application.ReadAction
 import com.intellij.openapi.components.serviceIfCreated
+import com.intellij.openapi.diagnostic.logger
 import com.intellij.openapi.fileEditor.FileEditorManager
 import com.intellij.openapi.fileEditor.OpenFileDescriptor
 import com.intellij.openapi.editor.ScrollType
@@ -59,6 +60,8 @@ fun beginReview(
     progress: (StartStep) -> Unit = {}, failed: () -> Unit = {},
 ) {
     val wasActive = ReviewService.of(project).isActive
+    if (ReviewService.of(project).ending != null) return // a review that is ending can't be re-scoped under it
+    if (!wasActive) ReviewService.of(project).rememberOpenTabs()
     val onEdt = { step: StartStep -> ApplicationManager.getApplication().invokeLater({ progress(step) }, project.disposed) }
     background(project, "Starting review of ${loaded.target.label}", {
         session.begin(loaded, range, label, onEdt).also { afterCheckout(project, session.git) }
@@ -77,21 +80,36 @@ fun beginReview(
  * Ends the review with [verdict] posted to GitHub as one review, or with nothing posted (null: Mark as reviewed), then
  * exits and shows the PR list for the next one. On a refusal the comments stay drafts and the review stays open.
  */
-fun finishReview(project: Project, summary: String, verdict: Verdict?) {
-    val number = ReviewService.of(project).meta?.target?.prNumber ?: return
-    if (verdict == null) return endReview(project, "Finished ${ReviewTarget.refOf(number)}", "Marked as reviewed. Nothing was posted to ${ReviewService.of(project).hostName}.")
-    background(project, "Posting your review", {
-        runCatching { ReviewDrafts.of(project).submit(summary, verdict) }.getOrElse { throw IllegalStateException("${it.message}. Your comments are kept as drafts.", it) }
-    }) { sent ->
-        endReview(project, "Finished ${ReviewTarget.refOf(number)}", "${verdict.posted} on ${ReviewService.of(project).hostName}${if (sent.isEmpty()) "" else " with $sent"}.")
+fun finishReview(project: Project, summary: String, verdict: Verdict?, posted: () -> Unit, failed: (String) -> Unit) {
+    val service = ReviewService.of(project)
+    val number = service.meta?.target?.prNumber ?: return
+    if (service.ending != null) return // already ending: a second click is the same click
+    if (verdict == null) { endReview(project, "Finished ${ReviewTarget.refOf(number)}", "Marked as reviewed. Nothing was posted to ${service.hostName}."); return posted() }
+    service.ending = ReviewService.Ending.POSTING
+    // the host's refusal is the popup's to say, where the click was: caught here, so no second balloon says it too
+    background(project, "Posting your review", { runCatching { ReviewDrafts.of(project).submit(summary, verdict) } }) { result ->
+        result.onSuccess { sent ->
+            endReview(project, "Finished ${ReviewTarget.refOf(number)}", "${verdict.posted} on ${service.hostName}${if (sent.isEmpty()) "" else " with $sent"}.")
+            posted()
+        }.onFailure { service.ending = null; failed("${it.message}. Your comments are kept as drafts.") }
     }
+}
+
+/** A tick from the file's own tab (⌥R, its Viewed button) moves on and closes the tab, unless it was yours or holds a comment. */
+fun viewedFromFile(project: Project, change: FileChange, file: VirtualFile?) {
+    val service = ReviewService.of(project)
+    service.toggleReviewed(change)
+    if (service.badge(change) != Badge.REVIEWED) return
+    service.nextUnreviewed(change.path)?.let { openChange(project, it) }
+    if (file != null && file.url !in service.openBefore && !CommentInlays.of(project).holdsText(change.path)) FileEditorManager.getInstance(project).closeFile(file)
 }
 
 /** Goes back to the reviewer's branch and restores their parked work; the review can be resumed later. */
 fun exitReview(project: Project) {
     val service = ReviewService.of(project)
+    if (service.ending != null) return // already ending: a second click is the same click
     val total = service.changes.size
-    endReview(project, null, if (total > 0 && service.reviewedCount() == total) "All $total files reviewed." else "")
+    endReview(project, null, if (allViewed(service.reviewedCount(), total)) "All $total files reviewed." else "")
 }
 
 /**
@@ -100,12 +118,17 @@ fun exitReview(project: Project) {
  */
 private fun endReview(project: Project, finished: String?, said: String) {
     val service = ReviewService.of(project)
-    val git = service.git ?: return
-    val branch = service.active?.originalRef ?: return
+    val git = service.git
+    val branch = service.active?.originalRef
+    if (git == null || branch == null) { service.ending = null; return } // nothing to exit: Finish's POSTING ends here
+    service.ending = ReviewService.Ending.EXITING
     val kept = keptText(service.meta?.drafts.orEmpty())
-    // ticks on functions this scope no longer changes go now (kept across re-scopes until Exit); unknown until searched
-    project.serviceIfCreated<ImpactService>()?.functions()?.let { keys -> service.update { it.keepChecked(keys) } }
-    background(project, "Exiting review", { ReviewLifecycle(git).exit().also { afterCheckout(project, git) } }) { exited ->
+    // ticks on functions this scope no longer changes go now (kept across re-scopes until Exit); unknown until searched.
+    // A failed save loses only those ticks, never the exit
+    runCatching { project.serviceIfCreated<ImpactService>()?.functions()?.let { keys -> service.update { it.keepChecked(keys) } } }
+        .onFailure { logger<ReviewService>().warn("Impact ticks not trimmed at exit", it) }
+    background(project, "Exiting review", { ReviewLifecycle(git).exit().also { afterCheckout(project, git) } }, failed = { service.ending = null }) { exited ->
+        service.ending = null
         refreshViews(project)
         // The "Reviewing…" balloons offer Exit, which no longer applies.
         NotificationsManager.getNotificationsManager().getNotificationsOfType(Notification::class.java, project)

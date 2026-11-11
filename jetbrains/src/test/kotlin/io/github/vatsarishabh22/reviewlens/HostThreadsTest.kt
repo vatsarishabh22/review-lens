@@ -1,8 +1,11 @@
 package io.github.vatsarishabh22.reviewlens
 
 import com.intellij.openapi.util.Disposer
+import io.github.vatsarishabh22.reviewlens.github.GitHubSlot
 import org.junit.Assert.assertEquals
+import org.junit.Assert.assertFalse
 import org.junit.Assert.assertNull
+import org.junit.Assert.assertTrue
 import org.junit.Test
 
 /** The review's threads on the host: read at load and again, and the immediate writes with what each says on its way. */
@@ -11,6 +14,7 @@ class HostThreadsTest {
     private var refuse: String? = null
     private var number: Int? = 7
     private var answer: List<ReviewThread>? = emptyList()
+    private var slot: ReviewSlot? = null
     private lateinit var threads: HostThreads
 
     // a host that records each call and what the views were told meanwhile
@@ -19,7 +23,7 @@ class HostThreadsTest {
         override fun openPullRequests() = emptyList<PullRequest>()
         override fun headRef(number: Int) = ""
         override fun reviewThreads(number: Int): List<ReviewThread> { calls += "reload"; return answer ?: throw CliException("offline") }
-        override fun reviewSlot(number: Int): ReviewSlot = throw CliException("not read here")
+        override fun reviewSlot(number: Int): ReviewSlot = slot ?: throw CliException("not read here")
         override fun submitReview(number: Int, commit: String, summary: String, verdict: Verdict, comments: List<Draft>, replies: List<Draft>) = Unit
         override fun checks(number: Int) = Checks(ChecksState.NONE)
         override fun resolveThread(threadId: String, resolved: Boolean) = record("resolve $threadId $resolved", threadId)
@@ -72,6 +76,20 @@ class HostThreadsTest {
         t.load()
         assertNull(t.threads)
         assertEquals("a branch review never asks the host", listOf("reload"), calls)
+    }
+
+    @Test
+    fun `a reload says it read only when both the slot and the threads came back`() {
+        val t = threads()
+        slot = GitHubSlot("PR_1", "h", null, false)
+        assertTrue(t.reload())
+        answer = null
+        assertFalse("threads offline: what the popup shows is old", t.reload())
+        answer = emptyList(); val read = GitHubSlot("PR_1", "h", null, false).also { slot = it }; t.reload(); slot = null
+        assertFalse("slot unread: Submit would judge with an old one", t.reload())
+        assertEquals("the last slot read stays, rather than none", read, t.slot)
+        number = null
+        assertFalse("a branch review reads nothing", t.reload())
     }
 
     @Test

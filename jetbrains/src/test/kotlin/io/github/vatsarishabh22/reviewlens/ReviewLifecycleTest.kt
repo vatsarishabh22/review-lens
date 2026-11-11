@@ -215,7 +215,25 @@ class ReviewLifecycleTest {
         val listed = ListedTarget(target, "t", null) // no gh: the PR's head is unknown
         assertEquals(ReviewProgress(1, 2), ReviewTargets(git).progress(listed)) // app.py of {app.py, new.py}; a stale path does not count
         ReviewMeta.save(git, ReviewMeta(target, range, "All commits (1)", mapOf("app.py" to "old-blob")))
-        assertEquals(ReviewProgress(0, 2), ReviewTargets(git).progress(listed)) // changed since viewed
+        assertEquals(ReviewProgress(0, 2, ticked = true), ReviewTargets(git).progress(listed)) // changed since viewed: still ticked
+    }
+
+    @Test
+    fun `a review that posted or drafted without a tick still shows, and one only opened does not`() {
+        val head = setUp()
+        val git = GitClient(repo)
+        val range = ScopeRange(git("rev-parse", "main"), head)
+        fun at(sha: String) = ListedTarget(target, "t", PullRequest(1, "t", "feature", sha, "main", Person("asha", "asha")))
+        val moved = "0123456789abcdef0123456789abcdef01234567"
+        ReviewMeta.save(git, ReviewMeta(target, range, "All commits (1)", seenHead = head))
+        assertNull("only opened", ReviewTargets(git).progress(at(head)))
+        assertNull("only opened, then a push: no claim of a review", ReviewTargets(git).progress(at(moved)))
+        ReviewMeta.save(git, ReviewMeta(target, range, "All commits (1)", seenHead = head, verdict = Verdict.COMMENT))
+        assertEquals("Commented · 0 of 2 viewed", ReviewTargets(git).progress(at(head))!!.label)
+        assertEquals("🔄 New commits since your review", ReviewTargets(git).progress(at(moved))!!.label)
+        ReviewMeta.save(git, ReviewMeta(target, range, "All commits (1)", seenHead = head, drafts = listOf(Draft("app.py", 1, "b", "q"))))
+        assertEquals("Resume · 1 draft", ReviewTargets(git).progress(at(head))!!.label)
+        assertFalse("drafts alone don't make a push news", ReviewTargets(git).progress(at(moved))!!.newCommits)
     }
 
     @Test

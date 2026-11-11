@@ -61,6 +61,10 @@ class SpecCasesTest(private val rule: String) {
                 val all = commits(g.strings("commits")); val picked = all.filter { it.sha in g.strings("picked") }
                 range(resolveScope(g.str("mergeBase")!!, all, picked), scopeLabel(all, picked))
             },
+            "list-status" to { g ->
+                val p = ReviewProgress(g["viewed"].asInt, g["total"].asInt, g.str("verdict")?.let(Verdict::valueOf), g["headMoved"].asBoolean, g["drafts"].asInt, g["ticked"].asBoolean)
+                JsonObject().apply { addProperty("label", p.label); addProperty("button", p.startLabel(g["sinceOffered"].asBoolean)); addProperty("done", p.done) }
+            },
             "since-last-review" to { g -> sinceLastReview(g.str("head")!!, commits(g.strings("commits")), g.str("seenHead"))?.let { (r, label) -> range(r, label) } ?: JsonNull.INSTANCE },
             "viewed-merge" to { g -> tree(mergeViewed(g.map("local"), g.states("host"), g.changes("changes"), g.flags("unsent"))) },
             "viewed-sync" to { g ->

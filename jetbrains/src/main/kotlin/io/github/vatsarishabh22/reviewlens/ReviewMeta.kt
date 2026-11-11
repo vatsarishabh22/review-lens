@@ -87,13 +87,20 @@ fun syncViewed(meta: ReviewMeta, github: Map<String, ViewedState>, changes: List
     return meta.copy(reviewed = mergeViewed(meta.reviewed, github, changes, queued), unsent = unsent.ifEmpty { null })
 }
 
+/** Every file of a scope viewed; an empty scope never is. */
+fun allViewed(viewed: Int, total: Int) = total > 0 && viewed == total
+
 /**
- * How far a started review got: files viewed (at their current version) out of the files in its scope, the last posted
- * [verdict], and whether the PR has [newCommits] since the head you last reviewed.
+ * A started review's line in the PR list (spec/README.md, the list's table; spec/cases/list-status.json). [ticked] is
+ * any tick, of any version; [headMoved] is the PR's head past the one you last reviewed.
  */
-data class ReviewProgress(val viewed: Int, val total: Int, val verdict: Verdict? = null, val newCommits: Boolean = false) {
-    /** Every file viewed at its current version, and nothing pushed since. */
-    val done get() = total > 0 && viewed == total && !newCommits
+data class ReviewProgress(val viewed: Int, val total: Int, val verdict: Verdict? = null, val headMoved: Boolean = false, val drafts: Int = 0, val ticked: Boolean = viewed > 0) {
+    private val allViewed get() = allViewed(viewed, total)
+
+    /** A push is news only to a review that read or posted something. */
+    val newCommits get() = headMoved && (ticked || verdict != null)
+
+    val done get() = !newCommits && (allViewed || verdict?.final == true)
 
     /** The detail view's button; "new commits" only when they can be offered on their own (a force-push can rewrite the commit you reviewed). */
     fun startLabel(sinceOffered: Boolean) = when {
@@ -105,7 +112,9 @@ data class ReviewProgress(val viewed: Int, val total: Int, val verdict: Verdict?
     /** The PR list's pill. */
     val label get() = when {
         newCommits -> "🔄 New commits since your review"
-        done -> "✓ Reviewed · ${verdict?.done ?: "$viewed of $total"}"
+        allViewed -> "✓ Reviewed · ${verdict?.done ?: "$viewed of $total"}"
+        verdict != null -> "${if (done) "✓ " else ""}${verdict.done.replaceFirstChar(Char::uppercase)} · $viewed of $total viewed"
+        !ticked && drafts > 0 -> "Resume · $drafts ${if (drafts == 1) "draft" else "drafts"}"
         else -> "Resume · $viewed of $total viewed"
     }
 }

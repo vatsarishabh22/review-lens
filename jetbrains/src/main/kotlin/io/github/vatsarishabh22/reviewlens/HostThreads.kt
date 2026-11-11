@@ -54,12 +54,14 @@ class HostThreads internal constructor(
 
     /**
      * Reads the threads and the viewer's slot again (Finish review does, so a thread resolved or deleted meanwhile, or a
-     * review started on the host's website, is said before anything posts). A failed read keeps the threads shown. Off EDT.
+     * review started on the host's website, is said before anything posts). Off EDT. False when either read failed: the
+     * last ones stay, and the caller says they may be old.
      */
-    fun reload() {
-        val number = number() ?: return
-        slot = runCatching { host().reviewSlot(number) }.onFailure { thisLogger().info("Host pending review not read", it) }.getOrNull()
-        fetch(number)?.let { threads = it; changed() }
+    fun reload(): Boolean {
+        val number = number() ?: return false
+        val read = runCatching { host().reviewSlot(number) }.onSuccess { slot = it }.onFailure { thisLogger().info("Host pending review not read", it) }
+        val fetched = fetch(number)?.also { threads = it; changed() }
+        return read.isSuccess && fetched != null
     }
 
     /** [change]'s threads, each with the line it sits under in the file at [scopeEnd], or null when it is only listed. */

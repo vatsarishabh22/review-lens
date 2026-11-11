@@ -1,9 +1,11 @@
 package io.github.vatsarishabh22.reviewlens
 
+import com.intellij.ide.ui.laf.darcula.ui.DarculaButtonUI
 import com.intellij.openapi.editor.EditorFactory
 import com.intellij.openapi.editor.colors.EditorColorsManager
 import com.intellij.openapi.fileTypes.PlainTextFileType
 import com.intellij.openapi.project.Project
+import com.intellij.ui.AnimatedIcon
 import com.intellij.ui.EditorTextField
 import com.intellij.ui.JBColor
 import com.intellij.ui.components.JBLabel
@@ -25,9 +27,11 @@ import java.awt.geom.RoundRectangle2D
 import javax.swing.Box
 import javax.swing.BoxLayout
 import javax.swing.Icon
+import javax.swing.JButton
 import javax.swing.JComponent
 import javax.swing.JPanel
 import javax.swing.JTextPane
+import javax.swing.SwingConstants
 import javax.swing.text.SimpleAttributeSet
 import javax.swing.text.StyleConstants
 
@@ -270,3 +274,46 @@ fun commentField(project: Project, text: String, placeholder: String, width: Int
             it.setVerticalScrollbarVisible(true) } // past its tallest the text scrolls instead of disappearing
         preferredSize = Dimension(width, COMMENT_BOX_MIN)
     }
+
+/** The pending-comment count on Finish review: a translucent white pill, as in the prototype. */
+internal class CountIcon(private val count: Int) : Icon {
+    private val font get() = JBFont.small().asBold()
+    override fun getIconWidth() = JBUI.scale(10 + 7 * "$count".length)
+    override fun getIconHeight() = JBUI.scale(16)
+    override fun paintIcon(c: Component?, g: Graphics, x: Int, y: Int) {
+        val g2 = g.create() as Graphics2D
+        g2.setRenderingHint(RenderingHints.KEY_ANTIALIASING, RenderingHints.VALUE_ANTIALIAS_ON)
+        g2.color = Color(255, 255, 255, 64)
+        g2.fillRoundRect(x, y + JBUI.scale(1), iconWidth, iconHeight - JBUI.scale(2), JBUI.scale(14), JBUI.scale(14))
+        g2.color = Color.WHITE
+        g2.font = font
+        val fm = g2.fontMetrics
+        g2.drawString("$count", x + (iconWidth - fm.stringWidth("$count")) / 2, y + (iconHeight + fm.ascent - fm.descent) / 2)
+        g2.dispose()
+    }
+}
+
+/** Finish review with the pending-comment count, for the review bar and the Review panel; greyed while the review ends. Null for a branch: nowhere to post. */
+fun finishButton(project: Project): JButton? {
+    val service = ReviewService.of(project)
+    if (service.meta?.target?.reviewable != true) return null
+    val pending = ReviewDrafts.of(project).outbox().size
+    return JButton("Finish review", if (pending > 0) CountIcon(pending) else null).apply {
+        putClientProperty(DarculaButtonUI.DEFAULT_STYLE_KEY, true)
+        isOpaque = false; isFocusable = false
+        horizontalTextPosition = SwingConstants.LEFT
+        isEnabled = service.ending == null
+        addActionListener { showFinishReview(project, this) }
+    }
+}
+
+/** Exit, for the review bar and the Review panel: "Exiting…" with a spinner while it exits, greyed while the review posts. */
+fun exitButton(project: Project, icon: Icon? = null): JButton {
+    val service = ReviewService.of(project)
+    val exiting = service.ending == ReviewService.Ending.EXITING
+    return JButton(if (exiting) ReviewService.Ending.EXITING.busy else "Exit", if (exiting) AnimatedIcon.Default.INSTANCE else icon).apply {
+        toolTipText = "Back to ${service.active?.originalRef}"
+        isEnabled = service.ending == null
+        addActionListener { exitReview(project) }
+    }
+}

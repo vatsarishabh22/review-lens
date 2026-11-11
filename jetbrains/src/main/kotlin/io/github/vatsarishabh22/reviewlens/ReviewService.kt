@@ -7,6 +7,7 @@ import com.intellij.openapi.Disposable
 import com.intellij.openapi.application.ApplicationManager
 import com.intellij.openapi.components.Service
 import com.intellij.openapi.components.service
+import com.intellij.openapi.fileEditor.FileEditorManager
 import com.intellij.openapi.project.Project
 import com.intellij.openapi.util.Disposer
 import com.intellij.openapi.vfs.VirtualFile
@@ -26,6 +27,18 @@ class ReviewService(private val project: Project) : Disposable {
     }
 
     override fun dispose() = Unit
+
+    /** How the review is ending, or null; every Finish and Exit reads it, so one click ends it once. */
+    enum class Ending(val busy: String) { POSTING("Posting…"), EXITING("Exiting…") }
+
+    @Volatile var ending: Ending? = null
+        set(value) { if (field != value) { field = value; fireChanged() } }
+
+    /** The reviewer's own tabs (file URLs), which a tick never closes. */
+    var openBefore: Set<String> = emptySet(); private set
+
+    /** Remembers the tabs open now as the reviewer's own: at Start, and after a restart, when which were is not known. */
+    fun rememberOpenTabs() { openBefore = FileEditorManager.getInstance(project).openFiles.map { it.url }.toSet() }
 
     @Volatile var git: GitClient? = null; private set
     private val listeners = CopyOnWriteArrayList<() -> Unit>()
@@ -50,6 +63,7 @@ class ReviewService(private val project: Project) : Disposable {
         trackedFiles = if (fresh != null) git.trackedFiles() else emptyList()
         active = review
         meta = fresh
+        if (review == null) ending = null // whatever ended it, nothing is ending any more
         HostThreads.of(project).load()
         fireChanged()
     }

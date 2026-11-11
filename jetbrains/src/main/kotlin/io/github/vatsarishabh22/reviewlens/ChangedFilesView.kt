@@ -34,6 +34,7 @@ import java.awt.Component
 import java.awt.Container
 import java.awt.Cursor
 import java.awt.Dimension
+import java.awt.FlowLayout
 import java.awt.Point
 import java.awt.Rectangle
 import java.awt.Graphics
@@ -88,6 +89,7 @@ class ChangedFilesView(private val project: Project, parent: Disposable) : JPane
     private val strip = ProgressStrip()
     private val viewedText = mutedLabel()
     private val syncText = mutedLabel()
+    private val ends = JPanel(FlowLayout(FlowLayout.LEFT, JBUI.scale(8), 0)).apply { isOpaque = false }
     private val model = DefaultListModel<FileRow>()
     private val list = JBList(model).apply { cellRenderer = Renderer() }
     private val treeRoot = DefaultMutableTreeNode()
@@ -118,7 +120,7 @@ class ChangedFilesView(private val project: Project, parent: Disposable) : JPane
             }
         }.apply { isOpaque = false; border = JBUI.Borders.empty(6, 12, 0, 12) }
         val counts = JPanel(BorderLayout()).apply { isOpaque = false; add(viewedText, BorderLayout.WEST); add(syncText, BorderLayout.EAST) }
-        val head = stack(title, vgap(8), strip, vgap(6), counts, vgap(4), toggle).apply {
+        val head = stack(title, vgap(8), strip, vgap(6), counts, vgap(8), ends, vgap(8), toggle).apply {
             border = JBUI.Borders.compound(JBUI.Borders.customLineBottom(ReviewColors.line), JBUI.Borders.empty(6, 12, 6, 12))
         }
         add(head, BorderLayout.NORTH)
@@ -216,6 +218,10 @@ class ChangedFilesView(private val project: Project, parent: Disposable) : JPane
         strip.fraction = if (total == 0) 0.0 else done.toDouble() / total
         viewedText.text = "$done of $total files viewed · ${meta.scopeLabel}"
         syncText.text = HostViewed.of(project).status.text(service.hostName)
+        ends.removeAll()
+        finishButton(project)?.let(ends::add)
+        ends.add(exitButton(project))
+        ends.revalidate(); ends.repaint()
 
         val selected = (list.selectedValue as? FileRow.File)?.change?.path
         model.clear()

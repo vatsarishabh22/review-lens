@@ -21,11 +21,16 @@ class ReviewTargets(private val git: GitClient) {
         }, branchesOnly = false, host.name)
     }
 
-    /** Progress of a review this reviewer started before, counted in its own saved scope and against the PR's head now; null when never started. */
+    /**
+     * Progress of a review this reviewer started (a tick, a pending draft or a posted verdict), counted in its own saved
+     * scope and against the PR's head now; null when it was only opened.
+     */
     fun progress(listed: ListedTarget): ReviewProgress? {
-        val meta = ReviewMeta.load(git, listed.target.key)?.takeIf { it.reviewed.isNotEmpty() } ?: return null
+        val meta = ReviewMeta.load(git, listed.target.key) ?: return null
+        val drafts = meta.drafts.orEmpty().count { !it.posted }
+        if (meta.reviewed.isEmpty() && meta.verdict == null && drafts == 0) return null
         val changes = runCatching { git.changes(meta.range) }.getOrNull() ?: return null
-        return ReviewProgress(changes.count { meta.reviewed[it.path] == it.newBlob }, changes.size, meta.verdict, meta.headMoved(listed.pr?.headSha))
+        return ReviewProgress(changes.count { meta.reviewed[it.path] == it.newBlob }, changes.size, meta.verdict, meta.headMoved(listed.pr?.headSha), drafts, meta.reviewed.isNotEmpty())
     }
 
     private fun branches(): List<ListedTarget> {
