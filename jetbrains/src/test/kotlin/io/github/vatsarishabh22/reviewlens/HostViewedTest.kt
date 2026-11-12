@@ -101,7 +101,7 @@ class HostViewedTest {
     @Test
     fun `a tick goes to the review's id once the host answered, and a refusal is said once`() {
         val viewed = synced(host(viewedSync))
-        val outcomes = mutableListOf<Boolean>()
+        val outcomes = mutableListOf<Map<String, Boolean>?>()
         viewed.send(git, mapOf("a.kt" to true)) { outcomes += it }
         assertEquals("nothing goes before the host answered at load", emptyList<String>(), sent)
         viewed.fold(git, pr, listOf(a, b))
@@ -110,7 +110,7 @@ class HostViewedTest {
         viewed.send(git, mapOf("b.kt" to true, "c.kt" to true)) { outcomes += it }
         viewed.send(git, mapOf("b.kt" to false)) { outcomes += it }
         assertEquals(listOf("PR_1 {a.kt=true}", "PR_1 {b.kt=true, c.kt=true}", "PR_1 {b.kt=false}"), sent)
-        assertEquals(listOf(true, false, false), outcomes)
+        assertEquals(listOf(mapOf("a.kt" to true), null, null), outcomes)
         assertEquals(HostViewed.Status.FAILED, viewed.status)
         assertEquals(1, warned.size)
     }
@@ -157,7 +157,7 @@ class HostViewedTest {
     fun `a call for a review since left answers no one here, and counts nowhere`() {
         val viewed = slow(host(viewedSync))
         viewed.fold(git, pr, listOf(a, b))
-        val outcomes = mutableListOf<Boolean>()
+        val outcomes = mutableListOf<Map<String, Boolean>?>()
         viewed.send(git, mapOf("a.kt" to true)) { outcomes += it }
         answer = ViewedStates("PR_2", mapOf("a.kt" to ViewedState.UNVIEWED))
         viewed.fold(git, pr.copy(target = ReviewTarget.forPr(2, "t", "h", "origin/main")), listOf(a))
@@ -165,6 +165,46 @@ class HostViewedTest {
         assertEquals(0, viewed.waiting())
         assertFalse(viewed.sending("a.kt"))
         held.removeAt(0)()
-        assertEquals("the new review's queue is never confirmed by the old call", emptyList<Boolean>(), outcomes)
+        assertEquals("the new review's queue is never confirmed by the old call", emptyList<Map<String, Boolean>?>(), outcomes)
+    }
+
+    @Test
+    fun `an older call the host took never confirms a tick flipped again since, so a later refusal keeps it queued`() {
+        val viewed = slow(host(viewedSync))
+        viewed.fold(git, pr, listOf(a, b))
+        val outcomes = mutableListOf<Map<String, Boolean>?>()
+        // tick, untick, tick a.kt, and tick b.kt once, all before the host answers
+        listOf(mapOf("a.kt" to true), mapOf("a.kt" to false), mapOf("a.kt" to true, "b.kt" to true)).forEach { viewed.send(git, it) { outcomes += it } }
+        held.removeAt(0)()
+        held.removeAt(0)()
+        takes = false
+        held.removeAt(0)()
+        assertEquals("only the last call speaks for a.kt, and it was refused", listOf(emptyMap<String, Boolean>(), emptyMap(), null), outcomes)
+        assertEquals(mapOf("a.kt" to true, "b.kt" to true), confirmed(mapOf("a.kt" to true, "b.kt" to true), outcomes.filterNotNull().fold(emptyMap()) { m, o -> m + o }))
+    }
+
+    @Test
+    fun `a call the host took confirms the ticks no later call carries`() {
+        val viewed = slow(host(viewedSync))
+        viewed.fold(git, pr, listOf(a, b))
+        val outcomes = mutableListOf<Map<String, Boolean>?>()
+        viewed.send(git, mapOf("a.kt" to true, "b.kt" to true)) { outcomes += it }
+        viewed.send(git, mapOf("b.kt" to false)) { outcomes += it }
+        held.removeAt(0)()
+        held.removeAt(0)()
+        assertEquals(listOf(mapOf("a.kt" to true), mapOf("b.kt" to false)), outcomes)
+    }
+
+    @Test
+    fun `a call for a review since left that fails never marks the review under way failed`() {
+        val viewed = slow(host(viewedSync))
+        viewed.fold(git, pr, listOf(a, b))
+        viewed.send(git, mapOf("a.kt" to true)) {}
+        answer = ViewedStates("PR_2", mapOf("a.kt" to ViewedState.UNVIEWED))
+        viewed.fold(git, pr.copy(target = ReviewTarget.forPr(2, "t", "h", "origin/main")), listOf(a))
+        takes = false
+        held.removeAt(0)()
+        assertEquals(HostViewed.Status.HOST, viewed.status)
+        assertEquals(emptyList<String>(), warned)
     }
 }

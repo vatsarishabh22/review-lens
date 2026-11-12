@@ -72,17 +72,24 @@ class HostViewed internal constructor(
      */
     fun sends(meta: ReviewMeta?, change: FileChange): Boolean = meta?.target?.reviewable == true && hostKeepsViewed && hostFiles?.contains(change.path) != false
 
-    /** Sends [ticks] off EDT in one call; [done] hears whether the host took them. Nothing goes before the host answered at load. */
-    fun send(git: GitClient, ticks: Map<String, Boolean>, done: (Boolean) -> Unit) {
+    /**
+     * Sends [ticks] off EDT in one call. Nothing goes before the host answered at load. [done] hears the ticks the host
+     * took that may leave the queue, or null when it refused them: calls go one at a time in click order, so a path in a
+     * call still out was flipped again since, and only that later call can confirm what is queued for it.
+     */
+    fun send(git: GitClient, ticks: Map<String, Boolean>, done: (Map<String, Boolean>?) -> Unit) {
         val id = reviewId ?: return
         val call = Call(id, ticks.keys, clock())
         synchronized(inFlight) { inFlight.addLast(call) }
         pool {
             val sent = runCatching { ((hostOf(git) ?: throw ReviewHosts.notSignedIn()).viewed ?: throw CliException("This host keeps no Viewed checkboxes")).setViewed(id, ticks) }
-            synchronized(inFlight) { inFlight.remove(call) }
-            sent.onFailure { failed(git, it) }
-            // a call for a review since left only answers that review's next load: its ticks stay in its unsent queue
-            if (id == reviewId) done(sent.isSuccess)
+            val later = synchronized(inFlight) { inFlight.remove(call); current().flatMap { it.paths }.toSet() }
+            // a call for a review since left only answers that review's next load: its ticks stay in its unsent queue,
+            // and its failure is that review's, never the status of the one under way
+            if (id == reviewId) {
+                sent.onFailure { failed(git, it) }
+                done(if (sent.isSuccess) ticks - later else null)
+            }
         }
     }
 

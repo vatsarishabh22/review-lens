@@ -103,7 +103,7 @@ class ReviewService(private val project: Project) : Disposable {
             "Finish the review to post a verdict, or mark it reviewed without posting.", NotificationType.INFORMATION,
             NotificationAction.createSimpleExpiring("Finish review…") { showFinishReview(project, null) })
         if (sent.isEmpty()) return
-        HostViewed.of(project).send(git!!, sent) { took -> if (took) confirmSent(sent); fireChanged() }
+        HostViewed.of(project).send(git!!, sent) { took -> took?.let(::confirmSent); fireChanged() }
         // the panel says "Sending…" once the call has waited this long: redraw then
         AppExecutorUtil.getAppScheduledExecutorService().schedule({ if (HostViewed.of(project).waiting() > 0) fireChanged() }, HostViewed.SHOW_SENDING_MS, TimeUnit.MILLISECONDS)
     }
