@@ -144,4 +144,17 @@ class HostThreadsTest {
         t.load()
         assertNull(t.threads)
     }
+
+    @Test
+    fun `two reads of one review land in either order, and the one started last wins`() {
+        val t = threads()
+        val older = thread.copy(id = "T-old")
+        val newer = thread.copy(id = "T-new")
+        slot = GitHubSlot("PR_7", "h7", null, false)
+        answer = listOf(older)
+        // while Finish's read waits on the host, an edit's read starts after it and lands first
+        whileReading = { whileReading = {}; answer = listOf(newer); assertTrue(t.reload()); answer = listOf(older) }
+        assertTrue("an overtaken read of the review under way still read it fine", t.reload())
+        assertEquals(listOf(newer), t.threads)
+    }
 }

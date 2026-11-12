@@ -49,9 +49,10 @@ class HostThreads internal constructor(
 
     /** At load: the review's threads, or none. The loader redraws; runs the host's CLI: off EDT. */
     fun load() {
+        val ticket = ticket()
         val number = number()
         val fetched = number?.let(::fetch)
-        keep(number) { threads = fetched }
+        keep(number, ticket) { threads = fetched }
     }
 
     /**
@@ -60,20 +61,30 @@ class HostThreads internal constructor(
      * last ones stay, and the caller says they may be old.
      */
     fun reload(): Boolean {
+        val ticket = ticket()
         val number = number() ?: return false
         val read = runCatching { host().reviewSlot(number) }.onFailure { thisLogger().info("Host pending review not read", it) }
         val fetched = fetch(number)
-        val current = keep(number) { read.onSuccess { slot = it }; fetched?.let { threads = it } }
+        val current = keep(number, ticket) { read.onSuccess { slot = it }; fetched?.let { threads = it } }
         if (current && fetched != null) changed()
         return current && read.isSuccess && fetched != null
     }
 
+    private var started = 0L
+    private var written = 0L
+
+    /** Numbers each read as it starts, so the answers can be put back in that order whatever order they land in. */
+    private fun ticket() = synchronized(this) { ++started }
+
     /**
-     * Writes what was read for PR [number] only while it is still the review under way: an answer that lands after the
-     * reviewer moved on to another review is dropped, never shown as that one's. One lock for every write, so a late
-     * answer can't land between the check and a newer load's write.
+     * Writes what read [ticket] got for PR [number] only while that PR is still the review under way (an answer that
+     * lands after the reviewer moved on is dropped), and only when no read started after it was written already (two
+     * reads of one PR, a Finish check and the one after an edit, land in either order). One lock for every write. True
+     * while the PR is the one under way: a read overtaken by a newer one still read it fine.
      */
-    private fun keep(number: Int?, write: () -> Unit): Boolean = synchronized(this) { (number() == number).also { if (it) write() } }
+    private fun keep(number: Int?, ticket: Long, write: () -> Unit): Boolean = synchronized(this) {
+        (number() == number).also { current -> if (current && ticket > written) { written = ticket; write() } }
+    }
 
     /** [change]'s threads, each with the line it sits under in the file at [scopeEnd], or null when it is only listed. */
     fun threadsOn(change: FileChange, scopeEnd: String?): List<Pair<ReviewThread, Int?>> {
