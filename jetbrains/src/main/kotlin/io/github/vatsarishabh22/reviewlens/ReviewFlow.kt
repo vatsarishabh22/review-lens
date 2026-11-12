@@ -34,9 +34,11 @@ const val TITLE = "Review Lens"
 
 /**
  * Runs [work] off EDT with a progress bar, then [then] on EDT; failures surface as an error balloon, never a dialog,
- * and [failed] lets the caller put its UI back.
+ * and [failed] lets the caller put its UI back. Neither runs once [current] says what the work was for is gone (the
+ * reviewer moved to another PR or review meanwhile), so an answer never lands on what is on screen now. Every caller
+ * says what its work belongs to: `{ true }` only for work that must finish whatever happens (posting, exiting).
  */
-fun <T> background(project: Project, title: String, work: () -> T, failed: () -> Unit = {}, then: (T) -> Unit = {}) {
+fun <T> background(project: Project, title: String, work: () -> T, current: () -> Boolean, failed: () -> Unit = {}, then: (T) -> Unit = {}) {
     // not cancellable: no work here checks the indicator, so a cancel would only drop a result that still happened
     object : Task.Backgroundable(project, title, false) {
         private var result: Result<T>? = null
@@ -44,6 +46,7 @@ fun <T> background(project: Project, title: String, work: () -> T, failed: () ->
             result = runCatching(work)
         }
         override fun onSuccess() {
+            if (!current()) return
             result!!.onSuccess(then).onFailure { notify(project, "$title failed", it.message.orEmpty(), NotificationType.ERROR); failed() }
         }
     }.queue()
@@ -68,7 +71,7 @@ fun beginReview(
     val onEdt = { step: StartStep -> ApplicationManager.getApplication().invokeLater({ progress(step) }, project.disposed) }
     background(project, "Starting review of ${loaded.target.label}", {
         session.begin(loaded, range, label, onEdt).also { afterCheckout(project, session.git) }
-    }, failed) { review ->
+    }, current = { true }, failed = failed) { review ->
         val service = ReviewService.of(project)
         refreshViews(project)
         ToolWindowManager.getInstance(project).getToolWindow(TOOL_WINDOW_ID)?.activate(null)
@@ -90,7 +93,7 @@ fun finishReview(project: Project, summary: String, verdict: Verdict?, posted: (
     if (verdict == null) { endReview(project, number, "Marked as reviewed. Nothing was posted to ${service.hostName}."); return posted() }
     service.ending = ReviewService.Ending.POSTING
     // the host's refusal is the popup's to say, where the click was: caught here, so no second balloon says it too
-    background(project, "Posting your review", { runCatching { ReviewDrafts.of(project).submit(summary, verdict) } }) { result ->
+    background(project, "Posting your review", { runCatching { ReviewDrafts.of(project).submit(summary, verdict) } }, current = { true }) { result ->
         result.onSuccess { sent ->
             endReview(project, number, "${verdict.posted} on ${service.hostName}${if (sent.isEmpty()) "" else " with $sent"}.")
             posted()
@@ -131,7 +134,7 @@ private fun endReview(project: Project, finished: Int?, said: String) {
     // A failed save loses only those ticks, never the exit
     runCatching { project.serviceIfCreated<ImpactService>()?.functions()?.let { keys -> service.update { it.keepChecked(keys) } } }
         .onFailure { logger<ReviewService>().warn("Impact ticks not trimmed at exit", it) }
-    background(project, "Exiting review", { ReviewLifecycle(git).exit().also { afterCheckout(project, git) } }, failed = { service.ending = null }) { exited ->
+    background(project, "Exiting review", { ReviewLifecycle(git).exit().also { afterCheckout(project, git) } }, current = { true }, failed = { service.ending = null }) { exited ->
         service.ending = null
         refreshViews(project)
         // The "Reviewing…" balloons offer Exit, which no longer applies.
@@ -222,7 +225,7 @@ fun loadDiff(project: Project, change: FileChange, then: (SimpleDiffRequest) -> 
     val git = ReviewService.of(project).git ?: return
     background(project, "Loading diff", {
         git.show(meta.range.from, change.oldPath ?: change.path) to git.show(meta.range.to, change.path)
-    }) { (before, after) ->
+    }, current = { ReviewService.of(project).meta?.range == meta.range }) { (before, after) ->
         val factory = DiffContentFactory.getInstance()
         val fileType = FileTypeManager.getInstance().getFileTypeByFileName(change.name)
         val base = factory.create(project, before, fileType)

@@ -141,7 +141,7 @@ class ReviewBanner : EditorNotificationProvider, DumbAware {
         val session = ReviewSession(git)
         background(project, if (fetch) "Checking ${service.hostName} for new commits" else "Listing commits", {
             if (fetch) session.current(meta.target).let { (target, parent) -> session.load(target, parent) } else session.local(meta.target, head, meta.parentHead)
-        }) { loaded ->
+        }, current = { service.meta?.target?.key == meta.target.key && service.ending == null }) { loaded ->
             fun scope(range: ScopeRange, label: String) = beginReview(project, session, loaded, range, label)
             val all = scopeLabel(loaded.commits, emptyList())
             val items = buildList {

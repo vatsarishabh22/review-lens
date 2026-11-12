@@ -49,6 +49,8 @@ class PrDetailView(private val project: Project, private val onBack: () -> Unit,
     private var listFiles: Int? = null
 
     private var listed: ListedTarget? = null
+    /** Bumped at each opening of the page: an answer belongs to the opening that asked, not to the PR (reopened, it is the same object). */
+    private var opened = 0
     private var session: ReviewSession? = null
     private var loaded: LoadedTarget? = null
     private var progress: ReviewProgress? = null
@@ -74,23 +76,22 @@ class PrDetailView(private val project: Project, private val onBack: () -> Unit,
     fun open(git: GitClient, target: ListedTarget, progress: ReviewProgress?, stacked: Boolean, listFiles: Int?) {
         listed = target; this.progress = progress; this.stacked = stacked; this.listFiles = listFiles; loaded = null; own = null; picked = emptySet(); since = null; sinceChosen = false; scopePicked = false; fetchFailed = false
         session = ReviewSession(git)
+        val opening = ++opened
         build()
         val session = session!!
         background(project, "Fetching ${target.target.label}", {
             val loaded = session.load(target.target, target.parent)
             Triple(loaded, sinceLastReview(loaded.head, loaded.commits, ReviewMeta.load(git, target.target.key)?.seenHead),
                 loaded.parent?.let { git.changes(ScopeRange(loaded.start, loaded.head)) })
-        }, failed = { if (listed === target) { fetchFailed = true; showStart(); showScope() } }) { (result, sinceRange, ownChanges) ->
-            // new commits since a finished review: what's new is the scope to review, already chosen
-            if (listed === target) {
-                loaded = result; own = ownChanges; since = sinceRange; sinceChosen = sinceRange != null && progress?.newCommits == true
-                showStack(); showStats(); showStart(); showScope()
-            }
+        }, current = { opened == opening }, failed = { fetchFailed = true; showStart(); showScope() }) { (result, sinceRange, ownChanges) ->
+            // new commits since a finished review: what's new is the scope to review, already chosen; the progress as it
+            // is now, which the host's answer on what changed may have updated while this fetched
+            loaded = result; own = ownChanges; since = sinceRange; sinceChosen = sinceRange != null && this.progress?.newCommits == true
+            showStack(); showStats(); showStart(); showScope()
         }
         target.pr?.let { pr ->
             checksLabel.text = ""
-            background(project, "Loading checks for ${ReviewTarget.refOf(pr.number)}", { ReviewHosts.of(git)?.checks(pr.number) ?: Checks(ChecksState.NONE) }) { checks ->
-                if (listed !== target) return@background
+            background(project, "Loading checks for ${ReviewTarget.refOf(pr.number)}", { ReviewHosts.of(git)?.checks(pr.number) ?: Checks(ChecksState.NONE) }, current = { opened == opening }) { checks ->
                 checksLabel.text = checks.text
                 checksLabel.foreground = when (checks.state) {
                     ChecksState.FAILING -> ReviewColors.del
@@ -191,9 +192,10 @@ class PrDetailView(private val project: Project, private val onBack: () -> Unit,
 
     private fun checkWorkThenStart() {
         val git = session!!.git
+        val opening = opened
         starting = true
         setAction(stack(row(JBLabel("Checking your working tree…", AnimatedIcon.Default.INSTANCE, SwingConstants.LEFT))))
-        background(project, "Checking your working tree", { git.dirtyFiles() to git.currentRef() }, failed = ::showStart) { (dirty, branch) ->
+        background(project, "Checking your working tree", { git.dirtyFiles() to git.currentRef() }, current = { opened == opening }, failed = ::showStart) { (dirty, branch) ->
             if (dirty.isEmpty()) start(dirty, branch) else showParkCard(dirty, branch)
         }
     }

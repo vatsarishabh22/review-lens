@@ -76,17 +76,12 @@ private fun openFinishReview(project: Project, anchor: JComponent?) {
     val host = service.hostName
     val threads = HostThreads.of(project)
     val drafts = ReviewDrafts.of(project)
-    val outbox = drafts.outbox()
     val summary = JBTextArea(drafts.summary, 4, 0).apply {
         lineWrap = true; wrapStyleWord = true; font = JBFont.label(); emptyText.text = "Leave a summary (optional)"
     }
     // the threads read again, for what changed since the review loaded: null while reading, false when it failed
     var checked: Boolean? = if (service.meta?.target?.reviewable == true) null else true
     val group = ButtonGroup()
-    val scopeEnd = service.meta?.range?.to.orEmpty()
-    val viewed = service.reviewedCount()
-    // Mark as reviewed records the files viewed, so before every one is it would record nothing
-    val markLocked = if (allViewed(viewed, service.changes.size)) null else "View every file first: $viewed of ${service.changes.size} viewed"
     // null is "Mark as reviewed": nothing goes to the host, so none of its rules apply
     val choices = (Verdict.entries + null).associateWith { v -> JRadioButton(v?.label ?: "Mark as reviewed", v == Verdict.COMMENT).apply { isOpaque = false; group.add(this) } }
     var popup: JBPopup? = null
@@ -94,14 +89,22 @@ private fun openFinishReview(project: Project, anchor: JComponent?) {
     val verdict = { choices.entries.first { it.value.isSelected }.key }
     val cancel = JButton("Cancel").apply { addActionListener { popup?.cancel() }; cursor = Cursor.getPredefinedCursor(Cursor.HAND_CURSOR) }
     val submit = JButton("Submit to $host").apply { putClientProperty(DarculaButtonUI.DEFAULT_STYLE_KEY, true); cursor = Cursor.getPredefinedCursor(Cursor.HAND_CURSOR) }
-    // drafts written on another scope's version of a file go out only from that scope: say so, never skip them silently
-    val waiting = service.meta?.drafts.orEmpty().count { !it.posted && it.replyTo == null } - outbox.comments.size
     val fineprint = wrappingText("", JBFont.small()).apply { foreground = ReviewColors.muted }
     val check = JBLabel("Checking $host for new comments…", AnimatedIcon.Default.INSTANCE, SwingConstants.LEFT).apply { font = JBFont.small(); foreground = ReviewColors.muted }
     val notes = stack()
     val keep = wrappingText("", JBFont.small()).apply { foreground = ReviewColors.warn }
     val refused = wrappingText("", JBFont.small()).apply { foreground = ReviewColors.warn; isVisible = false }
+    val markHint = mutedLabel("")
+    // every redraw reads the review as it is now: the threads read again, a tick or a draft since the popup opened
     val update = {
+        val outbox = drafts.outbox()
+        val scopeEnd = service.meta?.range?.to.orEmpty()
+        val viewed = service.reviewedCount()
+        // Mark as reviewed records the files viewed, so before every one is it would record nothing
+        val markLocked = if (allViewed(viewed, service.changes.size)) null else "View every file first: $viewed of ${service.changes.size} viewed"
+        // drafts written on another scope's version of a file go out only from that scope: say so, never skip them silently
+        val waiting = service.meta?.drafts.orEmpty().count { !it.posted && it.replyTo == null } - outbox.comments.size
+        markHint.text = markLocked ?: "Nothing is posted to $host"
         val v = verdict()
         val slot = threads.slot
         val idle = service.ending == null
@@ -151,7 +154,7 @@ private fun openFinishReview(project: Project, anchor: JComponent?) {
     choices.values.forEach { it.addActionListener { update() } }
     update()
     // the hint is its own muted label under the radio, so its colour follows the theme like every other label
-    fun option(v: Verdict?, radio: JRadioButton) = listOf(radio, mutedLabel(v?.hint ?: markLocked ?: "Nothing is posted to $host").apply { border = EmptyBorder(0, textIndent(radio), 0, 0) }, vgap(4))
+    fun option(v: Verdict?, radio: JRadioButton) = listOf(radio, (v?.hint?.let { mutedLabel(it) } ?: markHint).apply { border = EmptyBorder(0, textIndent(radio), 0, 0) }, vgap(4))
     content = stack(
         JBLabel("Finish your review").apply { font = JBFont.label().asBold() }, vgap(4),
         fineprint, vgap(6),
@@ -170,9 +173,9 @@ private fun openFinishReview(project: Project, anchor: JComponent?) {
         .createPopup()
     service.onChanged(popup) { if (!popup.isDisposed) update() } // posting, exiting, a refusal: the one ending state redraws it
     if (anchor != null && anchor.isShowing) popup.showUnderneathOf(anchor) else popup.showCenteredInCurrentWindow(project)
-    if (checked == null) background(project, "Checking $host for new comments", { threads.reload() }) { read ->
+    if (checked == null) background(project, "Checking $host for new comments", { threads.reload() }, current = { !popup.isDisposed }) { read ->
         checked = read
-        if (!popup.isDisposed) update()
+        update()
     }
 }
 

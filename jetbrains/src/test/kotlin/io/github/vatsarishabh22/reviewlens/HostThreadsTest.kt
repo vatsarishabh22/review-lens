@@ -15,6 +15,8 @@ class HostThreadsTest {
     private var number: Int? = 7
     private var answer: List<ReviewThread>? = emptyList()
     private var slot: ReviewSlot? = null
+    /** What happens while the host is still answering: the reviewer may move on to another review. */
+    private var whileReading: () -> Unit = {}
     private lateinit var threads: HostThreads
 
     // a host that records each call and what the views were told meanwhile
@@ -22,7 +24,7 @@ class HostThreadsTest {
         override val name = "TestHost"
         override fun openPullRequests() = emptyList<PullRequest>()
         override fun headRef(number: Int) = ""
-        override fun reviewThreads(number: Int): List<ReviewThread> { calls += "reload"; return answer ?: throw CliException("offline") }
+        override fun reviewThreads(number: Int): List<ReviewThread> { calls += "reload"; whileReading(); return answer ?: throw CliException("offline") }
         override fun reviewSlot(number: Int): ReviewSlot = slot ?: throw CliException("not read here")
         override fun submitReview(number: Int, commit: String, summary: String, verdict: Verdict, comments: List<Draft>, replies: List<Draft>) = Unit
         override fun checks(number: Int) = Checks(ChecksState.NONE)
@@ -115,5 +117,31 @@ class HostThreadsTest {
         assertEquals(listOf(thread to 3), t.threadsOn(change, "h"))
         assertEquals(listOf(thread to null), t.threadsOn(change, "older"))
         assertEquals(emptyList<Pair<ReviewThread, Int?>>(), t.threadsOn(change, null))
+    }
+
+    @Test
+    fun `threads and slot read for a review the reviewer has since left are dropped, not shown as the next one's`() {
+        val t = threads()
+        answer = listOf(thread)
+        t.load()
+        val pending = GitHubSlot("PR_7", "h7", null, false)
+        slot = pending
+        answer = emptyList()
+        whileReading = { number = 9 } // Finish's re-read of #7 lands after #9 began
+        assertFalse(t.reload())
+        assertEquals("nothing read for #7 is written once #9 began", listOf(thread), t.threads)
+        assertNull(t.slot)
+        whileReading = {}
+        t.load()
+        assertEquals(emptyList<ReviewThread>(), t.threads)
+    }
+
+    @Test
+    fun `a load for a review the reviewer has since left doesn't replace the next one's threads`() {
+        val t = threads()
+        answer = listOf(thread)
+        whileReading = { number = 9 }
+        t.load()
+        assertNull(t.threads)
     }
 }

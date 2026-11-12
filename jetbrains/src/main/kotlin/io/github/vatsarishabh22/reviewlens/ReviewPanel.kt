@@ -62,12 +62,13 @@ class ReviewPanel(private val project: Project, private val toolWindow: ToolWind
     fun whenListed(then: (Boolean) -> Unit) {
         if (!waiting.add { listed -> if (listed) counted.add(then) else then(false) }) return
         list.loading()
+        // always current: the newest list is always the one to show, and every waiter must hear
         background(project, "Listing pull requests", {
             val git = git ?: GitClient.forProject(project.basePath!!)
             val source = ReviewTargets(git)
             val listing = source.list()
             Triple(git, listing, listing.targets.mapNotNull { t -> source.progress(t)?.let { t.target.key to it } }.toMap())
-        }, failed = { list.failed(); waiting.settle(false) }) { (git, listing, progress) ->
+        }, current = { true }, failed = { list.failed(); waiting.settle(false) }) { (git, listing, progress) ->
             this.git = git
             this.progress = progress
             this.listing = listing
@@ -92,8 +93,8 @@ class ReviewPanel(private val project: Project, private val toolWindow: ToolWind
         list.counts(counts.counts())
         background(project, "Counting stacked pull requests", {
             ReviewHosts.of(git)?.let { host -> counts.fill(listing.stackKeys.values, host::changedFiles) }
-        }) { filled ->
-            if (filled != null && this.listing === listing) list.counts(filled)
+        }, current = { this.listing === listing }) { filled ->
+            if (filled != null) list.counts(filled)
         }
     }
 
@@ -104,13 +105,14 @@ class ReviewPanel(private val project: Project, private val toolWindow: ToolWind
     private fun fillChangedSince(git: GitClient, listing: Listing, done: () -> Unit) {
         val moved = listing.targets.filter { progress[it.target.key]?.asksHost == true }
         if (moved.isEmpty()) return done()
+        // always current: every waiter must hear, so the listing is checked inside
         background(project, "Checking what changed since your reviews", {
             // ponytail: one call per moved PR, all at once; one aliased query if many PRs move between lists.
             // Quiet when the host can't be asked: the pills just keep "New commits"
             val viewed = runCatching { ReviewHosts.of(git)?.viewed }.getOrNull()
             val targets = ReviewTargets(git)
             if (viewed == null) emptyMap() else askAll(moved) { targets.changedSince(it, viewed) }.mapKeys { it.key.target.key }
-        }, failed = done) { changed ->
+        }, current = { true }, failed = done) { changed ->
             try {
                 if (this.listing === listing && changed.isNotEmpty()) {
                     progress = progress.mapValues { (key, p) -> changed[key]?.let { p.copy(changedSince = it) } ?: p }

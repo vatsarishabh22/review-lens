@@ -49,7 +49,9 @@ class HostThreads internal constructor(
 
     /** At load: the review's threads, or none. The loader redraws; runs the host's CLI: off EDT. */
     fun load() {
-        threads = number()?.let(::fetch)
+        val number = number()
+        val fetched = number?.let(::fetch)
+        keep(number) { threads = fetched }
     }
 
     /**
@@ -59,10 +61,19 @@ class HostThreads internal constructor(
      */
     fun reload(): Boolean {
         val number = number() ?: return false
-        val read = runCatching { host().reviewSlot(number) }.onSuccess { slot = it }.onFailure { thisLogger().info("Host pending review not read", it) }
-        val fetched = fetch(number)?.also { threads = it; changed() }
-        return read.isSuccess && fetched != null
+        val read = runCatching { host().reviewSlot(number) }.onFailure { thisLogger().info("Host pending review not read", it) }
+        val fetched = fetch(number)
+        val current = keep(number) { read.onSuccess { slot = it }; fetched?.let { threads = it } }
+        if (current && fetched != null) changed()
+        return current && read.isSuccess && fetched != null
     }
+
+    /**
+     * Writes what was read for PR [number] only while it is still the review under way: an answer that lands after the
+     * reviewer moved on to another review is dropped, never shown as that one's. One lock for every write, so a late
+     * answer can't land between the check and a newer load's write.
+     */
+    private fun keep(number: Int?, write: () -> Unit): Boolean = synchronized(this) { (number() == number).also { if (it) write() } }
 
     /** [change]'s threads, each with the line it sits under in the file at [scopeEnd], or null when it is only listed. */
     fun threadsOn(change: FileChange, scopeEnd: String?): List<Pair<ReviewThread, Int?>> {
