@@ -68,7 +68,7 @@ class SpecCasesTest(private val rule: String) {
             "stack-parent" to { g ->
                 val seen = g.getAsJsonObject("seen").entrySet().associate { (n, s) -> n.toInt() to SeenParent(s.asJsonObject["number"].asInt, s.asJsonObject.str("head")!!, s.asJsonObject["onBranch"].asBoolean) }
                 val view = stackView(g.getAsJsonArray("prs").map { it.asJsonObject }.map { p ->
-                    PullRequest(p["number"].asInt, "t", p.str("head")!!, p.str("headSha")!!, p.str("base")!!, Person("a", "a"), commits = p.strings("commits"), fromFork = p["fromFork"].asBoolean)
+                    PullRequest(p["number"].asInt, "t", p.str("head")!!, p.str("headSha")!!, p.str("base")!!, Person("a", "a"), commits = p.get("commits")?.takeUnless { it.isJsonNull }?.asJsonArray?.map { it.asString }, fromFork = p["fromFork"].asBoolean)
                 }, seen)
                 tree(linkedMapOf("parents" to view.parents.entries.associate { (n, p) -> n.toString() to linkedMapOf("number" to p.number, "moved" to p.moved, "onBranch" to p.onBranch) },
                     "seen" to view.seen.mapKeys { it.key.toString() }))

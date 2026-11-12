@@ -30,7 +30,8 @@ class GhClient(private val root: Path) : ReviewHost, ViewedSync {
             "number,title,headRefName,headRefOid,baseRefName,author,body,additions,deletions,changedFiles,updatedAt,reviewRequests,isCrossRepository")
         val prs = parsePullRequests(json, runCatching { viewerLogin() }.getOrNull())
         val ids = commits.get()
-        return prs.map { it.copy(commits = ids[it.number].orEmpty()) }
+        // a failed lookup, or a PR it didn't list, leaves the commits unknown: never "no commits", which reads as "no parent"
+        return prs.map { it.copy(commits = ids[it.number]) }
     }
 
     /** This viewer's GitHub "Viewed" ticks for PR [number], every page; owner and repo come from the checkout's remote. */

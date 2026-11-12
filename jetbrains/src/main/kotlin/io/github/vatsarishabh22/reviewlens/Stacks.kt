@@ -18,16 +18,17 @@ data class StackView(val parents: Map<Int, StackParent>, val seen: Map<Int, Seen
  * exact fact: the open PR whose head is in its commits, the closest when several are: the head sitting latest in this
  * PR's own list (the host cuts every list at 100, so list lengths can't tell). A PR at this PR's own head is never its
  * parent. The [seen] note speaks only for a parent that moved: the PR still holds the head the note saw, and no head
- * the exact fact finds sits later. Never a guess.
+ * the exact fact finds sits later. A PR whose commits are unknown finds no parent from them this time, and keeps its note. Never a guess.
  */
 fun stackView(prs: List<PullRequest>, seen: Map<Int, SeenParent>): StackView {
     val open = prs.associateBy { it.number }
     val parents = prs.mapNotNull { pr ->
-        val at = pr.commits.withIndex().associate { (i, sha) -> sha to i }
         // a PR at this PR's own head holds its head as this one holds theirs: neither is built on the other
         val others = prs.filter { it.number != pr.number && it.headSha != pr.headSha }
         // a PR's base branch lives here: a fork's same-named branch (a contributor's main) is no one's parent
         others.firstOrNull { it.head == pr.base && !it.fromFork }?.let { return@mapNotNull pr.number to StackParent(it.number, onBranch = true) }
+        // unknown commits find no parent, as none do: only the note below tells the two apart
+        val at = pr.commits.orEmpty().withIndex().associate { (i, sha) -> sha to i }
         val exact = others.filter { it.headSha in at }.maxByOrNull { at.getValue(it.headSha) }
         val moved = seen[pr.number]?.let { note ->
             others.firstOrNull { it.number == note.number }?.takeIf { note.head in at && (exact == null || at.getValue(exact.headSha) < at.getValue(note.head)) }
@@ -36,7 +37,9 @@ fun stackView(prs: List<PullRequest>, seen: Map<Int, SeenParent>): StackView {
     }.toMap()
     // a moved parent keeps the note that proves it; a built one is written as it is now
     val notes = parents.mapNotNull { (n, p) -> (if (p.moved) seen[n] else open[p.number]?.let { SeenParent(p.number, it.headSha, p.onBranch) })?.let { n to it } }.toMap()
-    return StackView(parents, notes)
+    // a PR whose commits the host didn't say proves nothing this time: its note waits for a list that can check it
+    val unchecked = seen.filterKeys { n -> n !in parents && open[n]?.let { it.commits == null } == true }
+    return StackView(parents, notes + unchecked)
 }
 
 /**

@@ -1235,7 +1235,7 @@
       }
     },
     {
-      "name": "the host gave no commits: no stacks",
+      "name": "the host didn't say the commits (its lookup failed): no stacks this time, and the notes are kept for the next list",
       "given": {
         "prs": [
           {
@@ -1243,7 +1243,7 @@
             "head": "b1",
             "headSha": "a1",
             "base": "main",
-            "commits": [],
+            "commits": null,
             "fromFork": false
           },
           {
@@ -1251,15 +1251,27 @@
             "head": "b2",
             "headSha": "b1",
             "base": "main",
-            "commits": [],
+            "commits": null,
             "fromFork": false
           }
         ],
-        "seen": {}
+        "seen": {
+          "2": {
+            "number": 1,
+            "head": "a1",
+            "onBranch": false
+          }
+        }
       },
       "expect": {
         "parents": {},
-        "seen": {}
+        "seen": {
+          "2": {
+            "number": 1,
+            "head": "a1",
+            "onBranch": false
+          }
+        }
       }
     },
     {
