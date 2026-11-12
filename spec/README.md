@@ -29,9 +29,12 @@ flowchart LR
 | Exit | Tracked files written during the review (the editor rewriting its settings) that differ between the review commit and `originalRef` would block the checkout: only those are parked first as `review-lens: changed during review of <label>`, never applied, and the editor names them (a re-scope does the same before moving). Then back to `originalRef`, pop the stash by its message (`--index` first, plain pop as fallback; a conflict keeps the stash), delete `active.json`. `<key>.json` stays for next time. | `git diff --name-only HEAD` ∩ `git diff --name-only HEAD <originalRef>` · `git stash push -m "review-lens: changed during review of <label>" -- <those paths>` · `git checkout <originalRef>` · `git stash list --format=%gd%x09%gs` · `git stash pop --index stash@{n}` |
 
 Start, a re-scope, Finish and Exit never run under one another: while one runs (the checkout and the saved review
-change under it), the others are greyed and refused, and come back once it is done. The saved review (`<key>.json`) is changed one change at a time, each made to
+change under it), the others are greyed and refused, and come back once it is done; only the step that took the busy
+state frees it, so an older step's end never frees a newer one. The saved review (`<key>.json`) is changed one change at a time, each made to
 what it holds then, so a tick or a draft made during a re-scope is kept; a load's answer from the host, worked out from
-what was read before asking, is written only if nothing changed the file meanwhile (the next load folds the host in again).
+what was read before asking, is written only if nothing changed the file meanwhile (the next load folds the host in again). What the editor shows is
+the file as the last change left it and, of two loads landing in either order, the one started last, with what that one heard from the host (where ticks go,
+its files, the sync status).
 
 Badges: ⭐ not viewed · ✅ viewed at the current version · 🔄 changed since viewed.
 
