@@ -35,7 +35,7 @@ class GhClient(private val root: Path) : ReviewHost, ViewedSync {
 
     /** This viewer's GitHub "Viewed" ticks for PR [number], every page; owner and repo come from the checkout's remote. */
     override fun viewedStates(number: Int): ViewedStates = parseViewedStates(runCli(root, "gh", "api", "graphql", "--paginate",
-        "-F", "owner={owner}", "-F", "name={repo}", "-F", "number=$number", "-f", "query=$VIEWED_QUERY", "--jq", VIEWED_JQ))
+        "-F", "owner={owner}", "-F", "name={repo}", "-F", "number=$number", "-f", "query=$VIEWED_QUERY", "--jq", VIEWED_JQ, timeoutMs = VIEWED_TIMEOUT_MS))
 
     /** Everyone's review threads on PR [number], every page. */
     override fun reviewThreads(number: Int): List<ReviewThread> = parseReviewThreads(runCli(root, "gh", "api", "graphql", "--paginate",

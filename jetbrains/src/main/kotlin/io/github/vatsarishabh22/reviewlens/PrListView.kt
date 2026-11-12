@@ -80,6 +80,12 @@ class PrListView(private val onPick: (ListedTarget) -> Unit, onRefresh: () -> Un
         rebuild()
     }
 
+    /** The reviews' progress again, once the host said what changed since them. */
+    fun progress(progress: Map<String, ReviewProgress>) {
+        this.progress = progress
+        rebuild()
+    }
+
     /** Stacked PRs' own sizes, as they arrive. */
     fun counts(counts: Map<String, Int>) {
         this.counts = counts

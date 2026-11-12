@@ -37,6 +37,9 @@ data class ReviewMeta(
         return copy(checked = (checked.orEmpty() + (function to CheckedFunction(hash, places.sorted()))).ifEmpty { null })
     }
 
+    /** Of [changes] (the scope's files now), the ones ticked at the version they have: "x of N viewed". */
+    fun viewedNow(changes: List<FileChange>): List<FileChange> = changes.filter { reviewed[it.path] == it.newBlob }
+
     /** At Exit: keeps the ticks of [functions] (the scope's changed functions) and drops the rest. */
     fun keepChecked(functions: Set<String>): ReviewMeta = copy(checked = checked?.filterKeys { it in functions }?.ifEmpty { null })
 
@@ -96,13 +99,20 @@ fun allViewed(viewed: Int, total: Int) = total > 0 && viewed == total
 
 /**
  * A started review's line in the PR list (spec/README.md, the list's table; spec/cases/list-status.json). [ticked] is
- * any tick, of any version; [headMoved] is the PR's head past the one you last reviewed.
+ * any tick, of any version; [headMoved] is the PR's head past the one you last reviewed; [changedSince] is how many of
+ * the files you viewed the host marks changed since (null until it answers, or with no host to ask).
  */
-data class ReviewProgress(val viewed: Int, val total: Int, val verdict: Verdict? = null, val headMoved: Boolean = false, val drafts: Int = 0, val ticked: Boolean = viewed > 0) {
+data class ReviewProgress(
+    val viewed: Int, val total: Int, val verdict: Verdict? = null, val headMoved: Boolean = false, val drafts: Int = 0,
+    val ticked: Boolean = viewed > 0, val changedSince: Int? = null,
+) {
     private val allViewed get() = allViewed(viewed, total)
 
-    /** A push is news only to a review that read or posted something. */
-    val newCommits get() = headMoved && (ticked || verdict != null)
+    /** Whether the host is asked for [changedSince]: a moved head on a review with files viewed at the version last reviewed. */
+    val asksHost get() = headMoved && viewed > 0
+
+    /** A push is news only to a review that read or posted something, and not once the host says no file you viewed changed (a rebase). */
+    val newCommits get() = headMoved && (ticked || verdict != null) && !(ticked && changedSince == 0)
 
     val done get() = !newCommits && (allViewed || verdict?.final == true)
 
@@ -115,12 +125,24 @@ data class ReviewProgress(val viewed: Int, val total: Int, val verdict: Verdict?
 
     /** The PR list's pill. */
     val label get() = when {
-        newCommits -> "🔄 New commits since your review"
+        newCommits -> changedSince?.takeIf { it > 0 }?.let { "🔄 ${files(it)} changed since your review" } ?: "🔄 New commits since your review"
         allViewed -> "✓ Reviewed · ${verdict?.done ?: "$viewed of $total"}"
         verdict != null -> "${if (done) "✓ " else ""}${verdict.done.replaceFirstChar(Char::uppercase)} · $viewed of $total viewed"
         !ticked && drafts > 0 -> "Resume · $drafts ${if (drafts == 1) "draft" else "drafts"}"
         else -> "Resume · $viewed of $total viewed"
     }
+}
+
+/**
+ * How many of [viewedThen] (the files you viewed at the version you last reviewed) the host marks changed since
+ * (DISMISSED: it un-marks a file once its content changes, never for a rebase). Null when the host can't say: ticks it
+ * hasn't got yet ([unsent]), or none of [viewedThen] ticked on it at all (another login, ticks from before the sync);
+ * and null rather than 0 when the PR now has files outside your review's [scope] (a new file, a narrowed scope, a
+ * stacked PR's parent), so a push that only touched those is never taken for a rebase.
+ */
+fun changedSince(viewedThen: Collection<String>, scope: Collection<String>, host: Map<String, ViewedState>, unsent: Map<String, Boolean>?): Int? {
+    if (!unsent.isNullOrEmpty() || viewedThen.none { host[it] == ViewedState.VIEWED || host[it] == ViewedState.DISMISSED }) return null
+    return viewedThen.count { host[it] == ViewedState.DISMISSED }.takeIf { it > 0 || scope.containsAll(host.keys) }
 }
 
 /** True when the PR's [head] on GitHub is not the one this review last saw; unknown heads (no gh, a branch) never claim it. */

@@ -41,7 +41,15 @@ class ReviewTargets(private val git: GitClient) {
         val drafts = meta.drafts.orEmpty().count { !it.posted }
         if (meta.reviewed.isEmpty() && meta.verdict == null && drafts == 0) return null
         val changes = runCatching { git.changes(meta.range) }.getOrNull() ?: return null
-        return ReviewProgress(changes.count { meta.reviewed[it.path] == it.newBlob }, changes.size, meta.verdict, meta.headMoved(listed.pr?.headSha), drafts, meta.reviewed.isNotEmpty())
+        return ReviewProgress(meta.viewedNow(changes).size, changes.size, meta.verdict, meta.headMoved(listed.pr?.headSha), drafts, meta.reviewed.isNotEmpty())
+    }
+
+    /** For a review whose head moved, how many of the files you viewed the host marks changed since; null when it can't say. Runs the host's CLI. */
+    fun changedSince(listed: ListedTarget, viewed: ViewedSync): Int? {
+        val number = listed.pr?.number ?: return null
+        val meta = ReviewMeta.load(git, listed.target.key) ?: return null
+        val changes = git.changes(meta.range)
+        return changedSince(meta.viewedNow(changes).map { it.path }, changes.map { it.path }, viewed.viewedStates(number).files, meta.unsent)
     }
 
     private fun branches(): List<ListedTarget> {

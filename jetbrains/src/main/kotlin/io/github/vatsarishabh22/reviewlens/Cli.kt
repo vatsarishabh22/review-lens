@@ -4,6 +4,7 @@ import com.intellij.execution.configurations.GeneralCommandLine
 import com.intellij.execution.util.ExecUtil
 import com.intellij.openapi.diagnostic.logger
 import java.nio.file.Path
+import java.util.concurrent.Executors
 
 /** A command that exited non-zero; [stdout] keeps what it printed (`gh api` prints GitHub's refusal there). */
 class CliException(message: String, val stdout: String = "", val stderr: String = "") : RuntimeException(message)
@@ -32,4 +33,15 @@ fun runCli(dir: Path, vararg command: String, trim: Boolean = true, timeoutMs: I
         throw CliException(cliReason(output.stderr, command.first()), output.stdout, output.stderr.trim())
     }
     return if (trim) output.stdout.trim() else output.stdout
+}
+
+/** Asks [ask] about every key side by side, a thread each (at most 16), so the slowest host call sets the wait; a key it can't answer (null, or a throw) is left out. */
+fun <K, V : Any> askAll(keys: Collection<K>, ask: (K) -> V?): Map<K, V> {
+    if (keys.isEmpty()) return emptyMap()
+    val pool = Executors.newFixedThreadPool(keys.size.coerceAtMost(16))
+    try {
+        return keys.map { key -> key to pool.submit<V?> { runCatching { ask(key) }.getOrNull() } }.mapNotNull { (key, answer) -> answer.get()?.let { key to it } }.toMap()
+    } finally {
+        pool.shutdown()
+    }
 }

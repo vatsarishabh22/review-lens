@@ -4,7 +4,6 @@ import com.google.gson.GsonBuilder
 import java.nio.file.Files
 import java.nio.file.StandardCopyOption.ATOMIC_MOVE
 import java.nio.file.StandardCopyOption.REPLACE_EXISTING
-import java.util.concurrent.Executors
 
 /**
  * `.git/review-lens/stacks.json` (spec/README.md, Stacks): the parents the last list saw, and each stacked PR's own file
@@ -34,14 +33,7 @@ class StackStore(private val git: GitClient) {
      */
     fun fill(keys: Collection<String>, compare: (from: String, to: String) -> Int): Map<String, Int> {
         val kept = counts().filterKeys { it in keys }
-        val pool = Executors.newFixedThreadPool((keys.size - kept.size).coerceIn(1, 16))
-        val asked = try {
-            keys.filter { it !in kept }.map { key -> key to pool.submit<Int?> { runCatching { compare(key.substringBefore(".."), key.substringAfter("..")) }.getOrNull() } }
-                .mapNotNull { (key, answer) -> answer.get()?.let { key to it } }.toMap()
-        } finally {
-            pool.shutdown()
-        }
-        val counts = kept + asked
+        val counts = kept + askAll(keys.filter { it !in kept }) { key -> compare(key.substringBefore(".."), key.substringAfter("..")) }
         update { saved -> Saved(saved.parents, counts) to Unit }
         return counts
     }

@@ -23,4 +23,17 @@ class CliTest {
     fun `a command within its time limit answers`() {
         assertEquals("hi", runCli(dir, "echo", "hi", timeoutMs = 5_000))
     }
+
+    @Test
+    fun `asking all at once keeps every answer, leaves out a refusal or a null, and runs the calls side by side`() {
+        val bothRunning = java.util.concurrent.CountDownLatch(2)
+        val answers = askAll(listOf(1, 2, 3, 4)) { n ->
+            when (n) {
+                2 -> throw CliException("no")
+                4 -> null
+                else -> { bothRunning.countDown(); check(bothRunning.await(5, java.util.concurrent.TimeUnit.SECONDS)) { "one call waited on the other" }; n * 10 }
+            }
+        }
+        assertEquals(mapOf(1 to 10, 3 to 30), answers)
+    }
 }

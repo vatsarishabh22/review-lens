@@ -62,7 +62,7 @@ class SpecCasesTest(private val rule: String) {
                 range(resolveScope(g.str("mergeBase")!!, all, picked), scopeLabel(all, picked))
             },
             "list-status" to { g ->
-                val p = ReviewProgress(g["viewed"].asInt, g["total"].asInt, g.str("verdict")?.let(Verdict::valueOf), g["headMoved"].asBoolean, g["drafts"].asInt, g["ticked"].asBoolean)
+                val p = ReviewProgress(g["viewed"].asInt, g["total"].asInt, g.str("verdict")?.let(Verdict::valueOf), g["headMoved"].asBoolean, g["drafts"].asInt, g["ticked"].asBoolean, g["changedSince"]?.takeUnless { it.isJsonNull }?.asInt)
                 JsonObject().apply { addProperty("label", p.label); addProperty("button", p.startLabel(g["sinceOffered"].asBoolean)); addProperty("done", p.done) }
             },
             "stack-parent" to { g ->

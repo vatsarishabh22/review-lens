@@ -1,6 +1,6 @@
 {
   "rule": "list-status",
-  "about": "A started PR's line and button in the PR list (spec/README.md, the list's table). `ticked` is any tick, of any version (it outranks drafts); `headMoved` is the PR's head past the one you last reviewed, news only to a review that read or posted something; `sinceOffered` is whether \"Since your last review\" can be offered.",
+  "about": "A started PR's line and button in the PR list (spec/README.md, the list's table). `ticked` is any tick, of any version (it outranks drafts); `headMoved` is the PR's head past the one you last reviewed, news only to a review that read or posted something; `changedSince` (optional) is how many viewed files the host marks changed since, null until it answers; `sinceOffered` is whether \"Since your last review\" can be offered.",
   "cases": [
     {
       "name": "ticks only",
@@ -254,6 +254,114 @@
       "expect": {
         "label": "Resume · 2 drafts",
         "button": "Resume review",
+        "done": false
+      }
+    },
+    {
+      "name": "the host counts two viewed files changed since",
+      "given": {
+        "viewed": 3,
+        "ticked": true,
+        "total": 5,
+        "verdict": "APPROVE",
+        "headMoved": true,
+        "drafts": 0,
+        "sinceOffered": true,
+        "changedSince": 2
+      },
+      "expect": {
+        "label": "🔄 2 files changed since your review",
+        "button": "Review new commits",
+        "done": false
+      }
+    },
+    {
+      "name": "one viewed file changed since",
+      "given": {
+        "viewed": 3,
+        "ticked": true,
+        "total": 5,
+        "verdict": "APPROVE",
+        "headMoved": true,
+        "drafts": 0,
+        "sinceOffered": true,
+        "changedSince": 1
+      },
+      "expect": {
+        "label": "🔄 1 file changed since your review",
+        "button": "Review new commits",
+        "done": false
+      }
+    },
+    {
+      "name": "a rebase changed none of the viewed files: not news",
+      "given": {
+        "viewed": 3,
+        "ticked": true,
+        "total": 5,
+        "verdict": "APPROVE",
+        "headMoved": true,
+        "drafts": 0,
+        "sinceOffered": true,
+        "changedSince": 0
+      },
+      "expect": {
+        "label": "✓ Approved · 3 of 5 viewed",
+        "button": "Review again",
+        "done": true
+      }
+    },
+    {
+      "name": "a verdict with nothing ticked stays news whatever the host counts",
+      "given": {
+        "viewed": 0,
+        "ticked": false,
+        "total": 5,
+        "verdict": "APPROVE",
+        "headMoved": true,
+        "drafts": 0,
+        "sinceOffered": true,
+        "changedSince": 0
+      },
+      "expect": {
+        "label": "🔄 New commits since your review",
+        "button": "Review new commits",
+        "done": false
+      }
+    },
+    {
+      "name": "a rebase on a review with no verdict yet: not news",
+      "given": {
+        "viewed": 3,
+        "ticked": true,
+        "total": 5,
+        "verdict": null,
+        "headMoved": true,
+        "drafts": 0,
+        "sinceOffered": true,
+        "changedSince": 0
+      },
+      "expect": {
+        "label": "Resume · 3 of 5 viewed",
+        "button": "Resume review",
+        "done": false
+      }
+    },
+    {
+      "name": "ticks and a moved head while the host hasn't said (or can't)",
+      "given": {
+        "viewed": 3,
+        "ticked": true,
+        "total": 5,
+        "verdict": null,
+        "headMoved": true,
+        "drafts": 0,
+        "sinceOffered": true,
+        "changedSince": null
+      },
+      "expect": {
+        "label": "🔄 New commits since your review",
+        "button": "Review new commits",
         "done": false
       }
     }

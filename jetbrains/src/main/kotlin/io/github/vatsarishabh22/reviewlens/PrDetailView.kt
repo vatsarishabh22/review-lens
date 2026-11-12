@@ -54,6 +54,10 @@ class PrDetailView(private val project: Project, private val onBack: () -> Unit,
     /** "Since your last review" for a returning reviewer (null when nothing is new), and whether it is the chosen scope. */
     private var since: Pair<ScopeRange, String>? = null
     private var sinceChosen = false
+    /** The scope was picked by hand: a later count from the host leaves it alone. */
+    private var scopePicked = false
+    /** Start review was clicked (checking, the park card, the steps): a later count changes nothing on screen. */
+    private var starting = false
     /** The fetch failed (offline, no access): say so and offer a retry instead of "Fetching…" forever. */
     private var fetchFailed = false
 
@@ -63,7 +67,7 @@ class PrDetailView(private val project: Project, private val onBack: () -> Unit,
 
     /** Shows [target] and starts fetching it; [progress] when the reviewer has started this PR before. */
     fun open(git: GitClient, target: ListedTarget, progress: ReviewProgress?) {
-        listed = target; this.progress = progress; loaded = null; own = null; picked = emptySet(); since = null; sinceChosen = false; fetchFailed = false
+        listed = target; this.progress = progress; loaded = null; own = null; picked = emptySet(); since = null; sinceChosen = false; scopePicked = false; fetchFailed = false
         session = ReviewSession(git)
         build()
         val session = session!!
@@ -90,6 +94,15 @@ class PrDetailView(private val project: Project, private val onBack: () -> Unit,
                 }
             }
         }
+    }
+
+    /** The open PR's progress again, once the host said what changed since: its button, and its pre-chosen scope unless picked by hand. */
+    fun progress(all: Map<String, ReviewProgress>) {
+        val p = all[listed?.target?.key ?: return] ?: return
+        progress = p
+        if (starting) return
+        if (loaded != null && !scopePicked) sinceChosen = since != null && p.newCommits
+        showStart(); showScope()
     }
 
     private fun build() {
@@ -152,6 +165,7 @@ class PrDetailView(private val project: Project, private val onBack: () -> Unit,
     }
 
     private fun showStart() {
+        starting = false
         val ready = loaded != null && loaded!!.commits.isNotEmpty()
         val start = primaryButton(progress?.startLabel(since != null) ?: "Start review").apply {
             isEnabled = ready
@@ -175,6 +189,7 @@ class PrDetailView(private val project: Project, private val onBack: () -> Unit,
 
     private fun checkWorkThenStart() {
         val git = session!!.git
+        starting = true
         setAction(stack(row(JBLabel("Checking your working tree…", AnimatedIcon.Default.INSTANCE, SwingConstants.LEFT))))
         background(project, "Checking your working tree", { git.dirtyFiles() to git.currentRef() }, failed = ::showStart) { (dirty, branch) ->
             if (dirty.isEmpty()) start(dirty, branch) else showParkCard(dirty, branch)
@@ -243,7 +258,7 @@ class PrDetailView(private val project: Project, private val onBack: () -> Unit,
         val all = JRadioButton().apply { isSelected = picked.isEmpty() && !sinceChosen; isOpaque = false }
         val whole = loaded.parent?.let { "Everything this PR adds on top of ${ReviewTarget.refOf(it)}" } ?: "The whole PR against $base"
         box.add(scopeRow(all, stack(JBLabel("All commits").apply { font = JBFont.label().asBold() }, mutedLabel(whole))) {
-            picked = emptySet(); sinceChosen = false; showScope()
+            picked = emptySet(); sinceChosen = false; scopePicked = true; showScope()
         })
         since?.let { (range, _) ->
             val radio = JRadioButton().apply { isSelected = sinceChosen; isOpaque = false }
@@ -251,7 +266,7 @@ class PrDetailView(private val project: Project, private val onBack: () -> Unit,
             box.add(divider())
             box.add(scopeRow(radio, stack(JBLabel("Since your last review").apply { font = JBFont.label().asBold() },
                 mutedLabel("$count ${if (count == 1) "commit" else "commits"} pushed after you last looked"))) {
-                picked = emptySet(); sinceChosen = true; showScope()
+                picked = emptySet(); sinceChosen = true; scopePicked = true; showScope()
             })
         }
         loaded.commits.forEachIndexed { i, commit ->
@@ -259,7 +274,7 @@ class PrDetailView(private val project: Project, private val onBack: () -> Unit,
             val subject = wrappingText("${commit.sha.take(7)}  ${commit.subject}")
             val who = mutedLabel(listOf(commit.author, if (commit.time > 0) ago(commit.time * 1000) else "").filter { it.isNotEmpty() }.joinToString(" · "))
             box.add(divider())
-            box.add(scopeRow(check, stack(subject, row(who))) { picked = toggleScope(picked, i); sinceChosen = false; showScope() })
+            box.add(scopeRow(check, stack(subject, row(who))) { picked = toggleScope(picked, i); sinceChosen = false; scopePicked = true; showScope() })
         }
         scopeSlot.removeAll(); scopeSlot.add(box); scopeSlot.revalidate(); scopeSlot.repaint()
     }

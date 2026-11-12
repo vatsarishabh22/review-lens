@@ -33,7 +33,9 @@ class ReviewPanel(private val project: Project, private val toolWindow: ToolWind
     private var progress: Map<String, ReviewProgress> = emptyMap()
     private var listing: Listing? = null
     private var wasActive: Boolean? = null
+    /** Waiting on the listing in flight; once it is in, they wait on its host counts ([counted]), and a new load may start. */
     private val waiting = Waiters()
+    private var counted = Waiters()
 
     init {
         add(list, LIST); add(detail, DETAIL); add(files, FILES)
@@ -58,7 +60,7 @@ class ReviewPanel(private val project: Project, private val toolWindow: ToolWind
 
     /** Runs [then] (on EDT) once a listing started now, or the one already in flight, came in (true) or failed. */
     fun whenListed(then: (Boolean) -> Unit) {
-        if (!waiting.add(then)) return
+        if (!waiting.add { listed -> if (listed) counted.add(then) else then(false) }) return
         list.loading()
         background(project, "Listing pull requests", {
             val git = git ?: GitClient.forProject(project.basePath!!)
@@ -69,10 +71,17 @@ class ReviewPanel(private val project: Project, private val toolWindow: ToolWind
             this.git = git
             this.progress = progress
             this.listing = listing
+            // the next load may start once this list is in; those waiting (a Finish's next PR) hear once its counts are in
+            // too; whatever throws, neither is left hanging (a second settle reaches no one)
+            // ponytail: a Finish reads the panel's newest listing; if a second load lands before this one's counts, it may
+            // read pills still waiting on theirs (a link to a PR only rebased); per-listing answers if that ever shows
+            val counts = Waiters().also { counted = it }
             try {
                 list.show(listing, progress)
                 fillStackCounts(git, listing)
-            } finally { waiting.settle(true) } // whatever drawing throws, the next load is never blocked behind this one
+                waiting.settle(true)
+                fillChangedSince(git, listing) { counts.settle(true) }
+            } catch (e: Throwable) { waiting.settle(true); counts.settle(true); throw e }
         }
     }
 
@@ -85,6 +94,30 @@ class ReviewPanel(private val project: Project, private val toolWindow: ToolWind
             ReviewHosts.of(git)?.let { host -> counts.fill(listing.stackKeys.values, host::changedFiles) }
         }) { filled ->
             if (filled != null && this.listing === listing) list.counts(filled)
+        }
+    }
+
+    /**
+     * For each PR you ticked files on whose head moved, how many of those files the host marks changed since, asked
+     * while the list is already up: it then says "🔄 k files changed since your review", or nothing new for a rebase.
+     */
+    private fun fillChangedSince(git: GitClient, listing: Listing, done: () -> Unit) {
+        val moved = listing.targets.filter { progress[it.target.key]?.asksHost == true }
+        if (moved.isEmpty()) return done()
+        background(project, "Checking what changed since your reviews", {
+            // ponytail: one call per moved PR, all at once; one aliased query if many PRs move between lists.
+            // Quiet when the host can't be asked: the pills just keep "New commits"
+            val viewed = runCatching { ReviewHosts.of(git)?.viewed }.getOrNull()
+            val targets = ReviewTargets(git)
+            if (viewed == null) emptyMap() else askAll(moved) { targets.changedSince(it, viewed) }.mapKeys { it.key.target.key }
+        }, failed = done) { changed ->
+            try {
+                if (this.listing === listing && changed.isNotEmpty()) {
+                    progress = progress.mapValues { (key, p) -> changed[key]?.let { p.copy(changedSince = it) } ?: p }
+                    list.progress(progress)
+                    detail.progress(progress)
+                }
+            } finally { done() }
         }
     }
 

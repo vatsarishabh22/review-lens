@@ -35,7 +35,7 @@ in its saved scope (x of N files viewed at their current version); a PR you only
 
 | State | Says | Button |
 |---|---|---|
-| Its head on GitHub (`headRefOid`) moved past the head you last reviewed (`seenHead`, else `range.to`), and the host marks files you viewed as changed since | 🔄 *k* files changed since your review | Review new commits (pre-selects "Since your last review"); Review again when a force-push dropped `seenHead` |
+| Its head on GitHub (`headRefOid`) moved past the head you last reviewed (`seenHead`, else `range.to`), and the host marks files you viewed as changed since | 🔄 *k* files changed since your review; 🔄 New commits since your review until the host answers, without one, or for a verdict with nothing ticked | Review new commits (pre-selects "Since your last review"); Review again when a force-push dropped `seenHead` |
 | `verdict` APPROVE / REQUEST_CHANGES (final on GitHub, whatever was read) | ✓ Approved · x of N viewed / ✓ Changes requested · x of N viewed; ✓ Reviewed · approved once x = N | Review again |
 | Every file viewed | ✓ Reviewed · commented, or · N of N without a verdict | Review again |
 | `verdict` COMMENT | Commented · x of N viewed | Resume review |
@@ -43,7 +43,14 @@ in its saved scope (x of N files viewed at their current version); a PR you only
 | Only pending drafts | Resume · *d* drafts | Resume review |
 
 "Review requested" shows beside any of these while your login is in `reviewRequests`. A moved head whose files the host
-doesn't mark changed (a rebase that changed none of them) is not news.
+doesn't mark changed (a rebase that changed none of them) is not news: GitHub keeps a file's Viewed through a rebase or an
+amend that leaves its content alone, and un-marks it (DISMISSED) once its content changes, even if a later push puts the
+viewed content back (measured). The list shows at once; *k* is asked of the host afterwards, for every moved PR with files
+viewed at the version you last reviewed, all at once (GitHub: `pullRequest.files.viewerViewedState`), counting those
+files it marks DISMISSED, and the pill changes when it answers. The host can't say while it lacks your ticks (some
+still in `unsent`, or none of them on it: another login), nor that nothing changed when the PR now has files outside
+your review (a new file, a narrowed scope, a stacked PR's parent): the pill stays "New commits". The host is asked
+with a 20 s limit, and a failed ask is quiet.
 
 ### Stacks
 
