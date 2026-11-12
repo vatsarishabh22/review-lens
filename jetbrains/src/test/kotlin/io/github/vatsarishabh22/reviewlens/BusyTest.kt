@@ -50,4 +50,13 @@ class BusyTest {
         busy.release(exit)
         assertEquals(2, redraws)
     }
+
+    @Test
+    fun `a claim holds the state until released or replaced, so a load by a replaced one publishes nothing`() {
+        val load = busy.claim(Ending.LOADING)!!
+        assertEquals(true, busy.holds(load))
+        busy.release(load)
+        busy.claim(Ending.SWITCHING)!!
+        assertEquals(false, busy.holds(load))
+    }
 }

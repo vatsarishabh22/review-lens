@@ -30,10 +30,10 @@ class ReviewService(private val project: Project) : Disposable {
 
     override fun dispose() = Unit
 
-    /** What a start, a re-scope, Finish or Exit is busy with, as [ReviewService.busy] holds it; [busy] is its words. */
-    enum class Ending(val busy: String) { SWITCHING("Switching…"), POSTING("Posting…"), EXITING("Exiting…") }
+    /** What a start, a re-scope, Finish, Exit or the load on opening is busy with, as [ReviewService.busy] holds it; [busy] is its words. */
+    enum class Ending(val busy: String) { LOADING("Loading…"), SWITCHING("Switching…"), POSTING("Posting…"), EXITING("Exiting…") }
 
-    /** Start, re-scope, Finish and Exit each claim it, so none runs under another and one click does it once. */
+    /** Start, re-scope, Finish, Exit and the load on opening each claim it, so none runs under another and one click does it once. */
     val busy = Busy(::fireChanged)
 
     val ending get() = busy.ending
@@ -57,30 +57,31 @@ class ReviewService(private val project: Project) : Disposable {
     val hostName get() = ReviewHosts.nameOf(git)
     val isActive get() = meta != null
 
-    private val reloads = Newest()
-
-    /** Re-reads which review is active and recomputes its changes. Runs git: call off EDT. */
-    fun reload() {
-        val ticket = reloads.ask()
+    /**
+     * Re-reads which review is active and recomputes its changes, for the step holding [by]: only the load on opening and
+     * the checkouts of Start, re-scope and Exit, so two never overlap, and one whose claim was since replaced publishes
+     * nothing. Runs git: call off EDT.
+     */
+    fun reload(by: Busy.Claim) {
         val git = git ?: project.basePath?.let { runCatching { GitClient.forProject(it) }.getOrNull() }?.also { git = it } ?: return
         val review = ReviewLifecycle(git).active()
         val read = review?.let { ReviewMeta.load(git, it.target.key) }
         val changed = read?.let { git.changes(it.range) }.orEmpty()
         val heard = read?.let { it to HostViewed.of(project).answer(git, it, changed) }
         val tracked = if (read != null) git.trackedFiles() else emptyList()
-        // dropped, host answer and all, when a reload started after it (a Start or Exit during the startup's); kept under
-        // update()'s lock, from the file as it is then, so a tick saved meanwhile stays on screen
+        // published under update()'s lock, from the file as it is then, so a tick saved meanwhile stays on screen; what is
+        // still queued joins the tick line under the same lock, so a tick made from now on queues behind it, as clicked
         synchronized(this) {
-            reloads.keep(ticket) {
-                changes = changed
-                trackedFiles = tracked
-                active = review
-                meta = heard?.let { (read, answer) ->
-                    val (folded, view) = answer
-                    HostViewed.of(project).adopt(view)
-                    ReviewMeta.foldIn(git, read, folded)
-                }
+            if (!busy.holds(by)) return
+            changes = changed
+            trackedFiles = tracked
+            active = review
+            meta = heard?.let { (read, answer) ->
+                val (folded, view) = answer
+                HostViewed.of(project).adopt(view)
+                ReviewMeta.foldIn(git, read, folded)
             }
+            meta?.unsent?.let(HostViewed.of(project)::sendable)?.takeIf { it.isNotEmpty() }?.let(::send)
         }
         HostThreads.of(project).load()
         fireChanged()
@@ -120,26 +121,32 @@ class ReviewService(private val project: Project) : Disposable {
         if (viewed && current.target.reviewable && reviewedCount() == changes.size) notify(project, "All ${changes.size} files viewed",
             "Finish the review to post a verdict, or mark it reviewed without posting.", NotificationType.INFORMATION,
             NotificationAction.createSimpleExpiring("Finish review…") { showFinishReview(project, null) })
-        if (sent.isEmpty()) return
-        HostViewed.of(project).send(git!!, sent) { took -> took?.let(::confirmSent); fireChanged() }
+        if (sent.isNotEmpty()) send(sent)
+    }
+
+    /** [ticks] to the host through the one tick line ([HostViewed.send]); its answer confirms them, in the review they are for. */
+    private fun send(ticks: Map<String, Boolean>) {
+        val key = meta?.target?.key ?: return
+        HostViewed.of(project).send(git ?: return, ticks) { took -> took?.let { confirmSent(key, it) }; fireChanged() }
         // the panel says "Sending…" once the call has waited this long: redraw then
         AppExecutorUtil.getAppScheduledExecutorService().schedule({ if (HostViewed.of(project).waiting() > 0) fireChanged() }, HostViewed.SHOW_SENDING_MS, TimeUnit.MILLISECONDS)
     }
 
-    /** The host took [sent] ([confirmed]). */
+    /** The host took [sent], ticks of review [key] ([confirmedIn]). */
     @Synchronized
-    private fun confirmSent(sent: Map<String, Boolean>) {
-        update { it.copy(unsent = confirmed(it.unsent, sent)) }
+    private fun confirmSent(key: String, sent: Map<String, Boolean>) {
+        update { confirmedIn(it, key, sent) }
     }
 
-    /** Every change to the saved review: written at once (it survives exit and a crash), then the editor and panel redraw. */
+    /** Every change to the saved review: written at once (it survives exit and a crash), then the editor and panel redraw; false when no review is loaded. */
     @Synchronized
-    fun update(change: (ReviewMeta) -> ReviewMeta) {
-        val current = meta ?: return
+    fun update(change: (ReviewMeta) -> ReviewMeta): Boolean {
+        val current = meta ?: return false
         // built on what the file holds now, so a change saved meanwhile by a re-scope or a load is kept; published under
         // the lock reload() publishes under
         meta = ReviewMeta.change(git!!, current.target.key) { change(it ?: current) }
         fireChanged()
+        return true
     }
 
     /** The file before [before] in path order, wrapping around. */
@@ -193,21 +200,12 @@ class Busy(private val changed: () -> Unit) {
         if (synchronized(this) { (held === claim).also { if (it) this.ending = ending } }) changed()
     }
 
+    /** Whether [claim] still holds the state. */
+    @Synchronized
+    fun holds(claim: Claim) = held === claim
+
     /** Frees the state, if [claim] still holds it. */
     fun release(claim: Claim) {
         if (synchronized(this) { (held === claim).also { if (it) { held = null; ending = null } } }) changed()
     }
-}
-
-/** Answers asked for in one order and landing in any: the one asked last wins, so an older one landing late is dropped. */
-class Newest {
-    private var asked = 0L
-    private var kept = 0L
-
-    @Synchronized
-    fun ask() = ++asked
-
-    /** Runs [write] for [ticket]'s answer unless one asked after it was kept already. */
-    @Synchronized
-    fun keep(ticket: Long, write: () -> Unit) { if (ticket > kept) { kept = ticket; write() } }
 }

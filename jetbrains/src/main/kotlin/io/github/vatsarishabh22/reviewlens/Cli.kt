@@ -7,7 +7,8 @@ import java.nio.file.Path
 import java.util.concurrent.Executors
 
 /** A command that exited non-zero; [stdout] keeps what it printed (`gh api` prints GitHub's refusal there). */
-class CliException(message: String, val stdout: String = "", val stderr: String = "") : RuntimeException(message)
+/** A command that failed; [timedOut] when it was stopped unanswered, so what it did on the other side is unknown. */
+class CliException(message: String, val stdout: String = "", val stderr: String = "", val timedOut: Boolean = false) : RuntimeException(message)
 
 /** The first line of [stderr] without git's `fatal:` / `error:` prefix, e.g. "Could not read from remote repository." */
 fun cliReason(stderr: String, program: String): String =
@@ -25,7 +26,7 @@ fun runCli(dir: Path, vararg command: String, trim: Boolean = true, timeoutMs: I
     // the reason rides in stderr too: callers that reword a failure keep a tool's own words from there
     if (output.isTimeout) "${command.first()} didn't answer in ${timeoutMs!! / 1000} s".let {
         logger<CliException>().info("${command.joinToString(" ")} stopped after $timeoutMs ms")
-        throw CliException(it, stderr = it)
+        throw CliException(it, stderr = it, timedOut = true)
     }
     if (output.exitCode != 0) {
         // the command line goes to the log; people see only the tool's own reason (it lands in balloons)

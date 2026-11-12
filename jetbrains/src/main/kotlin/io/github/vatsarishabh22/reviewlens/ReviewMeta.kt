@@ -3,6 +3,8 @@ package io.github.vatsarishabh22.reviewlens
 import com.google.gson.GsonBuilder
 import java.nio.file.Files
 import java.nio.file.Path
+import java.nio.file.StandardCopyOption.ATOMIC_MOVE
+import java.nio.file.StandardCopyOption.REPLACE_EXISTING
 
 /**
  * One PR's review state, kept across sessions in `.git/review-lens/<key>.json` (outside the working tree).
@@ -10,7 +12,7 @@ import java.nio.file.Path
  * [seenHead] is the PR head the reviewer last started or re-scoped on: "Since your last review" starts there.
  * [parentHead] is its stack parent's head at its last load, so the review bar's scope menu works out where its own
  * changes start without asking the host; every load replaces it.
- * [unsent] holds ticks GitHub has not confirmed yet (path → viewed); they are re-sent first and win until confirmed.
+ * [unsent] holds ticks GitHub has not confirmed yet (path → viewed); each load sends them again and they win until confirmed.
  * [drafts] are the reviewer's inline comments, kept here (across exit) until Finish review posts them.
  * [verdict] is the last verdict GitHub accepted from this reviewer (Mark as reviewed leaves it), for the PR list.
  * [checked] holds the impact map's ticks: per changed function (`path#Class.method`), the places outside the PR the
@@ -57,11 +59,7 @@ data class ReviewMeta(
          * none writes over one made while it worked.
          */
         fun change(git: GitClient, key: String, change: (ReviewMeta?) -> ReviewMeta): ReviewMeta = synchronized(LOCK) {
-            change(load(git, key)).also { meta ->
-                val file = fileFor(git, key)
-                Files.createDirectories(file.parent)
-                Files.writeString(file, gson.toJson(meta))
-            }
+            change(load(git, key)).also { meta -> writeWhole(fileFor(git, key), gson.toJson(meta)) }
         }
 
         /**
@@ -98,17 +96,32 @@ fun mergeViewed(local: Map<String, String>, github: Map<String, ViewedState>, ch
 }
 
 /**
- * Re-sends the queued ticks in one call ([send] says whether GitHub took it), then folds in GitHub's answer. [github] lists every
- * file of the PR on GitHub; a queued tick for any other path (a scope file whose change the PR undoes, or one that came
- * in with a merge from the base) has no Viewed box there and is refused, so it is dropped from the queue, kept here.
+ * Folds in GitHub's answer at load; the queued ticks keep the laptop's value ([github] was read before they go again),
+ * and what is left queued goes through the tick line, never from here. [github] lists every file of the PR on GitHub; a
+ * queued tick for any other path (a scope file whose change the PR undoes, or one that came in with a merge from the
+ * base) has no Viewed box there, so it leaves the queue, kept here.
  */
-fun syncViewed(meta: ReviewMeta, github: Map<String, ViewedState>, changes: List<FileChange>, send: (Map<String, Boolean>) -> Boolean): ReviewMeta {
+fun syncViewed(meta: ReviewMeta, github: Map<String, ViewedState>, changes: List<FileChange>): ReviewMeta {
     val queued = meta.unsent.orEmpty().filterKeys { it in github }
-    // one call: taken, the whole queue leaves; refused, the whole queue stays for the next load
-    val unsent = if (queued.isNotEmpty() && !send(queued)) queued else emptyMap()
-    // every queued tick keeps the laptop's value: [github] was read before the re-send, so it is stale for them
-    return meta.copy(reviewed = mergeViewed(meta.reviewed, github, changes, queued), unsent = unsent.ifEmpty { null })
+    return meta.copy(reviewed = mergeViewed(meta.reviewed, github, changes, queued), unsent = queued.ifEmpty { null })
 }
+
+/** Replaces [file] whole (written beside it, then moved over it), so a reader never sees it half written. */
+fun writeWhole(file: Path, text: String) {
+    Files.createDirectories(file.parent)
+    val written = Files.createTempFile(file.parent, file.fileName.toString(), ".tmp")
+    try {
+        Files.writeString(written, text)
+        Files.move(written, file, REPLACE_EXISTING, ATOMIC_MOVE)
+    } finally { Files.deleteIfExists(written) } // gone once moved; a failed write leaves no stray copy
+}
+
+/**
+ * [meta] with [sent], ticks the host took for review [key], confirmed ([confirmed]); unchanged when [meta] is another
+ * review's, the one under way since, whose queue they must never clear (its own next send or load sorts them out).
+ */
+fun confirmedIn(meta: ReviewMeta, key: String, sent: Map<String, Boolean>): ReviewMeta =
+    if (meta.target.key == key) meta.copy(unsent = confirmed(meta.unsent, sent)) else meta
 
 /** Every file of a scope viewed; an empty scope never is. */
 fun allViewed(viewed: Int, total: Int) = total > 0 && viewed == total

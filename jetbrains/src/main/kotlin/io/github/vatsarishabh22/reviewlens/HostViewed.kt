@@ -43,10 +43,10 @@ class HostViewed internal constructor(
     @Volatile private var hostFiles: Set<String>? = null
     private val failureShown = AtomicBoolean()
 
-    /** What a load heard from the host: kept by [adopt] only once that load is the newest, so a late one changes nothing. */
+    /** What a load heard from the host: kept by [adopt] only while that load holds the busy state, so a stale one changes nothing. */
     data class View(val reviewId: String?, val hostFiles: Set<String>?, val keepsViewed: Boolean, val status: Status, val failure: Failure? = null)
 
-    /** Why [host] couldn't be reached: said once per session, by the load that is kept. */
+    /** Why [host] couldn't be reached: said once per session, by the load that is kept ([adopt]). */
     data class Failure(val host: String, val error: Throwable)
     /** A call made and not answered yet: the review it is for, the paths it carries, when it was made. */
     private data class Call(val reviewId: String, val paths: Set<String>, val made: Long)
@@ -56,7 +56,8 @@ class HostViewed internal constructor(
 
     /**
      * At load: [meta] with the host's ticks folded in (the host wins for its files), and what the host said, for [adopt];
-     * a branch review stays local. Keeps nothing itself. Runs the host's CLI: off EDT.
+     * a branch review stays local. Keeps and sends nothing itself: what is left queued goes through [send]. Runs the host's
+     * CLI: off EDT.
      */
     fun answer(git: GitClient, meta: ReviewMeta, changes: List<FileChange>): Pair<ReviewMeta, View> {
         val local = View(null, null, keepsViewed = true, Status.LOCAL)
@@ -66,15 +67,12 @@ class HostViewed internal constructor(
         val viewed = host?.viewed
         if (host != null && viewed == null) return meta to local.copy(keepsViewed = false) // a host with no Viewed checkboxes
         return runCatching { (viewed ?: throw ReviewHosts.notSignedIn()).viewedStates(number) }.fold(
-            onSuccess = { states ->
-                val synced = syncViewed(meta, states.files, changes) { ticks -> runCatching { viewed!!.setViewed(states.pullRequestId, ticks) }.isSuccess }
-                synced to View(states.pullRequestId, states.files.keys, keeps, if (synced.unsent == null) Status.HOST else Status.FAILED)
-            },
+            onSuccess = { states -> syncViewed(meta, states.files, changes) to View(states.pullRequestId, states.files.keys, keeps, Status.HOST) },
             onFailure = { meta to View(null, null, keeps, Status.FAILED, Failure(ReviewHosts.nameOf(git), it)) },
         )
     }
 
-    /** Keeps what the newest load heard ([answer]). */
+    /** Keeps what the load holding the busy state heard ([answer]). */
     fun adopt(view: View) {
         reviewId = view.reviewId
         hostFiles = view.hostFiles
@@ -83,11 +81,14 @@ class HostViewed internal constructor(
         view.failure?.let(::warnOnce)
     }
 
+    /** The queued ticks the host has a Viewed box for, the rule [sends] applies to one tick. */
+    fun sendable(unsent: Map<String, Boolean>) = unsent.filterKeys(::listed)
+
     /**
      * Whether [change]'s tick goes to the host: a file the host lists, or any file while the list is unknown (the next
      * load sorts it out). A scope file the review's net change doesn't include has no Viewed box there.
      */
-    fun sends(meta: ReviewMeta?, change: FileChange): Boolean = meta?.target?.reviewable == true && hostKeepsViewed && hostFiles?.contains(change.path) != false
+    fun sends(meta: ReviewMeta?, change: FileChange): Boolean = meta?.target?.reviewable == true && hostKeepsViewed && listed(change.path)
 
     /**
      * Sends [ticks] off EDT in one call. Nothing goes before the host answered at load. [done] hears the ticks the host
@@ -123,6 +124,9 @@ class HostViewed internal constructor(
         shown = calls.isNotEmpty() && (shown || clock() - calls.first().made >= SHOW_SENDING_MS)
         if (shown) calls.flatMap { it.paths }.toSet().size else 0
     }
+
+    /** A file the host lists for the review, so it has a Viewed box there; any while the list is unknown. */
+    private fun listed(path: String) = hostFiles?.contains(path) != false
 
     private fun current() = inFlight.filter { it.reviewId == reviewId }
 

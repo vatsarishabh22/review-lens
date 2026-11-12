@@ -1,5 +1,6 @@
 package io.github.vatsarishabh22.reviewlens
 
+import com.intellij.notification.NotificationType
 import com.intellij.openapi.components.Service
 import com.intellij.openapi.components.service
 import com.intellij.openapi.project.Project
@@ -30,11 +31,16 @@ class ReviewDrafts(private val project: Project) {
     /** A reply to [thread], shown under [change]'s line [line]; posted with the review, into the thread. */
     fun reply(change: FileChange, line: Int, thread: ReviewThread, body: String) = update { it + Draft(change.path, line, change.newBlob, body, replyTo = thread.id) }
 
-    /** Replaces a pending comment's text, keeping its line and its place among the drafts. */
-    fun edit(draft: Draft, body: String) = update { drafts -> drafts.map { if (it == draft) it.copy(body = body) else it } }
+    /** Replaces a pending comment's text, keeping its line and its place among the drafts. Each change says whether it was made ([update]). */
+    fun edit(draft: Draft, body: String) = pending(draft) && update { drafts -> drafts.map { if (it == draft) it.copy(body = body) else it } }
 
     /** Removes a pending comment; the way out when GitHub refuses one, which would otherwise block every Finish review. */
-    fun delete(draft: Draft) = update { it - draft }
+    fun delete(draft: Draft) = pending(draft) && update { it - draft }
+
+    /** Whether [draft] is still pending; once posted or deleted, or its review ended, a change to it would change nothing, so it is refused and said. */
+    private fun pending(draft: Draft): Boolean = (!draft.posted && draft in review.meta?.drafts.orEmpty()).also {
+        if (!it) notify(project, "That comment is no longer pending", "It was posted or deleted, or its review ended, so it can't be edited or deleted here.", NotificationType.WARNING)
+    }
 
     /**
      * Posts the pending comments and replies with [summary] and [verdict] as one GitHub review, remembers [verdict], and
@@ -52,7 +58,14 @@ class ReviewDrafts(private val project: Project) {
         return sending.text
     }
 
-    private fun update(change: (List<Draft>) -> List<Draft>) = review.update { it.copy(drafts = change(it.drafts.orEmpty())) }
+    /**
+     * A change to the drafts; true when made. Refused, with a notice, while Finish posts them: a draft changed meanwhile
+     * would post as it was and then stay pending, to post again. EDT, as Finish's claim is.
+     */
+    private fun update(change: (List<Draft>) -> List<Draft>): Boolean {
+        if (review.ending == ReviewService.Ending.POSTING) return !refusedBusy(project, "Changing a comment")
+        return review.update { it.copy(drafts = change(it.drafts.orEmpty())) }
+    }
 
     companion object {
         fun of(project: Project): ReviewDrafts = project.service()

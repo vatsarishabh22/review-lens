@@ -53,7 +53,7 @@ fun <T> background(project: Project, title: String, work: () -> T, current: () -
 }
 
 /**
- * Refuses [step] while a start, a re-scope, Finish or Exit is under way, and says so: a greyed control never gets here,
+ * Refuses [step] while a start, a re-scope, Finish, Exit or the load on opening is under way, and says so: a greyed control never gets here,
  * but a balloon's link or a shortcut can, and a click must never vanish without a word. True when refused.
  */
 fun refusedBusy(project: Project, step: String): Boolean {
@@ -90,7 +90,7 @@ fun beginReview(
     val onEdt = { step: StartStep -> ApplicationManager.getApplication().invokeLater({ progress(step) }, project.disposed) }
     // always current: nothing else can run on the review until it releases its claim
     background(project, "Starting review of ${loaded.target.label}", {
-        session.begin(loaded, range, label, onEdt).also { afterCheckout(project, session.git) }
+        session.begin(loaded, range, label, onEdt).also { afterCheckout(project, session.git, claim) }
     }, current = { true }, failed = { service.busy.release(claim); failed() }) { review ->
         service.busy.release(claim)
         refreshViews(project)
@@ -153,7 +153,7 @@ private fun endReview(project: Project, claim: Busy.Claim, finished: Int?, said:
     // A failed save loses only those ticks, never the exit
     runCatching { project.serviceIfCreated<ImpactService>()?.functions()?.let { keys -> service.update { it.keepChecked(keys) } } }
         .onFailure { logger<ReviewService>().warn("Impact ticks not trimmed at exit", it) }
-    background(project, "Exiting review", { ReviewLifecycle(git).exit().also { afterCheckout(project, git) } }, current = { true }, failed = { service.busy.release(claim) }) { exited ->
+    background(project, "Exiting review", { ReviewLifecycle(git).exit().also { afterCheckout(project, git, claim) } }, current = { true }, failed = { service.busy.release(claim) }) { exited ->
         service.busy.release(claim)
         refreshViews(project)
         // The "Reviewing…" balloons offer Exit, which no longer applies.
@@ -203,11 +203,11 @@ private fun nextAction(project: Project, number: Int): AnAction = NotificationAc
     ReviewPanel.of(project)?.openPr(number)
 }
 
-/** After a checkout outside the IDE's own git calls: reload changed files and the changes view, then the review. */
-private fun afterCheckout(project: Project, git: GitClient) {
+/** After a checkout outside the IDE's own git calls, by the step holding [claim]: reload changed files and the changes view, then the review. */
+private fun afterCheckout(project: Project, git: GitClient, claim: Busy.Claim) {
     LocalFileSystem.getInstance().refreshAndFindFileByNioFile(git.root)?.let { VfsUtil.markDirtyAndRefresh(false, true, true, it) }
     VcsDirtyScopeManager.getInstance(project).markEverythingDirty()
-    ReviewService.of(project).reload()
+    ReviewService.of(project).reload(claim)
 }
 
 /** Opens a changed file in the editor; a deleted file has nothing to open, so it shows its diff. */

@@ -57,21 +57,28 @@ class HostViewedTest {
     }
 
     @Test
-    fun `a queued tick the host still refuses at load keeps the status failed and stays queued`() {
-        takes = false
-        val viewed = synced(host(viewedSync))
+    fun `a load sends nothing itself, and its queue goes in the tick line in click order with the ticks made since`() {
+        val viewed = slow(host(viewedSync))
         val meta = viewed.fold(git, pr.copy(reviewed = mapOf("a.kt" to "a2"), unsent = mapOf("a.kt" to true)), listOf(a, b))
-        assertEquals(mapOf("a.kt" to true), meta.unsent)
-        assertEquals(HostViewed.Status.FAILED, viewed.status)
+        assertEquals("the load only reads", emptyList<String>(), sent)
+        viewed.send(git, meta.unsent!!) {} // what the load left queued
+        viewed.send(git, mapOf("a.kt" to false)) {} // unticked while it is on its way
+        held.removeAt(0)()
+        held.removeAt(0)()
+        assertEquals("the untick lands last, as made", listOf("PR_1 {a.kt=true}", "PR_1 {a.kt=false}"), sent)
     }
 
     @Test
-    fun `the queue goes in one call at load, and leaves whole when the host takes it`() {
+    fun `a load's queue the host refuses is said once, as any tick's, and the status says it failed`() {
+        takes = false
         val viewed = synced(host(viewedSync))
-        val meta = viewed.fold(git, pr.copy(reviewed = mapOf("a.kt" to "a2"), unsent = mapOf("a.kt" to true, "b.kt" to false)), listOf(a, b))
-        assertEquals(listOf("PR_1 {a.kt=true, b.kt=false}"), sent)
-        assertEquals(null, meta.unsent)
+        val meta = viewed.fold(git, pr.copy(reviewed = mapOf("a.kt" to "a2"), unsent = mapOf("a.kt" to true)), listOf(a, b))
         assertEquals(HostViewed.Status.HOST, viewed.status)
+        var heard: Map<String, Boolean>? = mapOf()
+        viewed.send(git, meta.unsent!!) { heard = it }
+        assertEquals("refused: nothing leaves the queue", null, heard)
+        assertEquals(HostViewed.Status.FAILED, viewed.status)
+        assertEquals(1, warned.size)
     }
 
     @Test
@@ -229,5 +236,12 @@ class HostViewedTest {
         answer = null
         viewed.fold(git, pr2, listOf(a))
         assertEquals(1, warned.size) // the kept one says it
+    }
+
+    @Test
+    fun `only queued ticks for files the host lists go out, so one it has no box for never fails the call`() {
+        val viewed = synced(host(viewedSync))
+        viewed.fold(git, pr, listOf(a, b, c))
+        assertEquals(mapOf("a.kt" to true), viewed.sendable(mapOf("a.kt" to true, "c.kt" to true)))
     }
 }

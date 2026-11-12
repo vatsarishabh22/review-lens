@@ -18,4 +18,12 @@ class HostBoundaryTest {
         }
         assertEquals(listOf("ReviewHost.kt"), reaching)
     }
+
+    @Test
+    fun `every read from GitHub goes through the one helper that bounds it`() {
+        val calls = Files.readAllLines(shared.resolve("github/GhClient.kt")).filter { "runCli(" in it }.map { it.trim() }
+        // the bounded read helper, and the GraphQL write path with its own limit
+        assertEquals(2, calls.size)
+        check(calls.any { it.startsWith("private fun gh(") && "timeoutMs = timeoutMs" in it })
+    }
 }

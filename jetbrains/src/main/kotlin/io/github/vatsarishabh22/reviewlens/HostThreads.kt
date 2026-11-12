@@ -32,9 +32,13 @@ class HostThreads internal constructor(
     )
 
     /** Everyone's threads on the review, read at load; null for a branch review or when the host didn't answer. */
-    @Volatile var threads: List<ReviewThread>? = null; private set
+    val threads: List<ReviewThread>? get() = threadsRead?.takeIf { it.first == number() }?.second
     /** The viewer's slot as Finish review last read it; null when it wasn't read or the host didn't answer. */
-    @Volatile var slot: ReviewSlot? = null; private set
+    val slot: ReviewSlot? get() = slotRead?.takeIf { it.first == number() }?.second
+
+    // each answer carries the PR it was read for, so one never shows for another and a failed read needn't clear it
+    @Volatile private var threadsRead: Pair<Int, List<ReviewThread>>? = null
+    @Volatile private var slotRead: Pair<Int, ReviewSlot>? = null
 
     private val writing = ConcurrentHashMap<String, String>()
     private val listeners = CopyOnWriteArrayList<() -> Unit>()
@@ -49,10 +53,9 @@ class HostThreads internal constructor(
 
     /** At load: the review's threads, or none. The loader redraws; runs the host's CLI: off EDT. */
     fun load() {
-        val ticket = reads.ask()
-        val number = number()
-        val fetched = number?.let(::fetch)
-        keep(number, ticket) { threads = fetched }
+        val ticket = ticket()
+        val number = number() ?: return
+        keep(number, ticket, fetch(number), null)
     }
 
     /**
@@ -61,25 +64,34 @@ class HostThreads internal constructor(
      * last ones stay, and the caller says they may be old.
      */
     fun reload(): Boolean {
-        val ticket = reads.ask()
+        val ticket = ticket()
         val number = number() ?: return false
         val read = runCatching { host().reviewSlot(number) }.onFailure { thisLogger().info("Host pending review not read", it) }
         val fetched = fetch(number)
-        val current = keep(number, ticket) { read.onSuccess { slot = it }; fetched?.let { threads = it } }
+        val current = keep(number, ticket, fetched, read.getOrNull())
         if (current && fetched != null) changed()
         return current && read.isSuccess && fetched != null
     }
 
-    private val reads = Newest()
+    private var started = 0L
+    private var threadsWritten = 0L
+    private var slotWritten = 0L
+
+    /** Numbers each read as it starts, so the answers can be put back in that order whatever order they land in. */
+    private fun ticket() = synchronized(this) { ++started }
 
     /**
      * Writes what read [ticket] got for PR [number] only while that PR is still the review under way (an answer that
      * lands after the reviewer moved on is dropped), and only when no read started after it was written already (two
-     * reads of one PR, a Finish check and the one after an edit, land in either order). One lock for every write. True
-     * while the PR is the one under way: a read overtaken by a newer one still read it fine.
+     * reads of one PR, a Finish check and the one after an edit, land in either order). The threads and the slot each
+     * keep their own newest: a newer read that brought only one of them never drops the other from an older read that
+     * brought it. One lock for every write. True while the PR is the one under way: a read overtaken still read it fine.
      */
-    private fun keep(number: Int?, ticket: Long, write: () -> Unit): Boolean = synchronized(this) {
-        (number() == number).also { current -> if (current) reads.keep(ticket, write) }
+    private fun keep(number: Int, ticket: Long, threads: List<ReviewThread>?, slot: ReviewSlot?): Boolean = synchronized(this) {
+        (number() == number).also { current ->
+            if (current && threads != null && ticket > threadsWritten) { threadsRead = number to threads; threadsWritten = ticket }
+            if (current && slot != null && ticket > slotWritten) { slotRead = number to slot; slotWritten = ticket }
+        }
     }
 
     /** [change]'s threads, each with the line it sits under in the file at [scopeEnd], or null when it is only listed. */
@@ -99,8 +111,9 @@ class HostThreads internal constructor(
     private fun fetch(number: Int): List<ReviewThread>? =
         runCatching { host().reviewThreads(number) }.onFailure { thisLogger().info("Host review threads not loaded", it) }.getOrNull()
 
+    /** One write per thread or comment at a time: a second, while the first is on its way, is refused with why. */
     private fun write(id: String, saying: String, failed: (Throwable) -> Unit, call: (ReviewHost) -> Unit) {
-        writing[id] = saying
+        writing.putIfAbsent(id, saying)?.let { return failed(IllegalStateException("It is still ${it.lowercase().removeSuffix("…")}: wait for that to finish.")) }
         changed()
         pool {
             val sent = runCatching { call(host()) }

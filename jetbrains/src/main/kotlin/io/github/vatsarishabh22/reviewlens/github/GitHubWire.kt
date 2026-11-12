@@ -49,6 +49,16 @@ fun parseReviewSlot(text: String): GitHubSlot {
     return GitHubSlot(pr, head, pending.ifEmpty { null }?.let { PendingReview(it, comments.toIntOrNull() ?: 0) }, own == "true")
 }
 
+/** Reads `STATE<TAB>count` of one review. */
+fun parseReviewRead(text: String): ReviewRead {
+    val (state, comments) = text.trim().split('\t').let { it + List(2 - it.size) { "" } }
+    require(state.isNotEmpty()) { "GitHub did not return this review" }
+    return ReviewRead(state == "PENDING", comments.toIntOrNull() ?: 0)
+}
+
+internal const val REVIEW_READ_QUERY = "query(\$id:ID!){node(id:\$id){... on PullRequestReview{state comments{totalCount}}}}"
+internal const val REVIEW_READ_JQ = ".data.node | [.state, (.comments.totalCount | tostring)] | @tsv"
+
 // reviews(states: PENDING) lists only the viewer's own: nobody else's pending review is visible
 internal const val REVIEW_SLOT_QUERY = "query(\$owner:String!,\$name:String!,\$number:Int!){repository(owner:\$owner,name:\$name){pullRequest(number:\$number)" +
     "{id headRefOid viewerDidAuthor reviews(states:PENDING,first:1){nodes{id comments{totalCount}}}}}}"

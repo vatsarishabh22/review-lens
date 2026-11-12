@@ -208,8 +208,8 @@ class ChangedFilesView(private val project: Project, parent: Disposable) : JPane
         var popup: JBPopup? = null
         fun save() {
             val body = field.text.trim().takeIf { it.isNotEmpty() } ?: return
-            popup?.cancel()
-            ReviewDrafts.of(project).edit(draft, body)
+            // refused (Finish posting, or posted since), the box stays open with what is typed: only Cancel throws it away
+            if (ReviewDrafts.of(project).edit(draft, body)) popup?.cancel()
         }
         DumbAwareAction.create { save() }.registerCustomShortcutSet(CommonShortcuts.getCtrlEnter(), field)
         val saveButton = JButton("Save").apply { putClientProperty(DarculaButtonUI.DEFAULT_STYLE_KEY, true); addActionListener { save() } }

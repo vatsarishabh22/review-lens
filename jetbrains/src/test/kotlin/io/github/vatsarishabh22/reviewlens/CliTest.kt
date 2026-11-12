@@ -22,6 +22,7 @@ class CliTest {
         val e = assertThrows(CliException::class.java) { runCli(dir, jvm, program, "sleep", timeoutMs = 1_000) }
         assertEquals("$jvm didn't answer in 1 s", e.message)
         assertEquals("the reason survives a caller that rewords from stderr", e.message, e.stderr)
+        assertTrue("marked stopped, so a write's caller reads back what it did", e.timedOut)
         assertTrue("stopped at the limit, not after the command", System.currentTimeMillis() - start < 5_000)
     }
 

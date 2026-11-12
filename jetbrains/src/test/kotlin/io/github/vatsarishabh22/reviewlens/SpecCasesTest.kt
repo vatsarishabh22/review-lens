@@ -76,9 +76,8 @@ class SpecCasesTest(private val rule: String) {
             "since-last-review" to { g -> sinceLastReview(g.str("head")!!, commits(g.strings("commits")), g.str("seenHead"))?.let { (r, label) -> range(r, label) } ?: JsonNull.INSTANCE },
             "viewed-merge" to { g -> tree(mergeViewed(g.map("local"), g.states("host"), g.changes("changes"), g.flags("unsent"))) },
             "viewed-sync" to { g ->
-                val tried = mutableListOf<Map<String, Boolean>>()
-                val synced = syncViewed(meta(g.map("reviewed"), g.flags("unsent")), g.states("host"), g.changes("changes")) { ticks -> tried += ticks; g["takes"].asBoolean }
-                JsonObject().apply { add("reviewed", tree(synced.reviewed)); add("unsent", tree(synced.unsent)); add("tried", tree(tried)) }
+                val synced = syncViewed(meta(g.map("reviewed"), g.flags("unsent")), g.states("host"), g.changes("changes"))
+                JsonObject().apply { add("reviewed", tree(synced.reviewed)); add("unsent", tree(synced.unsent)) }
             },
             "finish-selection" to { g ->
                 val drafts = GSON.fromJson(g["drafts"], Array<Draft>::class.java).toList()

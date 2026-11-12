@@ -129,7 +129,7 @@ class HostThreadsTest {
         answer = emptyList()
         whileReading = { number = 9 } // Finish's re-read of #7 lands after #9 began
         assertFalse(t.reload())
-        assertEquals("nothing read for #7 is written once #9 began", listOf(thread), t.threads)
+        assertNull("#7's threads, read before or after, never show while #9 is under way", t.threads)
         assertNull(t.slot)
         whileReading = {}
         t.load()
@@ -156,5 +156,42 @@ class HostThreadsTest {
         whileReading = { whileReading = {}; answer = listOf(newer); assertTrue(t.reload()); answer = listOf(older) }
         assertTrue("an overtaken read of the review under way still read it fine", t.reload())
         assertEquals(listOf(newer), t.threads)
+    }
+
+    @Test
+    fun `a second write to a thread while the first is on its way is refused with why, and the first lands`() {
+        val held = mutableListOf<() -> Unit>()
+        threads = HostThreads({ host }, { number }, { held += it }, { it() })
+        val failures = mutableListOf<String>()
+        threads.resolve(thread, true) { failures += it.message.orEmpty() }
+        threads.resolve(thread, false) { failures += it.message.orEmpty() }
+        assertEquals(listOf("It is still resolving: wait for that to finish."), failures)
+        held.single()()
+        assertEquals("resolve T1 true while Resolving…", calls.first())
+        assertNull(threads.pending["T1"])
+    }
+
+    @Test
+    fun `a newer read that fails never drops an older one that read fine`() {
+        threads()
+        answer = listOf(thread)
+        var nested = false
+        // while the older read waits on the host, a newer one starts and fails (offline), landing first
+        whileReading = { if (!nested) { nested = true; val good = answer; answer = null; threads.reload(); answer = good } }
+        threads.reload()
+        assertEquals(listOf(thread), threads.threads)
+    }
+
+    @Test
+    fun `a newer read that brought only the slot never drops the threads an older one read`() {
+        threads()
+        answer = listOf(thread)
+        slot = GitHubSlot("PR_7", "h-old", null, false)
+        var nested = false
+        // the newer read gets the slot but not the threads (offline), and lands first
+        whileReading = { if (!nested) { nested = true; val good = answer; answer = null; slot = GitHubSlot("PR_7", "h-new", null, false); threads.reload(); answer = good } }
+        threads.reload()
+        assertEquals(listOf(thread), threads.threads)
+        assertEquals("the older slot never replaces the newer one", "h-new", (threads.slot as GitHubSlot).head)
     }
 }

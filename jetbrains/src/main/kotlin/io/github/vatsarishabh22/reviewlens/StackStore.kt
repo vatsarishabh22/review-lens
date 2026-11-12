@@ -2,8 +2,6 @@ package io.github.vatsarishabh22.reviewlens
 
 import com.google.gson.GsonBuilder
 import java.nio.file.Files
-import java.nio.file.StandardCopyOption.ATOMIC_MOVE
-import java.nio.file.StandardCopyOption.REPLACE_EXISTING
 
 /**
  * `.git/review-lens/stacks.json` (spec/README.md, Stacks): the parents the last list saw, and each stacked PR's own file
@@ -44,10 +42,7 @@ class StackStore(private val git: GitClient) {
      */
     private fun <T> update(change: (Saved) -> Pair<Saved, T>): T = synchronized(LOCK) {
         val (next, result) = change(saved())
-        Files.createDirectories(file.parent)
-        val written = Files.createTempFile(file.parent, "stacks", ".json")
-        Files.writeString(written, GSON.toJson(Saved(next.parents.orEmpty(), next.counts.orEmpty())))
-        Files.move(written, file, REPLACE_EXISTING, ATOMIC_MOVE)
+        writeWhole(file, GSON.toJson(Saved(next.parents.orEmpty(), next.counts.orEmpty())))
         result
     }
 
