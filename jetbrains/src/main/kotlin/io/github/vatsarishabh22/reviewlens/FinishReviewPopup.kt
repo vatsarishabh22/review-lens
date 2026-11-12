@@ -32,7 +32,7 @@ import javax.swing.event.DocumentEvent
  * before anything posts; Submit waits for that read, Mark as reviewed doesn't (it posts nothing).
  */
 fun showFinishReview(project: Project, anchor: JComponent?) {
-    if (ReviewService.of(project).ending == null) openFinishReview(project, anchor)
+    if (!refusedBusy(project, "Finish review")) openFinishReview(project, anchor)
 }
 
 /** What the Finish popup says: its fine print, the drafts warning (only when nothing is posted), and the button. */
@@ -70,6 +70,21 @@ fun replyNotes(replies: List<Draft>, threads: List<ReviewThread>?, host: String)
         else "$it replies are on threads that are gone from $host. They won't post and stay as drafts."
     })
 }
+
+/** Why choice [choice] (null: Mark as reviewed) can't be picked now, or null: the one lock its radio and Submit both read. */
+fun choiceLock(choice: Verdict?, markLocked: String?, slot: ReviewSlot?): String? = if (choice == null) markLocked else slot?.denied(choice)
+
+/**
+ * Why Submit can't go with [verdict] now (said on hover), or null: first the choice's own lock ([choiceLock]), which can
+ * close while it stays picked (a file unticked with the popup open); then the host's comments being read again; then
+ * the host's refusal of that review.
+ */
+fun submitBlocker(verdict: Verdict?, markLocked: String?, slot: ReviewSlot?, checked: Boolean?, summary: String, outbox: Outbox, scopeEnd: String, host: String): String? =
+    choiceLock(verdict, markLocked, slot) ?: when {
+        verdict == null -> null
+        checked == null -> "Waiting for $host's latest comments"
+        else -> slot?.refusal(verdict, summary, outbox, scopeEnd)
+    }
 
 private fun openFinishReview(project: Project, anchor: JComponent?) {
     val service = ReviewService.of(project)
@@ -112,14 +127,10 @@ private fun openFinishReview(project: Project, anchor: JComponent?) {
         // a review started on the host's website is adopted, and a held one is said in place of "will be posted"
         val said = finishWords(v, outbox, slot?.started ?: 0, slot?.held(outbox, scopeEnd), waiting, viewed, service.changes.size, host)
         choices.forEach { (c, radio) ->
-            radio.toolTipText = if (c == null) markLocked else slot?.denied(c) // why it is greyed, on hover
+            radio.toolTipText = choiceLock(c, markLocked, slot) // why it is greyed, on hover
             radio.isEnabled = radio.toolTipText == null && idle
         }
-        val blocker = when {
-            v == null -> null
-            checked == null -> "Waiting for $host's latest comments"
-            else -> slot?.refusal(v, summary.text, outbox, scopeEnd)
-        }
+        val blocker = submitBlocker(v, markLocked, slot, checked, summary.text, outbox, scopeEnd, host)
         submit.isEnabled = blocker == null && idle
         submit.toolTipText = blocker // a greyed-out Submit says why on hover
         submit.text = if (posting) ReviewService.Ending.POSTING.busy else said.submit
