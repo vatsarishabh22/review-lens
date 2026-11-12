@@ -193,6 +193,8 @@ button.busy .spin { width: 11px; height: 11px; border-width: 2px; }
 .progress { height: 6px; border-radius: 3px; background: var(--panel-2); overflow: hidden; }
 .progress i { display: block; height: 100%; background: var(--ok); transition: width .3s; }
 .rv-sub { display: flex; justify-content: space-between; color: var(--muted); font-size: 12px; }
+.rv-sub .sending { display: inline-flex; gap: 6px; align-items: center; }
+.rv-sub .sending .spin { width: 10px; height: 10px; border-width: 2px; }
 .rv-actions { position: relative; display: flex; gap: 8px; }
 .rv-actions button { padding: 5px 12px; }
 .seg { display: inline-flex; border: 1px solid var(--line); border-radius: 6px; overflow: hidden; background: var(--win); }
@@ -399,6 +401,7 @@ div.cm-row .jump { text-align: left; }
     <button class="chip-btn" id="opt-slow" title="The search for record_parse passes 3 s and stops">Impact: too many places</button>
     <button class="chip-btn" id="opt-noimpact" title="The same review in an IDE that can't read Python, such as WebStorm">Impact: IDE without Python</button>
     <span class="chip-btn">Stack: <label><input type="radio" name="stack" value="open" checked> as is</label> <label><input type="radio" name="stack" value="merged"> #144 merged</label> <label><input type="radio" name="stack" value="moved"> #147 changed, #148 not updated</label> <label><input type="radio" name="stack" value="long"> 16 PRs</label> <label><input type="radio" name="stack" value="branch"> two on #146</label></span>
+    <label class="chip-btn" title="GitHub takes 3 s to answer each Viewed tick, as on a slow network"><input type="checkbox" id="opt-slownet"> Slow GitHub</label>
     <button class="chip-btn" id="opt-reset">Reset</button>
   </div>
 </div>
@@ -673,7 +676,7 @@ const I = {
 const iconFor = p => /\.py$/.test(p) ? I.py : I.txt;
 const person = k => PEOPLE[k] || ME;
 const avatar = k => { const p = person(k); return `<span class="avatar" style="background:${p.color}">${p.initials}</span>`; };
-const markIcon = p => { const b = badge(p); return `<button class="mark ${b}" data-act="toggle-viewed" data-path="${esc(p)}" title="${b === "check" ? "Viewed — click to unmark" : b === "since" ? "Changed since you viewed it" : "Not viewed yet — click to mark viewed"}">${b === "check" ? I.check : b === "since" ? I.since : I.star}</button>`; };
+const markIcon = p => { const b = badge(p); return `<button class="mark ${b}" data-act="toggle-viewed" data-path="${esc(p)}" title="${b === "check" ? "Viewed — click to unmark" : b === "since" ? "Changed since you viewed it" : "Not viewed yet — click to mark viewed"}${sendingPath(p) ? " · sending to GitHub" : ""}">${b === "check" ? I.check : b === "since" ? I.since : I.star}</button>`; };
 
 // ---------- regions ----------
 function titlebar() {
@@ -782,7 +785,7 @@ function reviewFiles() {
   const files = scopedFiles(), done = viewedCount();
   const head = `<div class="rv-head"><div class="rv-title"><span class="num">#148</span> ${esc(PRS[0].title)}</div>
     <div class="progress"><i style="width:${files.length ? done / files.length * 100 : 0}%"></i></div>
-    <div class="rv-sub"><span>${done} of ${files.length} files viewed</span><span>Synced with GitHub</span></div>
+    <div class="rv-sub"><span>${done} of ${files.length} files viewed</span>${syncLine()}</div>
     <div class="rv-actions">${endButtons("panel")}</div>
     <div class="seg" role="tablist"><button class="${S.filesView === "pr" ? "on" : ""}" data-act="files-view" data-v="pr">Changed files</button><button class="${S.filesView === "all" ? "on" : ""}" data-act="files-view" data-v="all">Whole project</button><button class="${S.filesView === "comments" ? "on" : ""}" data-act="files-view" data-v="comments">Comments<span class="n">${allComments().length}</span></button></div></div>`;
   if (S.filesView === "all") return head + `<div style="padding:4px 0">${projectTree(true)}</div>`;
@@ -797,7 +800,7 @@ function reviewFiles() {
         <span class="after">${n ? `<span style="display:inline-flex;gap:3px;align-items:center">${I.bubble}${n}</span>` : ""}<span class="counts"><span class="p">+${c.a}</span> <span class="m">−${c.d}</span></span><span class="st st-${f.status}">${f.status}</span></span></div>`;
     }).join("");
     const paths = byDir[dir].map(f => f.path), ticked = paths.filter(p => badge(p) === "check").length;
-    const box = `<button class="mark fold ${ticked === paths.length ? "check" : ticked ? "some" : "star"}" data-act="toggle-folder" data-path="${esc(dir)}" title="${ticked === paths.length ? `Viewed — click to unmark its ${paths.length} files` : `Mark the ${plural(paths.length, "file", "files")} in this folder viewed`}">${ticked === paths.length ? I.check : ticked ? "–" : I.box}</button>`;
+    const box = `<button class="mark fold ${ticked === paths.length ? "check" : ticked ? "some" : "star"}" data-act="toggle-folder" data-path="${esc(dir)}" title="${ticked === paths.length ? `Viewed — click to unmark its ${plural(paths.length, "file", "files")}` : `Mark the ${plural(paths.length, "file", "files")} in this folder viewed`}">${ticked === paths.length ? I.check : ticked ? "–" : I.box}</button>`;
     return (dir ? `<div class="row dir" style="padding-left:12px">${box}${I.folder}<span class="name">${esc(dir)}</span><span class="after">${ticked} of ${paths.length}</span></div>` : "") + items;
   }).join("");
   return head + `<div style="padding:4px 0">${rows}</div>`;
@@ -1099,11 +1102,33 @@ function nextUnviewed(dir = 1) {
   }
   say("Every file is viewed", "Finish the review when you're ready.");
 }
+// Viewed ticks show at once; GitHub's copy follows, one call at a time in click order (spec: Viewed sync, step 4). The
+// panel says "Sending n…" once a call has waited 0.5 s unanswered, n the distinct files in unanswered calls, and keeps
+// saying it until none is left: a quick answer never shows it, a young call behind an answered one never blinks it off.
+const SENDING = { calls: [], shown: false, chain: Promise.resolve() };
+const sendingPath = p => SENDING.calls.some(c => c.paths.includes(p));
+function sendTicks(paths) {
+  if (!paths.length) return;
+  const call = { paths, made: Date.now() };
+  SENDING.calls.push(call);
+  setTimeout(() => { if (SENDING.calls.length && Date.now() - SENDING.calls[0].made >= 500 && !SENDING.shown) { SENDING.shown = true; keepScroll = true; render(); } }, 500);
+  const wait = document.getElementById("opt-slownet").checked ? 3000 : 300;
+  SENDING.chain = SENDING.chain.then(() => new Promise(done => setTimeout(done, wait))).then(() => {
+    SENDING.calls = SENDING.calls.filter(c => c !== call);
+    if (!SENDING.calls.length) SENDING.shown = false;
+    keepScroll = true; render();
+  });
+}
+function syncLine() {
+  const n = new Set(SENDING.calls.flatMap(c => c.paths)).size;
+  return SENDING.shown && n ? `<span class="sending"><span class="spin"></span> Sending ${n} to GitHub…</span>` : "<span>Synced with GitHub</span>";
+}
 // [fromFile]: ticked in the file itself (⌥R or its Viewed button), so its tab closes, unless a comment box in it holds
 // unsent text; ticks from the list, and unticks, leave tabs alone
 function toggleViewed(p, fromFile) {
   const was = S.viewed[p] && !S.since[p];
   if (was) delete S.viewed[p]; else { S.viewed[p] = true; delete S.since[p]; }
+  sendTicks([p]);
   const unsent = (S.draft || S.replyTo) && S.draftText.trim();
   if (!was && fromFile && p === S.open && !unsent) {
     S.tabs = S.tabs.filter(x => x !== p); S.open = S.tabs.at(-1) ?? null; S.draft = null; S.replyTo = null;
@@ -1167,6 +1192,7 @@ document.getElementById("ide").addEventListener("click", e => {
       e.stopPropagation();
       const paths = scopedFiles().filter(f => f.path.slice(0, f.path.lastIndexOf("/")) === p).map(f => f.path);
       const all = paths.every(x => badge(x) === "check");
+      sendTicks(all ? paths : paths.filter(x => badge(x) !== "check"));
       paths.forEach(x => { if (all) delete S.viewed[x]; else { S.viewed[x] = true; delete S.since[x]; } });
       if (!all && allViewed()) say(`All ${scopedFiles().length} files viewed`, "Finish the review to post a verdict, or mark it reviewed without posting.", [["Finish review…", "pop", "submit"]]);
       break;
