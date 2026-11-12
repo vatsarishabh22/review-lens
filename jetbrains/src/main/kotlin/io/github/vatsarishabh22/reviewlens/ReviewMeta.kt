@@ -79,13 +79,14 @@ fun mergeViewed(local: Map<String, String>, github: Map<String, ViewedState>, ch
 }
 
 /**
- * Re-sends the queued ticks ([send] says whether GitHub took one), then folds in GitHub's answer. [github] lists every
+ * Re-sends the queued ticks in one call ([send] says whether GitHub took it), then folds in GitHub's answer. [github] lists every
  * file of the PR on GitHub; a queued tick for any other path (a scope file whose change the PR undoes, or one that came
  * in with a merge from the base) has no Viewed box there and is refused, so it is dropped from the queue, kept here.
  */
-fun syncViewed(meta: ReviewMeta, github: Map<String, ViewedState>, changes: List<FileChange>, send: (String, Boolean) -> Boolean): ReviewMeta {
+fun syncViewed(meta: ReviewMeta, github: Map<String, ViewedState>, changes: List<FileChange>, send: (Map<String, Boolean>) -> Boolean): ReviewMeta {
     val queued = meta.unsent.orEmpty().filterKeys { it in github }
-    val unsent = queued.filterNot { (path, viewed) -> send(path, viewed) }
+    // one call: taken, the whole queue leaves; refused, the whole queue stays for the next load
+    val unsent = if (queued.isNotEmpty() && !send(queued)) queued else emptyMap()
     // every queued tick keeps the laptop's value: [github] was read before the re-send, so it is stale for them
     return meta.copy(reviewed = mergeViewed(meta.reviewed, github, changes, queued), unsent = unsent.ifEmpty { null })
 }
@@ -133,6 +134,26 @@ fun badgeOf(reviewed: Map<String, String>, change: FileChange): Badge = when (re
     change.newBlob -> Badge.REVIEWED
     else -> Badge.CHANGED_SINCE
 }
+
+/** What a click on a file's box does, as the prototype words it. */
+fun badgeWords(badge: Badge) = when (badge) {
+    Badge.TODO -> "Not viewed yet — click to mark viewed"
+    Badge.REVIEWED -> "Viewed — click to unmark"
+    Badge.CHANGED_SINCE -> "Changed since you viewed it"
+}
+
+/**
+ * A folder's tick (spec/README.md, Viewed) on the [files] directly in it: which to change and whether they become
+ * viewed. All viewed: all unticked; else the ones not viewed (🔄 included) ticked.
+ */
+fun folderTick(files: List<FileChange>, reviewed: Map<String, String>): Pair<List<FileChange>, Boolean> {
+    val open = files.filter { badgeOf(reviewed, it) != Badge.REVIEWED }
+    return if (allViewed(files.size - open.size, files.size)) files to false else open to true
+}
+
+/** The queue once the host took [sent]: each path leaves it unless the reviewer flipped it again while the call was out. */
+fun confirmed(unsent: Map<String, Boolean>?, sent: Map<String, Boolean>): Map<String, Boolean>? =
+    unsent.orEmpty().filterNot { (path, viewed) -> sent[path] == viewed }.ifEmpty { null }
 
 /** The impact map's ticks on one function: the [places] checked (each `path#name`), while its text hashed to [hash]. */
 data class CheckedFunction(val hash: String, val places: List<String>)

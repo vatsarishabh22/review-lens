@@ -137,6 +137,15 @@ class GitHubWireTest {
     }
 
     @Test
+    fun `a batch of ticks is one call, a mutation per file in order, each path a variable`() {
+        val body = viewedBody("PR_1", linkedMapOf("a.kt" to true, "dir/b \"q\".kt" to false))
+        val vars = vars(body)
+        assertEquals(listOf("PR_1", "a.kt", "dir/b \"q\".kt"), listOf("id", "p0", "p1").map { vars[it].asString })
+        assertEquals("mutation(\$id:ID!,\$p0:String!,\$p1:String!){m0:markFileAsViewed(input:{pullRequestId:\$id,path:\$p0}){clientMutationId} " +
+            "m1:unmarkFileAsViewed(input:{pullRequestId:\$id,path:\$p1}){clientMutationId}}", Gson().fromJson(body, JsonObject::class.java)["query"].asString)
+    }
+
+    @Test
     fun `resolve and reopen are separate GitHub calls on the thread id`() {
         fun query(body: String) = Gson().fromJson(body, JsonObject::class.java)["query"].asString
         assertEquals("PRRT_4", vars(resolveBody("PRRT_4", true))["thread"].asString)

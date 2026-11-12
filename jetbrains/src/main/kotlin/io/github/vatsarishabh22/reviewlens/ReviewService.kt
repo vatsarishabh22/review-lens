@@ -12,7 +12,9 @@ import com.intellij.openapi.project.Project
 import com.intellij.openapi.util.Disposer
 import com.intellij.openapi.vfs.VirtualFile
 import com.intellij.ui.EditorNotifications
+import com.intellij.util.concurrency.AppExecutorUtil
 import java.util.concurrent.CopyOnWriteArrayList
+import java.util.concurrent.TimeUnit
 
 /**
  * The review in progress in this checkout, if any: its scope, changed files and ticks. The host keeps the rest: its
@@ -82,29 +84,36 @@ class ReviewService(private val project: Project) : Disposable {
     /** Unreviewed files under [dir] ("" = the whole repository), for folder badges. */
     fun pendingUnder(dir: String) = changes.count { (dir.isEmpty() || it.path.startsWith("$dir/")) && badge(it) != Badge.REVIEWED }
 
-    /** Marks a file viewed, or un-marks it, here at once; for a file the host lists, the same tick goes there in the background. */
     @Synchronized
-    fun toggleReviewed(change: FileChange) {
+    fun toggleReviewed(change: FileChange) = setReviewed(listOf(change), badge(change) != Badge.REVIEWED)
+
+    /** A folder's box: ticks its [files] (the ones directly in it), or unticks them all when all are viewed ([folderTick]). */
+    @Synchronized
+    fun toggleFolder(files: List<FileChange>) = folderTick(files, meta?.reviewed.orEmpty()).let { (changed, viewed) -> setReviewed(changed, viewed) }
+
+    /** Marks [files] viewed, or un-marks them, here at once; the ones the host lists go there in one call in the background. Callers hold the lock. */
+    private fun setReviewed(files: List<FileChange>, viewed: Boolean) {
         val current = meta ?: return
-        val viewed = badge(change) != Badge.REVIEWED
-        val reviewed = if (viewed) current.reviewed + (change.path to change.newBlob) else current.reviewed - change.path
+        val reviewed = if (viewed) current.reviewed + files.associate { it.path to it.newBlob } else current.reviewed - files.map { it.path }.toSet()
         // A PR tick is queued even when the host is unreachable now, so the next load sends it instead of erasing it.
-        val sends = HostViewed.of(project).sends(current, change)
-        val unsent = if (!sends) current.unsent else current.unsent.orEmpty() + (change.path to viewed)
-        update { current.copy(reviewed = reviewed, unsent = unsent) }
+        val sent = files.filter { HostViewed.of(project).sends(current, it) }.associate { it.path to viewed }
+        update { current.copy(reviewed = reviewed, unsent = if (sent.isEmpty()) current.unsent else current.unsent.orEmpty() + sent) }
         // the last tick is the moment to finish: say so once, with the way to do it
         if (viewed && current.target.reviewable && reviewedCount() == changes.size) notify(project, "All ${changes.size} files viewed",
             "Finish the review to post a verdict, or mark it reviewed without posting.", NotificationType.INFORMATION,
             NotificationAction.createSimpleExpiring("Finish review…") { showFinishReview(project, null) })
-        if (sends) HostViewed.of(project).send(git!!, change.path, viewed) { took -> if (took) confirmSent(change.path, viewed) else fireChanged() }
+        if (sent.isEmpty()) return
+        HostViewed.of(project).send(git!!, sent) { took -> if (took) confirmSent(sent); fireChanged() }
+        // the panel says "Sending…" once the call has waited this long: redraw then
+        AppExecutorUtil.getAppScheduledExecutorService().schedule({ if (HostViewed.of(project).waiting() > 0) fireChanged() }, HostViewed.SHOW_SENDING_MS, TimeUnit.MILLISECONDS)
     }
 
-    /** The host has the tick: drop it from [ReviewMeta.unsent] unless the reviewer flipped it again meanwhile. */
+    /** The host took [sent] ([confirmed]). */
     @Synchronized
-    private fun confirmSent(path: String, viewed: Boolean) {
+    private fun confirmSent(sent: Map<String, Boolean>) {
         val current = meta ?: return
-        if (current.unsent?.get(path) != viewed) return
-        meta = current.copy(unsent = (current.unsent - path).ifEmpty { null }).also { ReviewMeta.save(git!!, it) }
+        val unsent = confirmed(current.unsent, sent)
+        if (unsent != current.unsent) meta = current.copy(unsent = unsent).also { ReviewMeta.save(git!!, it) }
     }
 
     /** Every change to the saved review: written at once (it survives exit and a crash), then the editor and panel redraw. */

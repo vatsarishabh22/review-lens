@@ -27,6 +27,7 @@ import java.awt.Rectangle
 import java.awt.RenderingHints
 import java.awt.event.MouseAdapter
 import java.awt.event.MouseEvent
+import java.awt.geom.Line2D
 import java.awt.geom.Path2D
 import java.awt.geom.RoundRectangle2D
 import javax.swing.Box
@@ -138,6 +139,29 @@ class BadgeIcon(private val badge: Badge) : Icon {
 
     private fun polygon(vararg xy: Double) = Path2D.Double().apply {
         moveTo(xy[0], xy[1]); for (i in 2 until xy.size step 2) lineTo(xy[i], xy[i + 1]); closePath()
+    }
+}
+
+/** A folder's box, as the prototype draws it: ✅ when all its files are viewed, "–" when some are, an empty box when none. */
+class FolderMark(private val viewed: Int, private val total: Int) : Icon {
+    override fun getIconWidth() = JBUI.scale(16)
+    override fun getIconHeight() = JBUI.scale(16)
+    override fun paintIcon(c: Component?, g: Graphics, x: Int, y: Int) {
+        if (allViewed(viewed, total)) return BadgeIcon(Badge.REVIEWED).paintIcon(c, g, x, y)
+        val g2 = g.create() as Graphics2D
+        g2.setRenderingHint(RenderingHints.KEY_ANTIALIASING, RenderingHints.VALUE_ANTIALIAS_ON)
+        g2.translate(x, y)
+        JBUIScale.scale(1f).toDouble().let { g2.scale(it, it) }
+        if (viewed > 0) {
+            g2.color = ReviewColors.accent
+            g2.stroke = BasicStroke(2f, BasicStroke.CAP_ROUND, BasicStroke.JOIN_ROUND)
+            g2.draw(Line2D.Double(4.5, 8.0, 11.5, 8.0))
+        } else {
+            g2.color = ReviewColors.star
+            g2.stroke = BasicStroke(1.3f)
+            g2.draw(RoundRectangle2D.Double(2.0, 2.0, 12.0, 12.0, 6.0, 6.0))
+        }
+        g2.dispose()
     }
 }
 

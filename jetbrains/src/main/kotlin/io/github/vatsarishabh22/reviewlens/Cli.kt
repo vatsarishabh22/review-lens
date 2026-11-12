@@ -13,10 +13,19 @@ fun cliReason(stderr: String, program: String): String =
     stderr.lineSequence().map(String::trim).firstOrNull { it.isNotEmpty() }?.removePrefix("fatal: ")?.removePrefix("error: ")
         ?: "$program failed"
 
-/** Runs [command] in [dir] and returns stdout (trimmed unless [trim] is false); a non-zero exit throws with stderr. */
-fun runCli(dir: Path, vararg command: String, trim: Boolean = true): String {
+/**
+ * Runs [command] in [dir] and returns stdout (trimmed unless [trim] is false); a non-zero exit throws with stderr. With
+ * [timeoutMs], a command still running then is stopped and throws.
+ */
+fun runCli(dir: Path, vararg command: String, trim: Boolean = true, timeoutMs: Int? = null): String {
     // CONSOLE parent env = the login-shell PATH, so Homebrew's gh/git resolve even when the IDE starts from Finder.
-    val output = ExecUtil.execAndGetOutput(GeneralCommandLine(*command).withWorkingDirectory(dir))
+    val line = GeneralCommandLine(*command).withWorkingDirectory(dir)
+    val output = if (timeoutMs == null) ExecUtil.execAndGetOutput(line) else ExecUtil.execAndGetOutput(line, timeoutMs)
+    // the reason rides in stderr too: callers that reword a failure keep a tool's own words from there
+    if (output.isTimeout) "${command.first()} didn't answer in ${timeoutMs!! / 1000} s".let {
+        logger<CliException>().info("${command.joinToString(" ")} stopped after $timeoutMs ms")
+        throw CliException(it, stderr = it)
+    }
     if (output.exitCode != 0) {
         // the command line goes to the log; people see only the tool's own reason (it lands in balloons)
         logger<CliException>().info("${command.joinToString(" ")} exited ${output.exitCode}: ${output.stderr.trim()}")

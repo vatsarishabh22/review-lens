@@ -126,6 +126,16 @@ fun addThreadBody(reviewId: String, comment: Draft) = graphqlBody(ADD_THREAD, ma
 fun deleteCommentBody(commentId: String) = graphqlBody(DELETE_COMMENT, mapOf("comment" to commentId))
 /** Replaces a posted comment's text on GitHub at once. */
 fun editCommentBody(commentId: String, body: String) = graphqlBody(UPDATE_COMMENT, mapOf("comment" to commentId, "body" to body))
+/**
+ * Ticks (true) and unticks (false) files in one call, one aliased mutation each, the paths passed as variables. GitHub
+ * runs them all and answers an error for any it refused, which fails the call.
+ * ponytail: one call however many files; measured to 300 (2.5 s), split into chunks if a PR past that is ever refused.
+ */
+fun viewedBody(pullRequestId: String, ticks: Map<String, Boolean>): String {
+    val calls = ticks.entries.mapIndexed { i, (_, viewed) -> "m$i:${if (viewed) "markFileAsViewed" else "unmarkFileAsViewed"}(input:{pullRequestId:\$id,path:\$p$i}){clientMutationId}" }
+    return graphqlBody("mutation(\$id:ID!${ticks.keys.indices.joinToString("") { ",\$p$it:String!" }}){${calls.joinToString(" ")}}",
+        mapOf("id" to pullRequestId) + ticks.keys.mapIndexed { i, path -> "p$i" to path })
+}
 /** Resolves a thread, or reopens it ([resolved] false), on GitHub at once: GitHub can't hold it in a pending review. */
 fun resolveBody(threadId: String, resolved: Boolean) = graphqlBody(if (resolved) RESOLVE_THREAD else UNRESOLVE_THREAD, mapOf("thread" to threadId))
 

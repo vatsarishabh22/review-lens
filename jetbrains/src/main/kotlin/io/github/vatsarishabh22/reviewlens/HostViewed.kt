@@ -1,11 +1,11 @@
 package io.github.vatsarishabh22.reviewlens
 
 import com.intellij.notification.NotificationType
-import com.intellij.openapi.application.ApplicationManager
 import com.intellij.openapi.components.Service
 import com.intellij.openapi.components.service
 import com.intellij.openapi.diagnostic.thisLogger
 import com.intellij.openapi.project.Project
+import com.intellij.util.concurrency.AppExecutorUtil
 
 /**
  * The review's Viewed ticks on the host (README, Viewed sync): the host's answer folded in at load, each tick sent as
@@ -17,10 +17,13 @@ class HostViewed internal constructor(
     private val hostOf: (GitClient) -> ReviewHost?,
     private val pool: (() -> Unit) -> Unit,
     private val warn: (title: String, text: String) -> Unit,
+    /** Milliseconds on a clock that never jumps, for how long a call has waited. */
+    private val clock: () -> Long = { System.nanoTime() / 1_000_000 },
 ) {
     constructor(project: Project) : this(
         hostOf = ReviewHosts::of,
-        pool = { ApplicationManager.getApplication().executeOnPooledThread(it) },
+        // one at a time, in click order: a tick and an untick sent close together must reach the host as made
+        pool = AppExecutorUtil.createBoundedApplicationPoolExecutor("Review Lens viewed sync", 1).let { serial -> { serial.execute(it) } },
         warn = { title, text -> notify(project, title, text, NotificationType.WARNING) },
     )
 
@@ -38,6 +41,11 @@ class HostViewed internal constructor(
     /** The review's files on the host, read at load; null when unknown (a branch, or the host didn't answer). */
     @Volatile private var hostFiles: Set<String>? = null
     private var failureShown = false
+    /** A call made and not answered yet: the review it is for, the paths it carries, when it was made. */
+    private data class Call(val reviewId: String, val paths: Set<String>, val made: Long)
+    /** This review's unanswered calls, oldest first; [shown] once one waited [SHOW_SENDING_MS], until none is left. */
+    private val inFlight = ArrayDeque<Call>()
+    private var shown = false
 
     /** At load: [meta] with the host's ticks folded in (the host wins for its files); a branch review stays local. Runs the host's CLI: off EDT. */
     fun fold(git: GitClient, meta: ReviewMeta, changes: List<FileChange>): ReviewMeta {
@@ -51,7 +59,7 @@ class HostViewed internal constructor(
             onSuccess = { states ->
                 reviewId = states.pullRequestId
                 hostFiles = states.files.keys
-                syncViewed(meta, states.files, changes) { path, ticked -> runCatching { viewed!!.setViewed(states.pullRequestId, path, ticked) }.isSuccess }
+                syncViewed(meta, states.files, changes) { ticks -> runCatching { viewed!!.setViewed(states.pullRequestId, ticks) }.isSuccess }
                     .also { status = if (it.unsent == null) Status.HOST else Status.FAILED }
             },
             onFailure = { failed(git, it); meta },
@@ -64,15 +72,35 @@ class HostViewed internal constructor(
      */
     fun sends(meta: ReviewMeta?, change: FileChange): Boolean = meta?.target?.reviewable == true && hostKeepsViewed && hostFiles?.contains(change.path) != false
 
-    /** Sends one tick off EDT; [done] hears whether the host took it. Nothing goes before the host answered at load. */
-    fun send(git: GitClient, path: String, ticked: Boolean, done: (Boolean) -> Unit) {
+    /** Sends [ticks] off EDT in one call; [done] hears whether the host took them. Nothing goes before the host answered at load. */
+    fun send(git: GitClient, ticks: Map<String, Boolean>, done: (Boolean) -> Unit) {
         val id = reviewId ?: return
+        val call = Call(id, ticks.keys, clock())
+        synchronized(inFlight) { inFlight.addLast(call) }
         pool {
-            runCatching { ((hostOf(git) ?: throw ReviewHosts.notSignedIn()).viewed ?: throw CliException("This host keeps no Viewed checkboxes")).setViewed(id, path, ticked) }
-                .onSuccess { done(true) }
-                .onFailure { failed(git, it); done(false) }
+            val sent = runCatching { ((hostOf(git) ?: throw ReviewHosts.notSignedIn()).viewed ?: throw CliException("This host keeps no Viewed checkboxes")).setViewed(id, ticks) }
+            synchronized(inFlight) { inFlight.remove(call) }
+            sent.onFailure { failed(git, it) }
+            // a call for a review since left only answers that review's next load: its ticks stay in its unsent queue
+            if (id == reviewId) done(sent.isSuccess)
         }
     }
+
+    /** Whether [path]'s tick is still on its way to the host, in this review. */
+    fun sending(path: String) = synchronized(inFlight) { current().any { path in it.paths } }
+
+    /**
+     * The distinct files whose ticks are on their way, for the panel's "Sending n…": said once a call has waited
+     * [SHOW_SENDING_MS], so a quick answer never flickers, and kept until none is left, so a young call behind an
+     * answered one doesn't blink it off; 0 otherwise.
+     */
+    fun waiting(): Int = synchronized(inFlight) {
+        val calls = current()
+        shown = calls.isNotEmpty() && (shown || clock() - calls.first().made >= SHOW_SENDING_MS)
+        if (shown) calls.flatMap { it.paths }.toSet().size else 0
+    }
+
+    private fun current() = inFlight.filter { it.reviewId == reviewId }
 
     private fun local(meta: ReviewMeta) = meta.also { status = Status.LOCAL; reviewId = null }
 
@@ -87,6 +115,8 @@ class HostViewed internal constructor(
     }
 
     companion object {
+        const val SHOW_SENDING_MS = 500L
+
         fun of(project: Project): HostViewed = project.service()
     }
 }

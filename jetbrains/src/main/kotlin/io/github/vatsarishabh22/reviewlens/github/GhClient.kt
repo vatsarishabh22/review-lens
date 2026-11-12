@@ -41,11 +41,10 @@ class GhClient(private val root: Path) : ReviewHost, ViewedSync {
     override fun reviewThreads(number: Int): List<ReviewThread> = parseReviewThreads(runCli(root, "gh", "api", "graphql", "--paginate",
         "-F", "owner={owner}", "-F", "name={repo}", "-F", "number=$number", "-f", "query=$REVIEW_THREADS_QUERY", "--jq", REVIEW_THREADS_JQ))
 
-    /** Ticks or unticks one file on GitHub (private to the viewer; nobody is notified). */
-    override fun setViewed(reviewId: String, path: String, viewed: Boolean) {
-        val mutation = if (viewed) "markFileAsViewed" else "unmarkFileAsViewed"
-        runCli(root, "gh", "api", "graphql", "-f", "id=$reviewId", "-f", "path=$path",
-            "-f", "query=mutation(\$id:ID!,\$path:String!){$mutation(input:{pullRequestId:\$id,path:\$path}){clientMutationId}}")
+    /** Ticks or unticks files on GitHub in one call (private to the viewer; nobody is notified). */
+    override fun setViewed(reviewId: String, ticks: Map<String, Boolean>) {
+        // ticks go one call at a time (HostViewed): a call that hangs must not hold back the ones after it
+        if (ticks.isNotEmpty()) graphql(viewedBody(reviewId, ticks), ".data | length", VIEWED_TIMEOUT_MS)
     }
 
     /** The PR's id and latest push, and your own pending review on it (started on github.com or anywhere else), if any. */
@@ -89,11 +88,11 @@ class GhClient(private val root: Path) : ReviewHost, ViewedSync {
     }
 
     /** Sends one GraphQL [body] and returns what [jq] picks from the answer; a refusal throws with GitHub's reason. */
-    private fun graphql(body: String, jq: String): String {
+    private fun graphql(body: String, jq: String, timeoutMs: Int? = null): String {
         val file = Files.createTempFile("review-lens-graphql", ".json")
         try {
             Files.writeString(file, body)
-            return runCli(root, "gh", "api", "graphql", "--input", file.toString(), "--jq", jq).ifBlank { null }?.takeUnless { it == "null" }
+            return runCli(root, "gh", "api", "graphql", "--input", file.toString(), "--jq", jq, timeoutMs = timeoutMs).ifBlank { null }?.takeUnless { it == "null" }
                 ?: throw CliException("GitHub didn't answer")
         } catch (e: CliException) {
             throw CliException(githubRefusal(e.stdout) ?: e.stderr.ifBlank { "GitHub didn't answer" })
@@ -132,3 +131,6 @@ data class GitHubSlot(val id: String, val head: String, val pending: PendingRevi
     override fun refusal(verdict: Verdict, summary: String, outbox: Outbox, scopeEnd: String) = held(outbox, scopeEnd) ?: denied(verdict)
         ?: if (verdict != Verdict.APPROVE && summary.isBlank() && outbox.size + started == 0) "Add a summary or an inline comment to post a ${verdict.label.lowercase()} review." else null
 }
+
+/** 8x the slowest Viewed call measured (300 files in one call, 2.5 s). */
+private const val VIEWED_TIMEOUT_MS = 20_000

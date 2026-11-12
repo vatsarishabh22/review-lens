@@ -6,7 +6,7 @@ import org.junit.Assert.assertTrue
 import org.junit.Test
 import java.nio.file.Files
 
-/** The review's Viewed ticks on the host: folded in at load, sent one by one, and a failure said once. The merge rules are spec/cases/viewed-*.json. */
+/** The review's Viewed ticks on the host: folded in at load, sent as they are made, each batch in one call, and a failure said once. The merge rules are spec/cases/viewed-*.json. */
 class HostViewedTest {
     private val git = GitClient(Files.createTempDirectory("review-lens-viewed"))
     private val warned = mutableListOf<String>()
@@ -16,7 +16,7 @@ class HostViewedTest {
 
     private val viewedSync = object : ViewedSync {
         override fun viewedStates(number: Int) = answer ?: throw CliException("offline")
-        override fun setViewed(reviewId: String, path: String, viewed: Boolean) { sent += "$reviewId $path $viewed"; if (!takes) throw CliException("offline") }
+        override fun setViewed(reviewId: String, ticks: Map<String, Boolean>) { sent += "$reviewId $ticks"; if (!takes) throw CliException("offline") }
     }
     private fun host(viewed: ViewedSync?) = object : ReviewHost {
         override val name = "TestHost"
@@ -34,6 +34,10 @@ class HostViewedTest {
     }
 
     private fun synced(host: ReviewHost?) = HostViewed({ host }, { it() }, { title, _ -> warned += title })
+    /** Calls held back until the test lets them go, as a slow host keeps them. */
+    private val held = mutableListOf<() -> Unit>()
+    private var now = 0L
+    private fun slow(host: ReviewHost?) = HostViewed({ host }, { held += it }, { title, _ -> warned += title }, { now })
     private val a = FileChange("a.kt", null, 'M', "a2", 1, 0)
     private val b = FileChange("b.kt", null, 'M', "b2", 1, 0)
     private val c = FileChange("c.kt", null, 'M', "c2", 1, 0)
@@ -56,6 +60,15 @@ class HostViewedTest {
         val meta = viewed.fold(git, pr.copy(reviewed = mapOf("a.kt" to "a2"), unsent = mapOf("a.kt" to true)), listOf(a, b))
         assertEquals(mapOf("a.kt" to true), meta.unsent)
         assertEquals(HostViewed.Status.FAILED, viewed.status)
+    }
+
+    @Test
+    fun `the queue goes in one call at load, and leaves whole when the host takes it`() {
+        val viewed = synced(host(viewedSync))
+        val meta = viewed.fold(git, pr.copy(reviewed = mapOf("a.kt" to "a2"), unsent = mapOf("a.kt" to true, "b.kt" to false)), listOf(a, b))
+        assertEquals(listOf("PR_1 {a.kt=true, b.kt=false}"), sent)
+        assertEquals(null, meta.unsent)
+        assertEquals(HostViewed.Status.HOST, viewed.status)
     }
 
     @Test
@@ -89,16 +102,69 @@ class HostViewedTest {
     fun `a tick goes to the review's id once the host answered, and a refusal is said once`() {
         val viewed = synced(host(viewedSync))
         val outcomes = mutableListOf<Boolean>()
-        viewed.send(git, "a.kt", true) { outcomes += it }
+        viewed.send(git, mapOf("a.kt" to true)) { outcomes += it }
         assertEquals("nothing goes before the host answered at load", emptyList<String>(), sent)
         viewed.fold(git, pr, listOf(a, b))
-        viewed.send(git, "a.kt", true) { outcomes += it }
+        viewed.send(git, mapOf("a.kt" to true)) { outcomes += it }
         takes = false
-        viewed.send(git, "b.kt", true) { outcomes += it }
-        viewed.send(git, "b.kt", false) { outcomes += it }
-        assertEquals(listOf("PR_1 a.kt true", "PR_1 b.kt true", "PR_1 b.kt false"), sent)
+        viewed.send(git, mapOf("b.kt" to true, "c.kt" to true)) { outcomes += it }
+        viewed.send(git, mapOf("b.kt" to false)) { outcomes += it }
+        assertEquals(listOf("PR_1 {a.kt=true}", "PR_1 {b.kt=true, c.kt=true}", "PR_1 {b.kt=false}"), sent)
         assertEquals(listOf(true, false, false), outcomes)
         assertEquals(HostViewed.Status.FAILED, viewed.status)
         assertEquals(1, warned.size)
+    }
+
+    @Test
+    fun `ticks on their way are said once a call has waited, and no longer once it is answered or refused`() {
+        val viewed = slow(host(viewedSync))
+        viewed.fold(git, pr, listOf(a, b))
+        viewed.send(git, mapOf("a.kt" to true, "b.kt" to true)) {}
+        viewed.send(git, mapOf("b.kt" to false)) {}
+        now = 400
+        assertEquals("a quick answer never shows", 0, viewed.waiting())
+        now = 600
+        assertEquals("two distinct files on their way", 2, viewed.waiting())
+        assertTrue(viewed.sending("b.kt"))
+        held.removeAt(0)()
+        assertEquals(listOf("b.kt"), listOf("a.kt", "b.kt").filter(viewed::sending))
+        takes = false
+        held.removeAt(0)()
+        assertEquals("a refused call is no longer on its way", 0, viewed.waiting())
+        assertFalse(viewed.sending("b.kt"))
+    }
+
+    @Test
+    fun `once said, it stays while any call is out, even a young one behind an answered call, and ends with the last`() {
+        val viewed = slow(host(viewedSync))
+        viewed.fold(git, pr, listOf(a, b))
+        viewed.send(git, mapOf("a.kt" to true)) {}
+        now = 600
+        assertEquals(1, viewed.waiting())
+        now = 2_900
+        viewed.send(git, mapOf("b.kt" to true)) {}
+        now = 3_000
+        held.removeAt(0)()
+        assertEquals("b.kt is 0.1 s old but the line was already up: no blink", 1, viewed.waiting())
+        held.removeAt(0)()
+        assertEquals(0, viewed.waiting())
+        viewed.send(git, mapOf("a.kt" to false)) {}
+        now = 3_100
+        assertEquals("a fresh quick call after the last one ended doesn't show", 0, viewed.waiting())
+    }
+
+    @Test
+    fun `a call for a review since left answers no one here, and counts nowhere`() {
+        val viewed = slow(host(viewedSync))
+        viewed.fold(git, pr, listOf(a, b))
+        val outcomes = mutableListOf<Boolean>()
+        viewed.send(git, mapOf("a.kt" to true)) { outcomes += it }
+        answer = ViewedStates("PR_2", mapOf("a.kt" to ViewedState.UNVIEWED))
+        viewed.fold(git, pr.copy(target = ReviewTarget.forPr(2, "t", "h", "origin/main")), listOf(a))
+        now = 600
+        assertEquals(0, viewed.waiting())
+        assertFalse(viewed.sending("a.kt"))
+        held.removeAt(0)()
+        assertEquals("the new review's queue is never confirmed by the old call", emptyList<Boolean>(), outcomes)
     }
 }

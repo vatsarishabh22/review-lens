@@ -79,7 +79,8 @@ data class ViewedStates(val pullRequestId: String, val files: Map<String, Viewed
 /** A host's per-viewer "Viewed" checkboxes on a review's files. */
 interface ViewedSync {
     fun viewedStates(number: Int): ViewedStates
-    fun setViewed(reviewId: String, path: String, viewed: Boolean)
+    /** Ticks (true) or unticks each file of [ticks] in one call; none is no call. A refusal throws and may leave some applied: sending again is harmless. */
+    fun setViewed(reviewId: String, ticks: Map<String, Boolean>)
 }
 
 /** Someone on the host as the UI shows them: [name] in text, [login] seeds their avatar. */
