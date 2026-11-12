@@ -13,6 +13,7 @@ import com.intellij.openapi.fileEditor.FileEditorManagerEvent
 import com.intellij.openapi.fileEditor.FileEditorManagerListener
 import com.intellij.openapi.fileTypes.FileTypeManager
 import com.intellij.openapi.project.Project
+import com.intellij.ui.AnimatedIcon
 import com.intellij.ui.ColoredTreeCellRenderer
 import com.intellij.ui.RoundedLineBorder
 import com.intellij.ui.RowIcon
@@ -34,6 +35,7 @@ import java.awt.Component
 import java.awt.Container
 import java.awt.Cursor
 import java.awt.Dimension
+import java.awt.FlowLayout
 import java.awt.Point
 import java.awt.Rectangle
 import java.awt.Graphics
@@ -57,9 +59,13 @@ import javax.swing.tree.DefaultMutableTreeNode
 import javax.swing.tree.DefaultTreeModel
 import javax.swing.tree.TreePath
 
+/** The row under [point], or null below the last row (where [JList.locationToIndex] answers the last one). */
+private fun JList<*>.rowAt(point: Point) = locationToIndex(point).takeIf { it >= 0 && getCellBounds(it, it).contains(point) }
+
 /** A row of the changed-files list: a folder heading or a changed file under it. */
 private sealed interface FileRow {
-    data class Dir(val path: String) : FileRow
+    /** A folder and the changed files directly in it. */
+    data class Dir(val path: String, val files: List<FileChange>) : FileRow
     data class File(val change: FileChange, val nested: Boolean) : FileRow
 }
 
@@ -88,8 +94,20 @@ class ChangedFilesView(private val project: Project, parent: Disposable) : JPane
     private val strip = ProgressStrip()
     private val viewedText = mutedLabel()
     private val syncText = mutedLabel()
+    private val ends = JPanel(FlowLayout(FlowLayout.LEFT, JBUI.scale(8), 0)).apply { isOpaque = false }
     private val model = DefaultListModel<FileRow>()
-    private val list = JBList(model).apply { cellRenderer = Renderer() }
+    private val list = object : JBList<FileRow>(model) {
+        // a renderer's inner labels never answer the list's hover: the boxes' words come from here
+        override fun getToolTipText(e: MouseEvent): String? {
+            val row = rowAt(e.point)?.let { model.getElementAt(it) } ?: return null
+            if (e.x >= badgeRight(row)) return null
+            if (row is FileRow.File) return badgeWords(service.badge(row.change)) +
+                if (HostViewed.of(project).sending(row.change.path)) " · sending to ${service.hostName}" else ""
+            val dir = row as FileRow.Dir
+            val n = files(dir.files.size)
+            return if (allViewed(viewedIn(dir), dir.files.size)) "Viewed — click to unmark its $n" else "Mark the $n in this folder viewed"
+        }
+    }.apply { cellRenderer = Renderer() }
     private val treeRoot = DefaultMutableTreeNode()
     private val tree = Tree(DefaultTreeModel(treeRoot)).apply { isRootVisible = false; cellRenderer = ProjectRenderer() }
     private val remarkModel = DefaultListModel<RemarkRow>()
@@ -118,7 +136,7 @@ class ChangedFilesView(private val project: Project, parent: Disposable) : JPane
             }
         }.apply { isOpaque = false; border = JBUI.Borders.empty(6, 12, 0, 12) }
         val counts = JPanel(BorderLayout()).apply { isOpaque = false; add(viewedText, BorderLayout.WEST); add(syncText, BorderLayout.EAST) }
-        val head = stack(title, vgap(8), strip, vgap(6), counts, vgap(4), toggle).apply {
+        val head = stack(title, vgap(8), strip, vgap(6), counts, vgap(8), ends, vgap(8), toggle).apply {
             border = JBUI.Borders.compound(JBUI.Borders.customLineBottom(ReviewColors.line), JBUI.Borders.empty(6, 12, 6, 12))
         }
         add(head, BorderLayout.NORTH)
@@ -132,7 +150,7 @@ class ChangedFilesView(private val project: Project, parent: Disposable) : JPane
 
         remarkList.addMouseListener(object : MouseAdapter() {
             override fun mouseClicked(e: MouseEvent) {
-                val index = remarkList.locationToIndex(e.point).takeIf { it >= 0 && remarkList.getCellBounds(it, it).contains(e.point) } ?: return
+                val index = remarkList.rowAt(e.point) ?: return
                 val row = remarkModel[index]
                 val draft = (row as? RemarkRow.Item)?.remark?.draft ?: (row as? RemarkRow.Reply)?.draft
                 when (draft?.let { linkAt(index, e.point) }) {
@@ -144,17 +162,18 @@ class ChangedFilesView(private val project: Project, parent: Disposable) : JPane
         })
         remarkList.addMouseMotionListener(object : MouseMotionAdapter() {
             override fun mouseMoved(e: MouseEvent) {
-                val index = remarkList.locationToIndex(e.point)
-                val over = index >= 0 && remarkList.getCellBounds(index, index).contains(e.point) && linkAt(index, e.point) != null
+                val over = remarkList.rowAt(e.point)?.let { linkAt(it, e.point) } != null
                 remarkList.cursor = Cursor.getPredefinedCursor(if (over) Cursor.HAND_CURSOR else Cursor.DEFAULT_CURSOR)
             }
         })
 
         list.addMouseListener(object : MouseAdapter() {
             override fun mouseClicked(e: MouseEvent) {
-                val index = list.locationToIndex(e.point).takeIf { it >= 0 && list.getCellBounds(it, it).contains(e.point) } ?: return
-                val row = model[index] as? FileRow.File ?: return
-                if (e.x < badgeRight(row)) service.toggleReviewed(row.change) else if (!syncing) openChange(project, row.change)
+                val index = list.rowAt(e.point) ?: return
+                when (val row = model[index]) {
+                    is FileRow.Dir -> if (e.x < badgeRight(row)) service.toggleFolder(row.files)
+                    is FileRow.File -> if (e.x < badgeRight(row)) service.toggleReviewed(row.change) else if (!syncing) openChange(project, row.change)
+                }
             }
         })
         tree.addMouseListener(object : MouseAdapter() {
@@ -189,8 +208,8 @@ class ChangedFilesView(private val project: Project, parent: Disposable) : JPane
         var popup: JBPopup? = null
         fun save() {
             val body = field.text.trim().takeIf { it.isNotEmpty() } ?: return
-            popup?.cancel()
-            ReviewDrafts.of(project).edit(draft, body)
+            // refused (Finish posting, or posted since), the box stays open with what is typed: only Cancel throws it away
+            if (ReviewDrafts.of(project).edit(draft, body)) popup?.cancel()
         }
         DumbAwareAction.create { save() }.registerCustomShortcutSet(CommonShortcuts.getCtrlEnter(), field)
         val saveButton = JButton("Save").apply { putClientProperty(DarculaButtonUI.DEFAULT_STYLE_KEY, true); addActionListener { save() } }
@@ -215,12 +234,19 @@ class ChangedFilesView(private val project: Project, parent: Disposable) : JPane
         val done = service.reviewedCount()
         strip.fraction = if (total == 0) 0.0 else done.toDouble() / total
         viewedText.text = "$done of $total files viewed · ${meta.scopeLabel}"
-        syncText.text = HostViewed.of(project).status.text(service.hostName)
+        val viewedSync = HostViewed.of(project)
+        val waiting = viewedSync.waiting()
+        syncText.text = if (waiting > 0) "Sending $waiting to ${service.hostName}…" else viewedSync.status.text(service.hostName)
+        syncText.icon = if (waiting > 0) AnimatedIcon.Default.INSTANCE else null
+        ends.removeAll()
+        finishButton(project)?.let(ends::add)
+        ends.add(exitButton(project))
+        ends.revalidate(); ends.repaint()
 
         val selected = (list.selectedValue as? FileRow.File)?.change?.path
         model.clear()
         service.changes.groupBy { it.dir }.toSortedMap().forEach { (dir, files) ->
-            if (dir.isNotEmpty()) model.addElement(FileRow.Dir(dir))
+            if (dir.isNotEmpty()) model.addElement(FileRow.Dir(dir, files))
             files.forEach { model.addElement(FileRow.File(it, dir.isNotEmpty())) }
         }
         selected?.let(::select)
@@ -285,8 +311,9 @@ class ChangedFilesView(private val project: Project, parent: Disposable) : JPane
         syncing = false
     }
 
-    private fun badgeRight(row: FileRow.File) = JBUI.scale(indent(row) + 18)
-    private fun indent(row: FileRow.File) = if (row.nested) 28 else 12
+    private fun viewedIn(dir: FileRow.Dir) = dir.files.count { service.badge(it) == Badge.REVIEWED }
+    private fun badgeRight(row: FileRow) = JBUI.scale(indent(row) + 18)
+    private fun indent(row: FileRow) = if (row is FileRow.File && row.nested) 28 else 12
 
     private inner class Renderer : ListCellRenderer<FileRow> {
         override fun getListCellRendererComponent(list: JList<out FileRow>, value: FileRow, index: Int, selected: Boolean, focused: Boolean): Component {
@@ -296,7 +323,10 @@ class ChangedFilesView(private val project: Project, parent: Disposable) : JPane
             when (value) {
                 is FileRow.Dir -> {
                     cell.border = JBUI.Borders.empty(3, 12, 3, 10)
+                    val viewed = viewedIn(value)
+                    cell.add(JBLabel(FolderMark(viewed, value.files.size)), BorderLayout.WEST)
                     cell.add(JBLabel(value.path, AllIcons.Nodes.Folder, JBLabel.LEFT).apply { foreground = ReviewColors.muted })
+                    cell.add(mutedLabel("$viewed of ${value.files.size}"), BorderLayout.EAST)
                 }
                 is FileRow.File -> {
                     val change = value.change

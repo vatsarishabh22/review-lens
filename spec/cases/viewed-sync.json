@@ -1,9 +1,9 @@
 {
   "rule": "viewed-sync",
-  "about": "Re-send queued ticks (`accepts`: the paths the host takes), then merge the answer read before the re-send. `tried`: what was sent, in order.",
+  "about": "On load: fold the host's answer in, the queued ticks keeping this machine's value, and drop from the queue a path the host doesn't list (it stays ticked here). `unsent`: what is left to send, through the tick line.",
   "cases": [
     {
-      "name": "a tick sent on reconnect is kept, not erased by the answer read before it went out",
+      "name": "queued ticks keep this machine's value, not erased by the answer read before they go, and stay queued for the tick line",
       "given": {
         "reviewed": {
           "a.kt": "a2",
@@ -26,9 +26,6 @@
             "path": "b.kt",
             "newBlob": "b2"
           }
-        ],
-        "accepts": [
-          "a.kt"
         ]
       },
       "expect": {
@@ -37,16 +34,13 @@
           "b.kt": "b2"
         },
         "unsent": {
+          "a.kt": true,
           "b.kt": true
-        },
-        "tried": [
-          "a.kt",
-          "b.kt"
-        ]
+        }
       }
     },
     {
-      "name": "a queued tick for a file outside the PR on the host is dropped, never re-sent, and stays ticked here",
+      "name": "a queued tick for a file outside the PR on the host leaves the queue, never sent, and stays ticked here",
       "given": {
         "reviewed": {
           "a.kt": "a2",
@@ -74,11 +68,6 @@
             "path": "c.kt",
             "newBlob": "c2"
           }
-        ],
-        "accepts": [
-          "a.kt",
-          "b.kt",
-          "c.kt"
         ]
       },
       "expect": {
@@ -87,10 +76,66 @@
           "b.kt": "b2",
           "c.kt": "c2"
         },
-        "unsent": null,
-        "tried": [
-          "a.kt"
+        "unsent": {
+          "a.kt": true
+        }
+      }
+    },
+    {
+      "name": "ticks and unticks stay queued together, for one call",
+      "given": {
+        "reviewed": {
+          "a.kt": "a2"
+        },
+        "unsent": {
+          "a.kt": true,
+          "b.kt": false
+        },
+        "host": {
+          "a.kt": "UNVIEWED",
+          "b.kt": "VIEWED"
+        },
+        "changes": [
+          {
+            "path": "a.kt",
+            "newBlob": "a2"
+          },
+          {
+            "path": "b.kt",
+            "newBlob": "b2"
+          }
         ]
+      },
+      "expect": {
+        "reviewed": {
+          "a.kt": "a2"
+        },
+        "unsent": {
+          "a.kt": true,
+          "b.kt": false
+        }
+      }
+    },
+    {
+      "name": "nothing queued leaves nothing to send",
+      "given": {
+        "reviewed": {},
+        "unsent": null,
+        "host": {
+          "a.kt": "VIEWED"
+        },
+        "changes": [
+          {
+            "path": "a.kt",
+            "newBlob": "a2"
+          }
+        ]
+      },
+      "expect": {
+        "reviewed": {
+          "a.kt": "a2"
+        },
+        "unsent": null
       }
     }
   ]

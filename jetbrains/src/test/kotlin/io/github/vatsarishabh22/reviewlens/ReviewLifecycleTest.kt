@@ -211,11 +211,29 @@ class ReviewLifecycleTest {
         val git = GitClient(repo)
         val range = ScopeRange(git("rev-parse", "main"), head)
         val app = git.changes(range).first { it.path == "app.py" }
-        ReviewMeta.save(git, ReviewMeta(target, range, "All commits (1)", mapOf("app.py" to app.newBlob, "gone.py" to "x")))
+        saved(git, ReviewMeta(target, range, "All commits (1)", mapOf("app.py" to app.newBlob, "gone.py" to "x")))
         val listed = ListedTarget(target, "t", null) // no gh: the PR's head is unknown
         assertEquals(ReviewProgress(1, 2), ReviewTargets(git).progress(listed)) // app.py of {app.py, new.py}; a stale path does not count
-        ReviewMeta.save(git, ReviewMeta(target, range, "All commits (1)", mapOf("app.py" to "old-blob")))
-        assertEquals(ReviewProgress(0, 2), ReviewTargets(git).progress(listed)) // changed since viewed
+        saved(git, ReviewMeta(target, range, "All commits (1)", mapOf("app.py" to "old-blob")))
+        assertEquals(ReviewProgress(0, 2, ticked = true), ReviewTargets(git).progress(listed)) // changed since viewed: still ticked
+    }
+
+    @Test
+    fun `a review that posted or drafted without a tick still shows, and one only opened does not`() {
+        val head = setUp()
+        val git = GitClient(repo)
+        val range = ScopeRange(git("rev-parse", "main"), head)
+        fun at(sha: String) = ListedTarget(target, "t", PullRequest(1, "t", "feature", sha, "main", Person("asha", "asha")))
+        val moved = "0123456789abcdef0123456789abcdef01234567"
+        saved(git, ReviewMeta(target, range, "All commits (1)", seenHead = head))
+        assertNull("only opened", ReviewTargets(git).progress(at(head)))
+        assertNull("only opened, then a push: no claim of a review", ReviewTargets(git).progress(at(moved)))
+        saved(git, ReviewMeta(target, range, "All commits (1)", seenHead = head, verdict = Verdict.COMMENT))
+        assertEquals("Commented · 0 of 2 viewed", ReviewTargets(git).progress(at(head))!!.label)
+        assertEquals("🔄 New commits since your review", ReviewTargets(git).progress(at(moved))!!.label)
+        saved(git, ReviewMeta(target, range, "All commits (1)", seenHead = head, drafts = listOf(Draft("app.py", 1, "b", "q"))))
+        assertEquals("Resume · 1 draft", ReviewTargets(git).progress(at(head))!!.label)
+        assertFalse("drafts alone don't make a push news", ReviewTargets(git).progress(at(moved))!!.newCommits)
     }
 
     @Test
@@ -223,7 +241,7 @@ class ReviewLifecycleTest {
         val head = setUp()
         val git = GitClient(repo)
         val range = ScopeRange(git("rev-parse", "main"), head)
-        ReviewMeta.save(git, ReviewMeta(target, range, "All commits (1)", git.changes(range).associate { it.path to it.newBlob }, seenHead = head, verdict = Verdict.APPROVE))
+        saved(git, ReviewMeta(target, range, "All commits (1)", git.changes(range).associate { it.path to it.newBlob }, seenHead = head, verdict = Verdict.APPROVE))
         fun at(sha: String) = ListedTarget(target, "t", PullRequest(1, "t", "feature", sha, "main", Person("asha", "asha")))
         assertEquals("✓ Reviewed · approved", ReviewTargets(git).progress(at(head))!!.label)
         assertEquals("🔄 New commits since your review", ReviewTargets(git).progress(at("0123456789abcdef0123456789abcdef01234567"))!!.label)
@@ -235,7 +253,7 @@ class ReviewLifecycleTest {
         val session = ReviewSession(GitClient(repo))
         val local = target.copy(base = "main") // the fixture repo has no remote
         val loaded = session.local(local, head)
-        session.begin(loaded, resolveScope(loaded.mergeBase, loaded.commits, emptyList()), "All commits (1)")
+        session.begin(loaded, resolveScope(loaded.start, loaded.commits, emptyList()), "All commits (1)")
         assertEquals(head, ReviewMeta.load(GitClient(repo), local.key)!!.seenHead)
     }
 
@@ -246,12 +264,15 @@ class ReviewLifecycleTest {
         val session = ReviewSession(git)
         val local = target.copy(base = "main")
         val loaded = session.local(local, head)
-        val range = resolveScope(loaded.mergeBase, loaded.commits, emptyList())
+        val range = resolveScope(loaded.start, loaded.commits, emptyList())
         session.begin(loaded, range, "All commits (1)")
-        ReviewMeta.save(git, ReviewMeta.load(git, local.key)!!.copy(reviewed = mapOf("app.py" to "b"), unsent = mapOf("app.py" to true)))
+        saved(git, ReviewMeta.load(git, local.key)!!.copy(reviewed = mapOf("app.py" to "b"), unsent = mapOf("app.py" to true)))
         session.begin(loaded, range, "Commit abc1234")
         val meta = ReviewMeta.load(git, local.key)!!
         assertEquals("Commit abc1234" to mapOf("app.py" to "b"), meta.scopeLabel to meta.reviewed)
         assertEquals(mapOf("app.py" to true), meta.unsent)
     }
+
+    /** The review's file as a test sets it up: written the one way the plugin writes it. */
+    private fun saved(git: GitClient, meta: ReviewMeta) = ReviewMeta.change(git, meta.target.key) { meta }
 }

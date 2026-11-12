@@ -4,6 +4,7 @@ import com.intellij.ide.ui.laf.darcula.ui.DarculaButtonUI
 import com.intellij.openapi.project.Project
 import com.intellij.openapi.ui.popup.JBPopup
 import com.intellij.openapi.ui.popup.JBPopupFactory
+import com.intellij.ui.AnimatedIcon
 import com.intellij.ui.DocumentAdapter
 import com.intellij.ui.components.JBLabel
 import com.intellij.ui.components.JBScrollPane
@@ -19,6 +20,7 @@ import javax.swing.JComponent
 import javax.swing.JPanel
 import javax.swing.JRadioButton
 import javax.swing.JSeparator
+import javax.swing.SwingConstants
 import javax.swing.UIManager
 import javax.swing.border.EmptyBorder
 import javax.swing.event.DocumentEvent
@@ -26,11 +28,11 @@ import javax.swing.event.DocumentEvent
 /**
  * Finish review: summary and verdict go to GitHub as one review, or "Mark as reviewed" posts nothing; either way the
  * review then ends. Shown under [anchor], or centred in the window when there is none (the "All files viewed" balloon).
- * The threads are read again first, so a thread resolved or deleted since the review loaded is said before anything posts.
+ * It opens at once and reads the threads again inside, so a thread resolved or deleted since the review loaded is said
+ * before anything posts; Submit waits for that read, Mark as reviewed doesn't (it posts nothing).
  */
 fun showFinishReview(project: Project, anchor: JComponent?) {
-    if (ReviewService.of(project).meta?.target?.reviewable != true) return openFinishReview(project, anchor)
-    background(project, "Checking ${ReviewService.of(project).hostName} for new comments", { HostThreads.of(project).reload() }) { openFinishReview(project, anchor) }
+    if (!refusedBusy(project, "Finish review")) openFinishReview(project, anchor)
 }
 
 /** What the Finish popup says: its fine print, the drafts warning (only when nothing is posted), and the button. */
@@ -69,56 +71,93 @@ fun replyNotes(replies: List<Draft>, threads: List<ReviewThread>?, host: String)
     })
 }
 
+/** Why choice [choice] (null: Mark as reviewed) can't be picked now, or null: the one lock its radio and Submit both read. */
+fun choiceLock(choice: Verdict?, markLocked: String?, slot: ReviewSlot?): String? = if (choice == null) markLocked else slot?.denied(choice)
+
+/**
+ * Why Submit can't go with [verdict] now (said on hover), or null: first the choice's own lock ([choiceLock]), which can
+ * close while it stays picked (a file unticked with the popup open); then the host's comments being read again; then
+ * the host's refusal of that review.
+ */
+fun submitBlocker(verdict: Verdict?, markLocked: String?, slot: ReviewSlot?, checked: Boolean?, summary: String, outbox: Outbox, scopeEnd: String, host: String): String? =
+    choiceLock(verdict, markLocked, slot) ?: when {
+        verdict == null -> null
+        checked == null -> "Waiting for $host's latest comments"
+        else -> slot?.refusal(verdict, summary, outbox, scopeEnd)
+    }
+
 private fun openFinishReview(project: Project, anchor: JComponent?) {
     val service = ReviewService.of(project)
+    val host = service.hostName
+    val threads = HostThreads.of(project)
     val drafts = ReviewDrafts.of(project)
-    val outbox = drafts.outbox()
     val summary = JBTextArea(drafts.summary, 4, 0).apply {
         lineWrap = true; wrapStyleWord = true; font = JBFont.label(); emptyText.text = "Leave a summary (optional)"
     }
+    // the threads read again, for what changed since the review loaded: null while reading, false when it failed
+    var checked: Boolean? = if (service.meta?.target?.reviewable == true) null else true
     val group = ButtonGroup()
-    // null is "Mark as reviewed": nothing goes to the host, so none of its rules apply; the slot was read just before this opened
-    val slot = HostThreads.of(project).slot
-    val scopeEnd = service.meta?.range?.to.orEmpty()
-    val choices = (Verdict.entries + null).associateWith { v ->
-        JRadioButton(v?.label ?: "Mark as reviewed", v == Verdict.COMMENT).apply {
-            isOpaque = false; group.add(this)
-            toolTipText = v?.let { slot?.denied(it) } // why it is greyed, on hover
-            isEnabled = toolTipText == null
-        }
-    }
+    // null is "Mark as reviewed": nothing goes to the host, so none of its rules apply
+    val choices = (Verdict.entries + null).associateWith { v -> JRadioButton(v?.label ?: "Mark as reviewed", v == Verdict.COMMENT).apply { isOpaque = false; group.add(this) } }
     var popup: JBPopup? = null
     var content: JComponent? = null
     val verdict = { choices.entries.first { it.value.isSelected }.key }
     val cancel = JButton("Cancel").apply { addActionListener { popup?.cancel() }; cursor = Cursor.getPredefinedCursor(Cursor.HAND_CURSOR) }
-    val submit = JButton("Submit to ${service.hostName}").apply {
-        putClientProperty(DarculaButtonUI.DEFAULT_STYLE_KEY, true)
-        cursor = Cursor.getPredefinedCursor(Cursor.HAND_CURSOR)
-        addActionListener { popup?.cancel(); finishReview(project, summary.text.trim(), verdict()) }
-    }
-    // drafts written on another scope's version of a file go out only from that scope: say so, never skip them silently
-    val waiting = service.meta?.drafts.orEmpty().count { !it.posted && it.replyTo == null } - outbox.comments.size
-    // a review started on the host's website is adopted, and a held one is said in place of "will be posted"
-    val words = { v: Verdict? -> finishWords(v, outbox, slot?.started ?: 0, slot?.held(outbox, scopeEnd), waiting, service.reviewedCount(), service.changes.size, service.hostName) }
+    val submit = JButton("Submit to $host").apply { putClientProperty(DarculaButtonUI.DEFAULT_STYLE_KEY, true); cursor = Cursor.getPredefinedCursor(Cursor.HAND_CURSOR) }
     val fineprint = wrappingText("", JBFont.small()).apply { foreground = ReviewColors.muted }
+    val check = JBLabel("Checking $host for new comments…", AnimatedIcon.Default.INSTANCE, SwingConstants.LEFT).apply { font = JBFont.small(); foreground = ReviewColors.muted }
+    val notes = stack()
     val keep = wrappingText("", JBFont.small()).apply { foreground = ReviewColors.warn }
-    val notes = replyNotes(service.meta?.drafts.orEmpty(), HostThreads.of(project).threads, service.hostName).map { note ->
-        wrappingText(note, JBFont.small()).apply { foreground = ReviewColors.warn; setSize(JBUI.scale(356), Short.MAX_VALUE.toInt()) }
-    }
+    val refused = wrappingText("", JBFont.small()).apply { foreground = ReviewColors.warn; isVisible = false }
+    val markHint = mutedLabel("")
+    // every redraw reads the review as it is now: the threads read again, a tick or a draft since the popup opened
     val update = {
+        val outbox = drafts.outbox()
+        val scopeEnd = service.meta?.range?.to.orEmpty()
+        val viewed = service.reviewedCount()
+        // Mark as reviewed records the files viewed, so before every one is it would record nothing
+        val markLocked = if (allViewed(viewed, service.changes.size)) null else "View every file first: $viewed of ${service.changes.size} viewed"
+        // drafts written on another scope's version of a file go out only from that scope: say so, never skip them silently
+        val waiting = service.meta?.drafts.orEmpty().count { !it.posted && it.replyTo == null } - outbox.comments.size
+        markHint.text = markLocked ?: "Nothing is posted to $host"
         val v = verdict()
-        val blocker = v?.let { slot?.refusal(it, summary.text, outbox, scopeEnd) }
-        submit.isEnabled = blocker == null
+        val slot = threads.slot
+        val idle = service.ending == null
+        val posting = service.ending == ReviewService.Ending.POSTING
+        // a review started on the host's website is adopted, and a held one is said in place of "will be posted"
+        val said = finishWords(v, outbox, slot?.started ?: 0, slot?.held(outbox, scopeEnd), waiting, viewed, service.changes.size, host)
+        choices.forEach { (c, radio) ->
+            radio.toolTipText = choiceLock(c, markLocked, slot) // why it is greyed, on hover
+            radio.isEnabled = radio.toolTipText == null && idle
+        }
+        val blocker = submitBlocker(v, markLocked, slot, checked, summary.text, outbox, scopeEnd, host)
+        submit.isEnabled = blocker == null && idle
         submit.toolTipText = blocker // a greyed-out Submit says why on hover
-        val said = words(v)
-        submit.text = said.submit
-        summary.isEnabled = v != null // nothing is posted, so a summary has nowhere to go
+        submit.text = if (posting) ReviewService.Ending.POSTING.busy else said.submit
+        submit.icon = if (posting) AnimatedIcon.Default.INSTANCE else null
+        cancel.isEnabled = !posting
+        summary.isEnabled = v != null && idle // nothing is posted, so a summary has nowhere to go
         keep.text = said.keep.orEmpty()
         keep.isVisible = said.keep != null
         fineprint.text = said.fineprint
-        listOf(fineprint, keep).forEach { it.setSize(JBUI.scale(356), Short.MAX_VALUE.toInt()) }
+        check.isVisible = checked != true
+        if (checked == false) { check.text = "Couldn't check $host for new comments. Your review goes as it is."; check.icon = null; check.foreground = ReviewColors.warn }
+        notes.removeAll()
+        if (checked != null) replyNotes(service.meta?.drafts.orEmpty(), threads.threads, host).forEach { note ->
+            notes.add(wrappingText(note, JBFont.small()).apply { foreground = ReviewColors.warn; setSize(JBUI.scale(356), Short.MAX_VALUE.toInt()) }); notes.add(vgap(6))
+        }
+        listOf(fineprint, keep, refused).forEach { it.setSize(JBUI.scale(356), Short.MAX_VALUE.toInt()) }
         content?.let(::fitWidth)
-        popup?.pack(false, true) // the drafts warning comes and goes with Mark as reviewed
+        popup?.pack(false, true) // the notes and the drafts warning come and go
+    }
+    submit.addActionListener {
+        refused.isVisible = false
+        finishReview(project, summary.text.trim(), verdict(), posted = { popup?.cancel() }) { reason ->
+            // the host said no: say why here, where the click was; the comments are still drafts
+            refused.text = reason
+            refused.isVisible = true
+            update()
+        }
     }
     summary.document.addDocumentListener(object : DocumentAdapter() {
         override fun textChanged(e: DocumentEvent) { drafts.summary = summary.text; update() }
@@ -126,23 +165,29 @@ private fun openFinishReview(project: Project, anchor: JComponent?) {
     choices.values.forEach { it.addActionListener { update() } }
     update()
     // the hint is its own muted label under the radio, so its colour follows the theme like every other label
-    fun option(v: Verdict?, radio: JRadioButton) = listOf(radio, mutedLabel(v?.hint ?: "Nothing is posted to ${service.hostName}").apply { border = EmptyBorder(0, textIndent(radio), 0, 0) }, vgap(4))
+    fun option(v: Verdict?, radio: JRadioButton) = listOf(radio, (v?.hint?.let { mutedLabel(it) } ?: markHint).apply { border = EmptyBorder(0, textIndent(radio), 0, 0) }, vgap(4))
     content = stack(
         JBLabel("Finish your review").apply { font = JBFont.label().asBold() }, vgap(4),
         fineprint, vgap(6),
-        *notes.flatMap { listOf(it, vgap(6)) }.toTypedArray(), vgap(4),
+        check, notes, vgap(4),
         JBScrollPane(summary), vgap(8),
         *choices.filterKeys { it != null }.flatMap { (v, radio) -> option(v, radio) }.toTypedArray(),
         JSeparator(), vgap(6),
         *option(null, choices.getValue(null)).toTypedArray(),
-        keep, vgap(8),
+        keep, refused, vgap(8),
         JPanel(FlowLayout(FlowLayout.RIGHT, JBUI.scale(8), 0)).apply { isOpaque = false; add(cancel); add(submit) },
     ).apply { border = JBUI.Borders.empty(12); fitWidth(this) }
     popup = JBPopupFactory.getInstance().createComponentPopupBuilder(content, summary)
         .setRequestFocus(true).setFocusable(true).setCancelOnClickOutside(true)
         .setCancelOnWindowDeactivation(false) // switching to another app and back keeps it open
+        .setCancelCallback { service.ending != ReviewService.Ending.POSTING } // while it posts, the popup stays: it is where the answer shows
         .createPopup()
+    service.onChanged(popup) { if (!popup.isDisposed) update() } // posting, exiting, a refusal: the one ending state redraws it
     if (anchor != null && anchor.isShowing) popup.showUnderneathOf(anchor) else popup.showCenteredInCurrentWindow(project)
+    if (checked == null) background(project, "Checking $host for new comments", { threads.reload() }, current = { !popup.isDisposed }) { read ->
+        checked = read
+        update()
+    }
 }
 
 /** The popup's fixed width, its height whatever the visible parts need. */

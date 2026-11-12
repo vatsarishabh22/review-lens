@@ -6,40 +6,36 @@ import com.intellij.openapi.actionSystem.ActionToolbar
 import com.intellij.openapi.actionSystem.AnActionEvent
 import com.intellij.openapi.actionSystem.impl.ActionButton
 import com.intellij.openapi.project.DumbAwareAction
-import java.awt.Cursor
 import com.intellij.ui.DocumentAdapter
 import com.intellij.ui.ScrollPaneFactory
 import com.intellij.ui.SearchTextField
 import com.intellij.ui.components.JBLabel
-import com.intellij.ui.components.JBList
 import com.intellij.util.ui.JBFont
 import com.intellij.util.ui.JBUI
-import com.intellij.util.ui.UIUtil
 import java.awt.BorderLayout
-import java.awt.Component
-import java.awt.event.MouseAdapter
-import java.awt.event.MouseEvent
-import javax.swing.DefaultListModel
+import java.awt.Cursor
+import java.awt.Graphics
 import javax.swing.JComponent
-import javax.swing.JList
 import javax.swing.JPanel
-import javax.swing.ListCellRenderer
+import javax.swing.JScrollPane
 import javax.swing.event.DocumentEvent
 
-/** One line of the list: a section heading or a PR (or branch) with its resume state. */
-private sealed interface ListRow {
-    data class Heading(val text: String) : ListRow
-    data class Item(val listed: ListedTarget, val progress: ReviewProgress?) : ListRow
-}
-
-/** "Waiting on you" over "Other open", filtered by the search box; picking a row opens its detail. */
+/**
+ * "Waiting on you" over "Other open", filtered by the search box; picking a row opens its detail. Real components, not
+ * a JList's painted stamps: a stack is a [StackCard] that scrolls on its own.
+ */
 class PrListView(private val onPick: (ListedTarget) -> Unit, onRefresh: () -> Unit) : JPanel(BorderLayout()) {
 
     private val search = SearchTextField(false).apply { textEditor.emptyText.text = "Search pull requests" }
-    private val model = DefaultListModel<ListRow>()
-    private val list = JBList(model).apply { cellRenderer = Renderer(); emptyText.text = "Loading pull requests…" }
+    private val rows = ScrollStack(JBUI.Borders.emptyBottom(8))
+    private val empty = mutedLabel("Loading pull requests…", small = false).apply { border = JBUI.Borders.empty(16, 12) }
     private var all: List<ListedTarget> = emptyList()
+    private var stacks: List<List<ListedTarget>> = emptyList()
     private var progress: Map<String, ReviewProgress> = emptyMap()
+    private var stackKeys: Map<Int, String> = emptyMap()
+    private var counts: Map<String, Int> = emptyMap()
+    /** Each stack card's scroll, by its bottom PR, kept while the same listing is drawn again (search, counts arriving). */
+    private var scrolled: Map<Int, Int> = emptyMap()
     /** Branches stand in when `gh` could not list PRs (not installed, signed out, offline, not a GitHub repo): say so. */
     private val fallbackNote = mutedLabel("").apply {
         border = JBUI.Borders.empty(0, 12, 4, 12); isVisible = false
@@ -57,93 +53,123 @@ class PrListView(private val onPick: (ListedTarget) -> Unit, onRefresh: () -> Un
             add(search); add(refresh, BorderLayout.EAST)
         }
         add(stack(bar, fallbackNote), BorderLayout.NORTH)
-        add(ScrollPaneFactory.createScrollPane(list, true))
+        add(ScrollPaneFactory.createScrollPane(rows, true).apply { horizontalScrollBarPolicy = JScrollPane.HORIZONTAL_SCROLLBAR_NEVER })
         search.addDocumentListener(object : DocumentAdapter() {
             override fun textChanged(e: DocumentEvent) = rebuild()
         })
-        list.addMouseListener(object : MouseAdapter() {
-            override fun mouseClicked(e: MouseEvent) {
-                val row = list.locationToIndex(e.point).takeIf { it >= 0 && list.getCellBounds(it, it).contains(e.point) } ?: return
-                (model[row] as? ListRow.Item)?.let { onPick(it.listed) }
-            }
-        })
+        showEmpty()
     }
 
     fun loading() {
-        all = emptyList(); model.clear(); fallbackNote.isVisible = false
-        list.emptyText.text = "Loading pull requests…"
+        all = emptyList(); stacks = emptyList(); fallbackNote.isVisible = false
+        empty.text = "Loading pull requests…"; showEmpty()
     }
 
     fun failed() {
-        all = emptyList(); model.clear(); fallbackNote.isVisible = false
-        list.emptyText.text = "Couldn't list pull requests"
+        all = emptyList(); stacks = emptyList(); fallbackNote.isVisible = false
+        empty.text = "Couldn't list pull requests"; showEmpty()
     }
 
     /** [progress] per target key, for PRs this reviewer started before (the "Resume" pill). */
     fun show(listing: Listing, progress: Map<String, ReviewProgress>) {
-        all = listing.targets; this.progress = progress
+        all = listing.targets; stacks = listing.stacks; stackKeys = listing.stackKeys; counts = emptyMap(); this.progress = progress
+        scrolled = emptyMap() // a new listing opens each stack at its next PR
         fallbackNote.isVisible = listing.branchesOnly
         fallbackNote.text = "Couldn't get pull requests from ${listing.hostName} · showing branches"
-        list.emptyText.text = if (listing.branchesOnly) "No branches to review" else "No open pull requests"
+        empty.text = if (listing.branchesOnly) "No branches to review" else "No open pull requests"
         rebuild()
     }
 
-    private fun rebuild() {
-        val query = search.text.trim().lowercase()
-        val shown = all.filter { query.isEmpty() || query in "${it.target.ref.orEmpty()} ${it.title} ${it.pr?.author?.name}".lowercase() }
-        model.clear()
-        fun section(title: String, rows: List<ListedTarget>) {
-            if (rows.isEmpty()) return
-            model.addElement(ListRow.Heading(title))
-            rows.forEach { model.addElement(ListRow.Item(it, progress[it.target.key])) }
-        }
-        if (shown.any { it.pr != null }) {
-            section("Waiting on you", shown.filter { it.requested })
-            section("Other open", shown.filter { !it.requested })
-        } else {
-            section("Branches", shown)
-        }
+    /** The reviews' progress again, once the host said what changed since them. */
+    fun progress(progress: Map<String, ReviewProgress>) {
+        this.progress = progress
+        rebuild()
     }
 
-    private class Renderer : ListCellRenderer<ListRow> {
-        override fun getListCellRendererComponent(list: JList<out ListRow>, value: ListRow, index: Int, selected: Boolean, focused: Boolean): Component =
-            when (value) {
-                is ListRow.Heading -> JPanel(BorderLayout()).apply {
-                    isOpaque = false
-                    border = JBUI.Borders.empty(10, 12, 4, 12)
-                    add(sectionLabel(value.text))
-                }
-                is ListRow.Item -> item(list, value, selected)
-            }
+    /** Stacked PRs' own sizes, as they arrive. */
+    fun counts(counts: Map<String, Int>) {
+        this.counts = counts
+        rebuild()
+    }
 
-        private fun item(list: JList<*>, row: ListRow.Item, selected: Boolean): Component {
-            val pr = row.listed.pr
-            val title = JBLabel(row.listed.title).apply { font = JBFont.label().asBold() }
-            val meta = mutableListOf<JComponent>()
-            if (pr != null) {
-                meta += mutedLabel(ReviewTarget.refOf(pr.number)); meta += mutedLabel(pr.author.name); meta += mutedLabel(files(pr.changedFiles))
+    /** A PR's own file count: the host's, except a stacked PR's, which is what it adds on top of its parent. */
+    fun ownFiles(t: ListedTarget): Int? {
+        val pr = t.pr ?: return null
+        return stackKeys[pr.number]?.let { counts[it] } ?: pr.changedFiles.takeIf { !stacked(t) }
+    }
+
+    /** Whether the list counts [t]'s own files, not the host's: a PR still built on its parent's head. */
+    fun stacked(t: ListedTarget) = t.pr?.number?.let { it in stackKeys } == true
+
+    private fun showEmpty() {
+        rows.removeAll(); rows.add(empty); rows.revalidate(); rows.repaint()
+    }
+
+    private fun rebuild() {
+        scrolled = scrolled + rows.components.filterIsInstance<StackCard>().mapNotNull { c -> c.scrolled?.let { c.bottom to it } }
+        rows.removeAll()
+        listSections(all, stacks, search.text).forEach { section ->
+            rows.add(row(sectionLabel(section.title)).apply { border = JBUI.Borders.empty(10, 12, 4, 12) })
+            section.stacks.forEach { stack ->
+                rows.add(StackCard(stack.map { StackRow(it, progress[it.target.key], ownFiles(it)) }, scrolled[stack.first().pr!!.number], onPick))
             }
-            val progress = row.progress
-            when {
-                progress != null -> meta += if (progress.done) Pill(progress.label, ReviewColors.okSoft, ReviewColors.ok)
-                    else Pill(progress.label, ReviewColors.review, ReviewColors.reviewFg)
-                row.listed.requested -> meta += Pill("Review requested", ReviewColors.accentSoft, ReviewColors.accent)
-            }
-            val text = JPanel(BorderLayout(0, JBUI.scale(2))).apply {
-                isOpaque = false
-                add(title, BorderLayout.NORTH)
-                if (meta.isNotEmpty()) add(row(*meta.toTypedArray()))
-            }
-            val avatar = JBLabel(if (pr != null) AvatarIcon(pr.author.name, pr.author.login) else AllIcons.Vcs.Branch).apply {
-                verticalAlignment = JBLabel.TOP
-                border = JBUI.Borders.emptyTop(2)
-            }
-            return JPanel(BorderLayout(JBUI.scale(10), 0)).apply {
-                border = JBUI.Borders.empty(8, 12)
-                background = if (selected) UIUtil.getListSelectionBackground(list.hasFocus()) else list.background
-                add(avatar, BorderLayout.WEST)
-                add(text)
-            }
+            section.rows.forEach { rows.add(PrRow(it, progress[it.target.key], ownFiles(it), onPick)) }
         }
+        if (rows.componentCount == 0) showEmpty() else { rows.revalidate(); rows.repaint() }
+    }
+}
+
+/** One heading of the list and what sits under it: whole stacks first, then the PRs (or branches) in none. */
+data class ListSection(val title: String, val stacks: List<List<ListedTarget>>, val rows: List<ListedTarget>)
+
+/**
+ * "Waiting on you" over "Other open" (or "Branches" without the host), filtered by [query]. A stack stays whole: shown
+ * when any PR in it matches, in Waiting on you when any PR in it asks for you. Empty sections are left out.
+ */
+fun listSections(all: List<ListedTarget>, stacks: List<List<ListedTarget>>, query: String): List<ListSection> {
+    val q = query.trim().lowercase()
+    val matches = { t: ListedTarget -> q.isEmpty() || q in "${t.target.ref.orEmpty()} ${t.title} ${t.pr?.author?.name}".lowercase() }
+    val shown = all.filter(matches)
+    if (shown.none { it.pr != null }) return listOf(ListSection("Branches", emptyList(), shown)).filter { it.rows.isNotEmpty() }
+    val stacked = stacks.flatten().toSet()
+    val (waiting, other) = stacks.filter { it.any(matches) }.partition { stack -> stack.any { it.requested } }
+    return listOf(
+        ListSection("Waiting on you", waiting, shown.filter { it.requested && it !in stacked }),
+        ListSection("Other open", other, shown.filter { !it.requested && it !in stacked }),
+    ).filter { it.stacks.isNotEmpty() || it.rows.isNotEmpty() }
+}
+
+/** A PR (or branch) outside any stack: avatar, title, number, author, files, and where your review stands. */
+private class PrRow(listed: ListedTarget, progress: ReviewProgress?, files: Int?, onPick: (ListedTarget) -> Unit) : PickRow(BorderLayout(JBUI.scale(10), 0)) {
+    init {
+        val pr = listed.pr
+        val title = JBLabel(listed.title).apply { font = JBFont.label().asBold() }
+        val meta = mutableListOf<JComponent>()
+        if (pr != null) {
+            meta += mutedLabel(ReviewTarget.refOf(pr.number)); meta += mutedLabel(pr.author.name)
+            files?.let { meta += mutedLabel(files(it)) }
+        }
+        if (progress != null) meta += if (progress.done) Pill(progress.label, ReviewColors.okSoft, ReviewColors.ok)
+            else Pill(progress.label, ReviewColors.review, ReviewColors.reviewFg)
+        // still asked, whatever was done: the host clears the request when it has your review
+        if (listed.requested) meta += Pill("Review requested", ReviewColors.accentSoft, ReviewColors.accent)
+        val text = JPanel(BorderLayout(0, JBUI.scale(2))).apply {
+            isOpaque = false
+            add(title, BorderLayout.NORTH)
+            if (meta.isNotEmpty()) add(row(*meta.toTypedArray()))
+        }
+        val avatar = JBLabel(if (pr != null) AvatarIcon(pr.author.name, pr.author.login) else AllIcons.Vcs.Branch).apply {
+            verticalAlignment = JBLabel.TOP
+            border = JBUI.Borders.emptyTop(2)
+        }
+        border = JBUI.Borders.empty(8, 12)
+        add(avatar, BorderLayout.WEST)
+        add(text)
+        pickOn({ onPick(listed) }, text, title)
+    }
+
+    override fun paintComponent(g: Graphics) {
+        if (hover) { g.color = ReviewColors.chip; g.fillRect(0, 0, width, height) }
+        super.paintComponent(g)
     }
 }

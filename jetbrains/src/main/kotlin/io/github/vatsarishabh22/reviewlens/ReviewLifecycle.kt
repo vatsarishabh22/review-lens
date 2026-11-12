@@ -82,8 +82,5 @@ class ReviewLifecycle(private val git: GitClient) {
 
     private fun changedStashName(review: ActiveReview) = "review-lens: changed during review of ${review.target.label}"
 
-    private fun save(review: ActiveReview) {
-        Files.createDirectories(stateFile.parent)
-        Files.writeString(stateFile, Gson().toJson(review))
-    }
+    private fun save(review: ActiveReview) = writeWhole(stateFile, Gson().toJson(review))
 }

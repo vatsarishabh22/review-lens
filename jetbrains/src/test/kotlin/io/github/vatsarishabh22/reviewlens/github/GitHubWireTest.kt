@@ -22,12 +22,20 @@ class GitHubWireTest {
     ]"""
 
     @Test
+    fun `each open PR's commits come oldest first, and a PR with none has an empty list`() =
+        // COMMIT_IDS_JQ's real output on this repo's open PR #14, then a PR GitHub lists with no commits
+        assertEquals(mapOf(14 to listOf("9b725a42e8f342cfb69b51c9ae6c1293a6559174", "5ffc2c56d5f8831df37967163b9ed904f92ebfc1"), 15 to emptyList()),
+            parseCommitIds("14\t9b725a42e8f342cfb69b51c9ae6c1293a6559174,5ffc2c56d5f8831df37967163b9ed904f92ebfc1\n15\t\n"))
+
+    @Test
     fun `GitHub's PR list becomes host-neutral rows, waiting on you only when a request names you`() {
         val (a, b) = parsePullRequests(ghList, "me")
         assertEquals(PullRequest(598, "chore: zip", "fix/zip", "2f9d9ea", "main", Person("SimY4", "Alex"), "x", 1, 0, 1, "2026-07-23T01:09:36Z", false), a)
         assertEquals(Person("nikitavilkov", "nikitavilkov"), b.author) // a blank name shows the login
         assertEquals(true, b.requested)
         assertEquals("a team request names nobody", false, parsePullRequests(ghList, "core")[1].requested)
+        assertEquals(false, a.fromFork) // not asked for, or not from a fork
+        assertEquals(true, parsePullRequests("""[{"number":5,"title":"t","headRefName":"main","headRefOid":"f1","baseRefName":"main","author":{"login":"x"},"additions":0,"deletions":0,"changedFiles":1,"updatedAt":"2026-07-23T01:09:36Z","isCrossRepository":true}]""", null)[0].fromFork)
         assertEquals("viewer unknown: nothing waits", false, parsePullRequests(ghList, null)[1].requested)
     }
 
@@ -126,6 +134,15 @@ class GitHubWireTest {
         val v = vars(editCommentBody("PRRC_7", "new text"))
         assertEquals("PRRC_7" to "new text", v["comment"].asString to v["body"].asString)
         assertTrue(Gson().fromJson(editCommentBody("PRRC_7", "x"), JsonObject::class.java)["query"].asString.contains("updatePullRequestReviewComment(input:{pullRequestReviewCommentId:"))
+    }
+
+    @Test
+    fun `a batch of ticks is one call, a mutation per file in order, each path a variable`() {
+        val body = viewedBody("PR_1", linkedMapOf("a.kt" to true, "dir/b \"q\".kt" to false))
+        val vars = vars(body)
+        assertEquals(listOf("PR_1", "a.kt", "dir/b \"q\".kt"), listOf("id", "p0", "p1").map { vars[it].asString })
+        assertEquals("mutation(\$id:ID!,\$p0:String!,\$p1:String!){m0:markFileAsViewed(input:{pullRequestId:\$id,path:\$p0}){clientMutationId} " +
+            "m1:unmarkFileAsViewed(input:{pullRequestId:\$id,path:\$p1}){clientMutationId}}", Gson().fromJson(body, JsonObject::class.java)["query"].asString)
     }
 
     @Test

@@ -1,8 +1,11 @@
 package io.github.vatsarishabh22.reviewlens
 
 import com.intellij.openapi.util.Disposer
+import io.github.vatsarishabh22.reviewlens.github.GitHubSlot
 import org.junit.Assert.assertEquals
+import org.junit.Assert.assertFalse
 import org.junit.Assert.assertNull
+import org.junit.Assert.assertTrue
 import org.junit.Test
 
 /** The review's threads on the host: read at load and again, and the immediate writes with what each says on its way. */
@@ -11,6 +14,9 @@ class HostThreadsTest {
     private var refuse: String? = null
     private var number: Int? = 7
     private var answer: List<ReviewThread>? = emptyList()
+    private var slot: ReviewSlot? = null
+    /** What happens while the host is still answering: the reviewer may move on to another review. */
+    private var whileReading: () -> Unit = {}
     private lateinit var threads: HostThreads
 
     // a host that records each call and what the views were told meanwhile
@@ -18,10 +24,11 @@ class HostThreadsTest {
         override val name = "TestHost"
         override fun openPullRequests() = emptyList<PullRequest>()
         override fun headRef(number: Int) = ""
-        override fun reviewThreads(number: Int): List<ReviewThread> { calls += "reload"; return answer ?: throw CliException("offline") }
-        override fun reviewSlot(number: Int): ReviewSlot = throw CliException("not read here")
+        override fun reviewThreads(number: Int): List<ReviewThread> { calls += "reload"; whileReading(); return answer ?: throw CliException("offline") }
+        override fun reviewSlot(number: Int): ReviewSlot = slot ?: throw CliException("not read here")
         override fun submitReview(number: Int, commit: String, summary: String, verdict: Verdict, comments: List<Draft>, replies: List<Draft>) = Unit
         override fun checks(number: Int) = Checks(ChecksState.NONE)
+        override fun changedFiles(from: String, to: String) = 0
         override fun resolveThread(threadId: String, resolved: Boolean) = record("resolve $threadId $resolved", threadId)
         override fun editComment(commentId: String, body: String) = record("edit $commentId $body", commentId)
         override fun deleteComment(commentId: String) = record("delete $commentId", commentId)
@@ -75,6 +82,20 @@ class HostThreadsTest {
     }
 
     @Test
+    fun `a reload says it read only when both the slot and the threads came back`() {
+        val t = threads()
+        slot = GitHubSlot("PR_1", "h", null, false)
+        assertTrue(t.reload())
+        answer = null
+        assertFalse("threads offline: what the popup shows is old", t.reload())
+        answer = emptyList(); val read = GitHubSlot("PR_1", "h", null, false).also { slot = it }; t.reload(); slot = null
+        assertFalse("slot unread: Submit would judge with an old one", t.reload())
+        assertEquals("the last slot read stays, rather than none", read, t.slot)
+        number = null
+        assertFalse("a branch review reads nothing", t.reload())
+    }
+
+    @Test
     fun `a failed reload keeps the threads shown and redraws nothing`() {
         val t = threads()
         answer = listOf(thread)
@@ -96,5 +117,81 @@ class HostThreadsTest {
         assertEquals(listOf(thread to 3), t.threadsOn(change, "h"))
         assertEquals(listOf(thread to null), t.threadsOn(change, "older"))
         assertEquals(emptyList<Pair<ReviewThread, Int?>>(), t.threadsOn(change, null))
+    }
+
+    @Test
+    fun `threads and slot read for a review the reviewer has since left are dropped, not shown as the next one's`() {
+        val t = threads()
+        answer = listOf(thread)
+        t.load()
+        val pending = GitHubSlot("PR_7", "h7", null, false)
+        slot = pending
+        answer = emptyList()
+        whileReading = { number = 9 } // Finish's re-read of #7 lands after #9 began
+        assertFalse(t.reload())
+        assertNull("#7's threads, read before or after, never show while #9 is under way", t.threads)
+        assertNull(t.slot)
+        whileReading = {}
+        t.load()
+        assertEquals(emptyList<ReviewThread>(), t.threads)
+    }
+
+    @Test
+    fun `a load for a review the reviewer has since left doesn't replace the next one's threads`() {
+        val t = threads()
+        answer = listOf(thread)
+        whileReading = { number = 9 }
+        t.load()
+        assertNull(t.threads)
+    }
+
+    @Test
+    fun `two reads of one review land in either order, and the one started last wins`() {
+        val t = threads()
+        val older = thread.copy(id = "T-old")
+        val newer = thread.copy(id = "T-new")
+        slot = GitHubSlot("PR_7", "h7", null, false)
+        answer = listOf(older)
+        // while Finish's read waits on the host, an edit's read starts after it and lands first
+        whileReading = { whileReading = {}; answer = listOf(newer); assertTrue(t.reload()); answer = listOf(older) }
+        assertTrue("an overtaken read of the review under way still read it fine", t.reload())
+        assertEquals(listOf(newer), t.threads)
+    }
+
+    @Test
+    fun `a second write to a thread while the first is on its way is refused with why, and the first lands`() {
+        val held = mutableListOf<() -> Unit>()
+        threads = HostThreads({ host }, { number }, { held += it }, { it() })
+        val failures = mutableListOf<String>()
+        threads.resolve(thread, true) { failures += it.message.orEmpty() }
+        threads.resolve(thread, false) { failures += it.message.orEmpty() }
+        assertEquals(listOf("It is still resolving: wait for that to finish."), failures)
+        held.single()()
+        assertEquals("resolve T1 true while Resolving…", calls.first())
+        assertNull(threads.pending["T1"])
+    }
+
+    @Test
+    fun `a newer read that fails never drops an older one that read fine`() {
+        threads()
+        answer = listOf(thread)
+        var nested = false
+        // while the older read waits on the host, a newer one starts and fails (offline), landing first
+        whileReading = { if (!nested) { nested = true; val good = answer; answer = null; threads.reload(); answer = good } }
+        threads.reload()
+        assertEquals(listOf(thread), threads.threads)
+    }
+
+    @Test
+    fun `a newer read that brought only the slot never drops the threads an older one read`() {
+        threads()
+        answer = listOf(thread)
+        slot = GitHubSlot("PR_7", "h-old", null, false)
+        var nested = false
+        // the newer read gets the slot but not the threads (offline), and lands first
+        whileReading = { if (!nested) { nested = true; val good = answer; answer = null; slot = GitHubSlot("PR_7", "h-new", null, false); threads.reload(); answer = good } }
+        threads.reload()
+        assertEquals(listOf(thread), threads.threads)
+        assertEquals("the older slot never replaces the newer one", "h-new", (threads.slot as GitHubSlot).head)
     }
 }

@@ -9,14 +9,14 @@ import org.junit.Test
 class ReviewCommentsTest {
 
     @Test
-    fun `the PR list says reviewed only when every file is viewed, with the last posted verdict`() {
-        assertEquals("Resume · 3 of 4 viewed", ReviewProgress(3, 4, Verdict.APPROVE).label) // new commits re-open it
+    fun `the PR list says where a started review stands, with the last posted verdict`() {
+        assertEquals("Resume · 3 of 4 viewed", ReviewProgress(3, 4).label)
         assertEquals("✓ Reviewed · 4 of 4", ReviewProgress(4, 4).label) // marked reviewed, never posted
         assertEquals("✓ Reviewed · approved", ReviewProgress(4, 4, Verdict.APPROVE).label)
         assertEquals("✓ Reviewed · commented", ReviewProgress(4, 4, Verdict.COMMENT).label)
         assertEquals("✓ Reviewed · changes requested", ReviewProgress(4, 4, Verdict.REQUEST_CHANGES).label)
         assertEquals("Resume · 0 of 0 viewed", ReviewProgress(0, 0).label) // an empty scope is never "reviewed"
-        val moved = ReviewProgress(4, 4, Verdict.APPROVE, newCommits = true)
+        val moved = ReviewProgress(4, 4, Verdict.APPROVE, headMoved = true)
         assertEquals("🔄 New commits since your review", moved.label)
         assertFalse("a finished review whose PR moved on is not done", moved.done)
         assertEquals("Review new commits", moved.startLabel(sinceOffered = true))

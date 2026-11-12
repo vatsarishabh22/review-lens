@@ -147,7 +147,8 @@ Facts only. Never: *risky, unsafe, unused, untested, bug*.
   declaration holding the reference, or `<path>#<top level>` (those words, as written) outside any declaration. Names,
   not line numbers, so ticks survive lines moving.
 - A removed function keeps its key from `range.from`.
-- Entries for functions no longer in the scope are kept until the next Exit, so flipping scopes doesn't lose ticks.
+- Entries for functions no longer in the scope are kept until the next Exit, so flipping scopes doesn't lose ticks. Exit
+  drops them only once the scope's search finished every file without a failure; otherwise it keeps them all.
 
 ## Timing and failure
 

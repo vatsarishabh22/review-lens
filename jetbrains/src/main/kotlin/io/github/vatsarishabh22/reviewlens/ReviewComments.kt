@@ -38,11 +38,14 @@ fun suggestionBlock(lines: List<String>) = "```suggestion\n" + lines.joinToStrin
 
 private val SUGGESTION = Regex("```suggestion[^\\n]*\\n(.*?)\\n?```", RegexOption.DOT_MATCHES_ALL)
 
-/** The three ways a review can end; [done] how the PR list says it was posted, [posted] how the finish message does. */
-enum class Verdict(val label: String, val hint: String, val done: String, val posted: String) {
-    COMMENT("Comment", "Feedback without a verdict", "commented", "Commented"),
-    APPROVE("Approve", "Ready to merge", "approved", "Approved"),
-    REQUEST_CHANGES("Request changes", "Must be addressed before merging", "changes requested", "Requested changes"),
+/**
+ * The three ways a review can end; [done] how the PR list says it was posted, [posted] how the finish message does,
+ * [final] whether the host takes it as the reviewer's answer whatever was read (a comment isn't one).
+ */
+enum class Verdict(val label: String, val hint: String, val done: String, val posted: String, val final: Boolean) {
+    COMMENT("Comment", "Feedback without a verdict", "commented", "Commented", false),
+    APPROVE("Approve", "Ready to merge", "approved", "Approved", true),
+    REQUEST_CHANGES("Request changes", "Must be addressed before merging", "changes requested", "Requested changes", true),
 }
 
 /** Your comments (not replies) the lists show: pending ones, and posted ones while the host's [threads] aren't loaded. */

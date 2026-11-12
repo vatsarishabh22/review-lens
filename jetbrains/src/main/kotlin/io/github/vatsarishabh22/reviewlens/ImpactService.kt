@@ -17,7 +17,6 @@ import com.intellij.psi.PsiFileFactory
 import com.intellij.psi.PsiManager
 import java.util.concurrent.ConcurrentHashMap
 import java.util.concurrent.CopyOnWriteArrayList
-import java.util.concurrent.atomic.AtomicInteger
 
 /**
  * The impact map of the review in progress (spec/impact.md): per changed file, what uses the functions its scope
@@ -34,11 +33,9 @@ class ImpactService(private val project: Project) : Disposable {
         data class Ready(val language: ImpactLanguage, val impacts: List<Impact>) : FileImpact
     }
 
-    private val files = ConcurrentHashMap<String, FileImpact>()
+    private val files = RunMap<String, FileImpact>()
     private val listeners = CopyOnWriteArrayList<() -> Unit>()
-    private val generation = AtomicInteger()
     @Volatile private var range: ScopeRange? = null
-    @Volatile private var complete = false
 
     init {
         val review = ReviewService.of(project)
@@ -46,13 +43,13 @@ class ImpactService(private val project: Project) : Disposable {
         refresh(review)
     }
 
-    override fun dispose() { generation.incrementAndGet() }
+    override fun dispose() { files.start() } // any run still going writes nothing
 
     fun of(path: String): FileImpact? = files[path]
 
     /** Every changed function's tick key, once every file was searched without a failure; null before, so Exit keeps all ticks. */
     fun functions(): Set<String>? =
-        if (!complete) null else files.values.filterIsInstance<FileImpact.Ready>().flatMap { it.impacts.map(Impact::key) }.toSet()
+        files.finished()?.filterIsInstance<FileImpact.Ready>()?.flatMap { it.impacts.map(Impact::key) }?.toSet()
 
     fun onChanged(parent: Disposable, listener: () -> Unit) {
         listeners += listener
@@ -63,10 +60,8 @@ class ImpactService(private val project: Project) : Disposable {
     private fun refresh(review: ReviewService) {
         val now = review.meta?.range
         if (now == range) return
-        val run = generation.incrementAndGet()
+        val run = files.start()
         range = now
-        complete = false
-        files.clear()
         val git = review.git
         if (now == null || git == null) return fireChanged()
         val open = FileEditorManager.getInstance(project).selectedFiles.mapNotNull(review::relativePath).toSet()
@@ -80,7 +75,7 @@ class ImpactService(private val project: Project) : Disposable {
         val inPr = changes.flatMap { listOfNotNull(it.path, it.oldPath) }.toSet()
         val languages = changes.mapNotNull { c -> impactLanguageOf(c.path)?.let { c.path to it } }.toMap()
         for (change in changes) {
-            if (change.path !in languages) CodeFiles.languageOf(change.path.substringAfterLast('/'))?.let { files[change.path] = FileImpact.Unavailable(it) }
+            if (change.path !in languages) CodeFiles.languageOf(change.path.substringAfterLast('/'))?.let { files.put(run, change.path, FileImpact.Unavailable(it)) }
         }
         var failed = false
         val detected = changes.mapNotNull { change ->
@@ -91,25 +86,25 @@ class ImpactService(private val project: Project) : Disposable {
                 val old = PsiFileFactory.getInstance(project).createFileFromText(oldPath.substringAfterLast('/'), language.language, before)
                 ImpactSearch.detect(change.path, oldPath, language, old, psiFile(git, change.path), lines[change.path] ?: LineChanges(oldPath, emptySet(), emptySet()))
             } ?: return@mapNotNull null.also { failed = true }
-            files[change.path] = FileImpact.Ready(language, pending)
+            files.put(run, change.path, FileImpact.Ready(language, pending))
             Triple(change, language, pending)
         }
-        if (run != generation.get()) return
+        if (!files.current(run)) return
         fireChanged()
         for ((change, language, pending) in detected) {
             if (pending.isEmpty()) continue
             val impacts = read(run, smart = true) { ImpactSearch(project, review::relativePath, inPr).impacts(language, psiFile(git, change.path), pending) }
-            if (run != generation.get()) return
+            if (!files.current(run)) return
             failed = failed || impacts == null
-            files[change.path] = FileImpact.Ready(language, impacts.orEmpty())
+            files.put(run, change.path, FileImpact.Ready(language, impacts.orEmpty()))
             fireChanged()
         }
-        complete = !failed
+        files.done(run, complete = !failed)
     }
 
     /** [work] in a background read action, in smart mode when it needs the indexes; null when it threw or the run is stale. */
     private fun <T : Any> read(run: Int, smart: Boolean, work: () -> T): T? {
-        if (run != generation.get()) return null
+        if (!files.current(run)) return null
         return try {
             ReadAction.nonBlocking<T> { work() }.let { if (smart) it.inSmartMode(project) else it }.expireWith(this).executeSynchronously()
         } catch (_: ProcessCanceledException) {
@@ -132,4 +127,22 @@ class ImpactService(private val project: Project) : Disposable {
     companion object {
         fun of(project: Project): ImpactService = project.service()
     }
+}
+
+/**
+ * The impact map's files, filled by runs: starting a run clears it, and a write or a [done] from any run but the newest
+ * is dropped under the same lock, so a run overtaken by a re-scope never lands in the next one's map, nor marks it complete.
+ */
+internal class RunMap<K : Any, V : Any> {
+    private val map = ConcurrentHashMap<K, V>()
+    private var run = 0
+    private var complete = false
+
+    @Synchronized fun start(): Int { map.clear(); complete = false; return ++run }
+    @Synchronized fun current(run: Int) = run == this.run
+    @Synchronized fun put(run: Int, key: K, value: V) { if (current(run)) map[key] = value }
+    @Synchronized fun done(run: Int, complete: Boolean) { if (current(run)) this.complete = complete }
+    operator fun get(key: K): V? = map[key]
+    /** The newest run's files once it searched every file without a failure, read in one step with that fact; null before. */
+    @Synchronized fun finished(): List<V>? = if (complete) map.values.toList() else null
 }

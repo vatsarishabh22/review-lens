@@ -16,9 +16,13 @@ class ReviewStartup : ProjectActivity {
         ReviewGutter.of(project) // listens before the first reload, so marks appear as soon as a review is active
         CommentInlays.of(project)
         ImpactInlays.of(project) // starts the impact search once a review is active
-        service.reload()
+        // the load holds the busy state: Start, Exit and Finish wait for it, so none runs on a review still being read
+        val claim = service.busy.claim(ReviewService.Ending.LOADING) ?: return
+        try { service.reload(claim) } finally { service.busy.release(claim) }
         val review = service.active ?: return
         withContext(Dispatchers.EDT) {
+            // which tabs were open before the review is not saved: treat every restored one as the reviewer's, so a tick never closes it
+            service.rememberOpenTabs()
             refreshViews(project) // tabs restored at startup opened before the review was known, without their Diff view
             val windows = ToolWindowManager.getInstance(project)
             windows.invokeLater { windows.getToolWindow(TOOL_WINDOW_ID)?.activate(null) }

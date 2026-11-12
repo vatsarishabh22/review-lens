@@ -1,9 +1,11 @@
 package io.github.vatsarishabh22.reviewlens
 
+import com.intellij.ide.ui.laf.darcula.ui.DarculaButtonUI
 import com.intellij.openapi.editor.EditorFactory
 import com.intellij.openapi.editor.colors.EditorColorsManager
 import com.intellij.openapi.fileTypes.PlainTextFileType
 import com.intellij.openapi.project.Project
+import com.intellij.ui.AnimatedIcon
 import com.intellij.ui.EditorTextField
 import com.intellij.ui.JBColor
 import com.intellij.ui.components.JBLabel
@@ -15,19 +17,30 @@ import com.intellij.util.ui.UIUtil
 import java.awt.BasicStroke
 import java.awt.Color
 import java.awt.Component
+import java.awt.Cursor
 import java.awt.Dimension
 import java.awt.Font
 import java.awt.Graphics
 import java.awt.Graphics2D
+import java.awt.LayoutManager
+import java.awt.Rectangle
 import java.awt.RenderingHints
+import java.awt.event.MouseAdapter
+import java.awt.event.MouseEvent
+import java.awt.geom.Line2D
 import java.awt.geom.Path2D
 import java.awt.geom.RoundRectangle2D
 import javax.swing.Box
 import javax.swing.BoxLayout
 import javax.swing.Icon
+import javax.swing.JButton
 import javax.swing.JComponent
 import javax.swing.JPanel
 import javax.swing.JTextPane
+import javax.swing.Scrollable
+import javax.swing.SwingConstants
+import javax.swing.SwingUtilities
+import javax.swing.border.Border
 import javax.swing.text.SimpleAttributeSet
 import javax.swing.text.StyleConstants
 
@@ -129,6 +142,29 @@ class BadgeIcon(private val badge: Badge) : Icon {
     }
 }
 
+/** A folder's box, as the prototype draws it: ✅ when all its files are viewed, "–" when some are, an empty box when none. */
+class FolderMark(private val viewed: Int, private val total: Int) : Icon {
+    override fun getIconWidth() = JBUI.scale(16)
+    override fun getIconHeight() = JBUI.scale(16)
+    override fun paintIcon(c: Component?, g: Graphics, x: Int, y: Int) {
+        if (allViewed(viewed, total)) return BadgeIcon(Badge.REVIEWED).paintIcon(c, g, x, y)
+        val g2 = g.create() as Graphics2D
+        g2.setRenderingHint(RenderingHints.KEY_ANTIALIASING, RenderingHints.VALUE_ANTIALIAS_ON)
+        g2.translate(x, y)
+        JBUIScale.scale(1f).toDouble().let { g2.scale(it, it) }
+        if (viewed > 0) {
+            g2.color = ReviewColors.accent
+            g2.stroke = BasicStroke(2f, BasicStroke.CAP_ROUND, BasicStroke.JOIN_ROUND)
+            g2.draw(Line2D.Double(4.5, 8.0, 11.5, 8.0))
+        } else {
+            g2.color = ReviewColors.star
+            g2.stroke = BasicStroke(1.3f)
+            g2.draw(RoundRectangle2D.Double(2.0, 2.0, 12.0, 12.0, 6.0, 6.0))
+        }
+        g2.dispose()
+    }
+}
+
 /** A small rounded label: "Review requested", "Resume · …", branch chips. */
 class Pill(text: String, private val fill: Color, fg: Color, mono: Boolean = false) : JBLabel(text) {
     init {
@@ -191,6 +227,46 @@ enum class CommentLook(private val words: String, val fill: Color, val fg: Color
     }
 }
 
+/** A vertical stack that tracks its scroll pane's width, so wrapped text reflows and long titles end in "…" instead of scrolling sideways. */
+class ScrollStack(border: Border) : JPanel(), Scrollable {
+    init {
+        layout = BoxLayout(this, BoxLayout.Y_AXIS)
+        this.border = border
+    }
+
+    override fun getPreferredScrollableViewportSize(): Dimension = preferredSize
+    override fun getScrollableUnitIncrement(r: Rectangle, o: Int, d: Int) = JBUI.scale(16)
+    override fun getScrollableBlockIncrement(r: Rectangle, o: Int, d: Int) = r.height
+    override fun getScrollableTracksViewportWidth() = true
+    override fun getScrollableTracksViewportHeight() = false
+}
+
+/** A list row you click to open: a hand cursor, a shade while the pointer is over it, and a pick from anywhere on it. */
+abstract class PickRow(layout: LayoutManager) : JPanel(layout) {
+    protected var hover = false
+        private set
+
+    init {
+        isOpaque = false
+        alignmentX = LEFT_ALIGNMENT
+        cursor = Cursor.getPredefinedCursor(Cursor.HAND_CURSOR)
+    }
+
+    /** [onPick] on a click on this row or any of [parts] (labels take their own clicks); the shade follows the pointer. */
+    protected fun pickOn(onPick: () -> Unit, vararg parts: JComponent) {
+        val mouse = object : MouseAdapter() {
+            override fun mouseClicked(e: MouseEvent) = onPick()
+            override fun mouseEntered(e: MouseEvent) { hover = true; repaint() }
+            override fun mouseExited(e: MouseEvent) {
+                if (!contains(SwingUtilities.convertPoint(e.component, e.point, this@PickRow))) { hover = false; repaint() }
+            }
+        }
+        (listOf(this) + parts).forEach { it.addMouseListener(mouse) }
+    }
+
+    override fun getMaximumSize() = Dimension(Int.MAX_VALUE, preferredSize.height)
+}
+
 fun files(n: Int) = if (n == 1) "1 file" else "$n files"
 
 fun mutedLabel(text: String = "", small: Boolean = true) = JBLabel(text).apply {
@@ -204,7 +280,11 @@ fun sectionLabel(text: String) = JBLabel(text.uppercase()).apply {
 }
 
 /** Plain text that wraps to the panel's width (no HTML, so nothing from a PR body can render as markup). */
-fun wrappingText(text: String, font: Font = JBFont.label()) = JBTextArea(text).apply {
+fun wrappingText(text: String, font: Font = JBFont.label()) = object : JBTextArea(text) {
+    // display only: its caret (the look and feel's own) scrolls itself into view as it is shown, so a list of these (a
+    // PR's 31 commits) dragged the panel to its bottom as it loaded; text nobody edits never asks to be scrolled to
+    override fun scrollRectToVisible(rect: Rectangle) = Unit
+}.apply {
     isEditable = false
     isFocusable = false
     lineWrap = true
@@ -270,3 +350,46 @@ fun commentField(project: Project, text: String, placeholder: String, width: Int
             it.setVerticalScrollbarVisible(true) } // past its tallest the text scrolls instead of disappearing
         preferredSize = Dimension(width, COMMENT_BOX_MIN)
     }
+
+/** The pending-comment count on Finish review: a translucent white pill, as in the prototype. */
+internal class CountIcon(private val count: Int) : Icon {
+    private val font get() = JBFont.small().asBold()
+    override fun getIconWidth() = JBUI.scale(10 + 7 * "$count".length)
+    override fun getIconHeight() = JBUI.scale(16)
+    override fun paintIcon(c: Component?, g: Graphics, x: Int, y: Int) {
+        val g2 = g.create() as Graphics2D
+        g2.setRenderingHint(RenderingHints.KEY_ANTIALIASING, RenderingHints.VALUE_ANTIALIAS_ON)
+        g2.color = Color(255, 255, 255, 64)
+        g2.fillRoundRect(x, y + JBUI.scale(1), iconWidth, iconHeight - JBUI.scale(2), JBUI.scale(14), JBUI.scale(14))
+        g2.color = Color.WHITE
+        g2.font = font
+        val fm = g2.fontMetrics
+        g2.drawString("$count", x + (iconWidth - fm.stringWidth("$count")) / 2, y + (iconHeight + fm.ascent - fm.descent) / 2)
+        g2.dispose()
+    }
+}
+
+/** Finish review with the pending-comment count, for the review bar and the Review panel; greyed while the review ends. Null for a branch: nowhere to post. */
+fun finishButton(project: Project): JButton? {
+    val service = ReviewService.of(project)
+    if (service.meta?.target?.reviewable != true) return null
+    val pending = ReviewDrafts.of(project).outbox().size
+    return JButton("Finish review", if (pending > 0) CountIcon(pending) else null).apply {
+        putClientProperty(DarculaButtonUI.DEFAULT_STYLE_KEY, true)
+        isOpaque = false; isFocusable = false
+        horizontalTextPosition = SwingConstants.LEFT
+        isEnabled = service.ending == null
+        addActionListener { showFinishReview(project, this) }
+    }
+}
+
+/** Exit, for the review bar and the Review panel: "Exiting…" with a spinner while it exits, greyed while the review posts. */
+fun exitButton(project: Project, icon: Icon? = null): JButton {
+    val service = ReviewService.of(project)
+    val exiting = service.ending == ReviewService.Ending.EXITING
+    return JButton(if (exiting) ReviewService.Ending.EXITING.busy else "Exit", if (exiting) AnimatedIcon.Default.INSTANCE else icon).apply {
+        toolTipText = "Back to ${service.active?.originalRef}"
+        isEnabled = service.ending == null
+        addActionListener { exitReview(project) }
+    }
+}

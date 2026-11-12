@@ -9,10 +9,12 @@ import com.intellij.openapi.editor.event.DocumentListener
 import com.intellij.openapi.editor.impl.EditorComponentImpl
 import com.intellij.ui.BrowserHyperlinkListener
 import javax.swing.JEditorPane
+import java.awt.datatransfer.StringSelection
 import java.awt.event.MouseAdapter
 import java.awt.event.MouseEvent
 import com.intellij.openapi.Disposable
 import com.intellij.notification.NotificationType
+import com.intellij.openapi.ide.CopyPasteManager
 import com.intellij.openapi.actionSystem.AnAction
 import com.intellij.openapi.components.Service
 import com.intellij.openapi.components.service
@@ -78,6 +80,9 @@ class CommentInlays(private val project: Project) : Disposable {
     private class Box(val change: FileChange, val line: Int, val text: EditorTextField, val editing: Draft? = null, val thread: ReviewThread? = null, val posted: ThreadComment? = null, val startLine: Int? = null)
 
     private var box: Box? = null
+
+    /** The comment box on [path] holds text not added yet: its tab stays open whatever else happens. */
+    fun holdsText(path: String) = box?.let { it.change.path == path && it.text.text.isNotBlank() } == true
     private val plus = HashMap<Editor, RangeHighlighter>()
     private val blocks = HashMap<Editor, List<Inlay<*>>>()
     /** What each editor's blocks were built from: a refresh that changes none of it (a tick, a sync) leaves them, and the box's focus, alone. */
@@ -201,12 +206,18 @@ class CommentInlays(private val project: Project) : Disposable {
         if (body.isEmpty()) return
         box = null
         val comments = ReviewDrafts.of(project)
-        when {
-            open.posted != null -> HostThreads.of(project).edit(open.posted, body) { refused(it, "Couldn't save the edit"); reopen(open, body) }
+        if (open.posted != null) {
+            HostThreads.of(project).edit(open.posted, body) { refused(it, "Couldn't save the edit"); reopen(open, body) }
+            return
+        }
+        val made = when {
             open.editing != null -> comments.edit(open.editing, body)
             open.thread != null -> comments.reply(open.change, open.line, open.thread, body)
             else -> comments.add(open.change, open.line, body, open.startLine)
         }
+        // refused: while Finish posts, the box comes back as it was; for a draft no longer pending, as a new comment, so the
+        // text is never lost and Save can succeed
+        if (!made) reopen(open, body, stillEditing = ReviewService.of(project).ending == ReviewService.Ending.POSTING)
     }
 
     /** The box grows with its text from [COMMENT_BOX_MIN] to [MAX_BOX], then scrolls; the embedded block is resized so the line below moves with it. */
@@ -417,10 +428,18 @@ class CommentInlays(private val project: Project) : Disposable {
 
     private fun refused(error: Throwable, title: String) = notify(project, title, error.message ?: "$host didn't answer", NotificationType.WARNING)
 
-    /** A refused edit reopens its box with the text, so nothing typed is lost. */
-    private fun reopen(was: Box, body: String) {
-        val editor = editors().firstOrNull { changeIn(it)?.path == was.change.path } ?: return
-        open(editor, was.line, thread = was.thread, posted = was.posted, text = body)
+    /** A refused save reopens its box with the text, so nothing typed is lost; as an edit of its draft while [stillEditing]. */
+    private fun reopen(was: Box, body: String, stillEditing: Boolean = true) {
+        val editor = editors().firstOrNull { changeIn(it)?.path == was.change.path }
+        // a box shows only under what it hangs on: a thread or posted comment deleted meanwhile has nowhere to show it
+        val threads = HostThreads.of(project).threads.orEmpty()
+        val thread = was.thread?.let { t -> threads.firstOrNull { it.id == t.id } }
+        val anchored = (was.thread == null || thread != null) && (was.posted == null || thread?.comments?.any { it.id == was.posted.id } == true)
+        // its file was closed meanwhile, its thread or comment deleted, or another box holds text (a posted edit is refused
+        // seconds later): the text goes into a notice to copy instead, so nothing typed is ever lost
+        if (editor == null || !anchored || box?.text?.text?.isNotBlank() == true) return notify(project, "Your text is kept", "Its comment box couldn't open again here. Copy it to try again.",
+            NotificationType.WARNING, DumbAwareAction.create("Copy text") { CopyPasteManager.getInstance().setContents(StringSelection(body)) })
+        open(editor, was.line, editing = was.editing?.takeIf { stillEditing }, thread = was.thread, posted = was.posted, text = body, startLine = was.startLine ?: was.editing?.startLine)
     }
 
     /** A comment body as GitHub renders it (markdown, links open in the browser), sized to the card's width less [inset]. */

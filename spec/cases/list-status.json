@@ -1,0 +1,369 @@
+{
+  "rule": "list-status",
+  "about": "A started PR's line and button in the PR list (spec/README.md, the list's table). `ticked` is any tick, of any version (it outranks drafts); `headMoved` is the PR's head past the one you last reviewed, news only to a review that read or posted something; `changedSince` (optional) is how many viewed files the host marks changed since, null until it answers; `sinceOffered` is whether \"Since your last review\" can be offered.",
+  "cases": [
+    {
+      "name": "ticks only",
+      "given": {
+        "viewed": 2,
+        "ticked": true,
+        "total": 5,
+        "verdict": null,
+        "headMoved": false,
+        "drafts": 0,
+        "sinceOffered": false
+      },
+      "expect": {
+        "label": "Resume · 2 of 5 viewed",
+        "button": "Resume review",
+        "done": false
+      }
+    },
+    {
+      "name": "drafts only, nothing ticked",
+      "given": {
+        "viewed": 0,
+        "ticked": false,
+        "total": 5,
+        "verdict": null,
+        "headMoved": false,
+        "drafts": 2,
+        "sinceOffered": false
+      },
+      "expect": {
+        "label": "Resume · 2 drafts",
+        "button": "Resume review",
+        "done": false
+      }
+    },
+    {
+      "name": "one draft",
+      "given": {
+        "viewed": 0,
+        "ticked": false,
+        "total": 5,
+        "verdict": null,
+        "headMoved": false,
+        "drafts": 1,
+        "sinceOffered": false
+      },
+      "expect": {
+        "label": "Resume · 1 draft",
+        "button": "Resume review",
+        "done": false
+      }
+    },
+    {
+      "name": "a tick on an older version still outranks drafts",
+      "given": {
+        "viewed": 0,
+        "ticked": true,
+        "total": 5,
+        "verdict": null,
+        "headMoved": false,
+        "drafts": 2,
+        "sinceOffered": false
+      },
+      "expect": {
+        "label": "Resume · 0 of 5 viewed",
+        "button": "Resume review",
+        "done": false
+      }
+    },
+    {
+      "name": "commented without reading",
+      "given": {
+        "viewed": 0,
+        "ticked": false,
+        "total": 5,
+        "verdict": "COMMENT",
+        "headMoved": false,
+        "drafts": 0,
+        "sinceOffered": false
+      },
+      "expect": {
+        "label": "Commented · 0 of 5 viewed",
+        "button": "Resume review",
+        "done": false
+      }
+    },
+    {
+      "name": "commented after some reading",
+      "given": {
+        "viewed": 2,
+        "ticked": true,
+        "total": 5,
+        "verdict": "COMMENT",
+        "headMoved": false,
+        "drafts": 0,
+        "sinceOffered": false
+      },
+      "expect": {
+        "label": "Commented · 2 of 5 viewed",
+        "button": "Resume review",
+        "done": false
+      }
+    },
+    {
+      "name": "approved without reading every file is final",
+      "given": {
+        "viewed": 2,
+        "ticked": true,
+        "total": 5,
+        "verdict": "APPROVE",
+        "headMoved": false,
+        "drafts": 0,
+        "sinceOffered": false
+      },
+      "expect": {
+        "label": "✓ Approved · 2 of 5 viewed",
+        "button": "Review again",
+        "done": true
+      }
+    },
+    {
+      "name": "changes requested is final",
+      "given": {
+        "viewed": 0,
+        "ticked": false,
+        "total": 5,
+        "verdict": "REQUEST_CHANGES",
+        "headMoved": false,
+        "drafts": 0,
+        "sinceOffered": false
+      },
+      "expect": {
+        "label": "✓ Changes requested · 0 of 5 viewed",
+        "button": "Review again",
+        "done": true
+      }
+    },
+    {
+      "name": "every file viewed, commented",
+      "given": {
+        "viewed": 5,
+        "ticked": true,
+        "total": 5,
+        "verdict": "COMMENT",
+        "headMoved": false,
+        "drafts": 0,
+        "sinceOffered": false
+      },
+      "expect": {
+        "label": "✓ Reviewed · commented",
+        "button": "Review again",
+        "done": true
+      }
+    },
+    {
+      "name": "every file viewed, approved",
+      "given": {
+        "viewed": 5,
+        "ticked": true,
+        "total": 5,
+        "verdict": "APPROVE",
+        "headMoved": false,
+        "drafts": 0,
+        "sinceOffered": false
+      },
+      "expect": {
+        "label": "✓ Reviewed · approved",
+        "button": "Review again",
+        "done": true
+      }
+    },
+    {
+      "name": "every file viewed, nothing posted",
+      "given": {
+        "viewed": 5,
+        "ticked": true,
+        "total": 5,
+        "verdict": null,
+        "headMoved": false,
+        "drafts": 0,
+        "sinceOffered": false
+      },
+      "expect": {
+        "label": "✓ Reviewed · 5 of 5",
+        "button": "Review again",
+        "done": true
+      }
+    },
+    {
+      "name": "new commits after an approval",
+      "given": {
+        "viewed": 5,
+        "ticked": true,
+        "total": 5,
+        "verdict": "APPROVE",
+        "headMoved": true,
+        "drafts": 0,
+        "sinceOffered": true
+      },
+      "expect": {
+        "label": "🔄 New commits since your review",
+        "button": "Review new commits",
+        "done": false
+      }
+    },
+    {
+      "name": "new commits after a force-push dropped the reviewed head",
+      "given": {
+        "viewed": 3,
+        "ticked": true,
+        "total": 5,
+        "verdict": "COMMENT",
+        "headMoved": true,
+        "drafts": 0,
+        "sinceOffered": false
+      },
+      "expect": {
+        "label": "🔄 New commits since your review",
+        "button": "Review again",
+        "done": false
+      }
+    },
+    {
+      "name": "an empty scope is never reviewed",
+      "given": {
+        "viewed": 0,
+        "ticked": false,
+        "total": 0,
+        "verdict": null,
+        "headMoved": false,
+        "drafts": 0,
+        "sinceOffered": false
+      },
+      "expect": {
+        "label": "Resume · 0 of 0 viewed",
+        "button": "Resume review",
+        "done": false
+      }
+    },
+    {
+      "name": "a push is no news to a review that only drafted",
+      "given": {
+        "viewed": 0,
+        "ticked": false,
+        "total": 5,
+        "verdict": null,
+        "headMoved": true,
+        "drafts": 2,
+        "sinceOffered": true
+      },
+      "expect": {
+        "label": "Resume · 2 drafts",
+        "button": "Resume review",
+        "done": false
+      }
+    },
+    {
+      "name": "the host counts two viewed files changed since",
+      "given": {
+        "viewed": 3,
+        "ticked": true,
+        "total": 5,
+        "verdict": "APPROVE",
+        "headMoved": true,
+        "drafts": 0,
+        "sinceOffered": true,
+        "changedSince": 2
+      },
+      "expect": {
+        "label": "🔄 2 files changed since your review",
+        "button": "Review new commits",
+        "done": false
+      }
+    },
+    {
+      "name": "one viewed file changed since",
+      "given": {
+        "viewed": 3,
+        "ticked": true,
+        "total": 5,
+        "verdict": "APPROVE",
+        "headMoved": true,
+        "drafts": 0,
+        "sinceOffered": true,
+        "changedSince": 1
+      },
+      "expect": {
+        "label": "🔄 1 file changed since your review",
+        "button": "Review new commits",
+        "done": false
+      }
+    },
+    {
+      "name": "a rebase changed none of the viewed files: not news",
+      "given": {
+        "viewed": 3,
+        "ticked": true,
+        "total": 5,
+        "verdict": "APPROVE",
+        "headMoved": true,
+        "drafts": 0,
+        "sinceOffered": true,
+        "changedSince": 0
+      },
+      "expect": {
+        "label": "✓ Approved · 3 of 5 viewed",
+        "button": "Review again",
+        "done": true
+      }
+    },
+    {
+      "name": "a verdict with nothing ticked stays news whatever the host counts",
+      "given": {
+        "viewed": 0,
+        "ticked": false,
+        "total": 5,
+        "verdict": "APPROVE",
+        "headMoved": true,
+        "drafts": 0,
+        "sinceOffered": true,
+        "changedSince": 0
+      },
+      "expect": {
+        "label": "🔄 New commits since your review",
+        "button": "Review new commits",
+        "done": false
+      }
+    },
+    {
+      "name": "a rebase on a review with no verdict yet: not news",
+      "given": {
+        "viewed": 3,
+        "ticked": true,
+        "total": 5,
+        "verdict": null,
+        "headMoved": true,
+        "drafts": 0,
+        "sinceOffered": true,
+        "changedSince": 0
+      },
+      "expect": {
+        "label": "Resume · 3 of 5 viewed",
+        "button": "Resume review",
+        "done": false
+      }
+    },
+    {
+      "name": "ticks and a moved head while the host hasn't said (or can't)",
+      "given": {
+        "viewed": 3,
+        "ticked": true,
+        "total": 5,
+        "verdict": null,
+        "headMoved": true,
+        "drafts": 0,
+        "sinceOffered": true,
+        "changedSince": null
+      },
+      "expect": {
+        "label": "🔄 New commits since your review",
+        "button": "Review new commits",
+        "done": false
+      }
+    }
+  ]
+}

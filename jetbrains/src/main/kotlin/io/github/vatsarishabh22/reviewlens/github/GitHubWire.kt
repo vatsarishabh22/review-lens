@@ -14,6 +14,7 @@ private data class GhRequest(val login: String?)
 private data class GhPullRequest(
     val number: Int, val title: String, val headRefName: String, val headRefOid: String, val baseRefName: String, val author: GhUser,
     val body: String?, val additions: Int, val deletions: Int, val changedFiles: Int, val updatedAt: String, val reviewRequests: List<GhRequest>?,
+    val isCrossRepository: Boolean = false,
 )
 
 /**
@@ -22,7 +23,23 @@ private data class GhPullRequest(
  */
 fun parsePullRequests(json: String, viewer: String?): List<PullRequest> = Gson().fromJson(json, Array<GhPullRequest>::class.java).map {
     PullRequest(it.number, it.title, it.headRefName, it.headRefOid, it.baseRefName, Person(it.author.login, it.author.name?.ifBlank { null } ?: it.author.login),
-        it.body.orEmpty(), it.additions, it.deletions, it.changedFiles, it.updatedAt, viewer != null && it.reviewRequests.orEmpty().any { r -> r.login == viewer })
+        it.body.orEmpty(), it.additions, it.deletions, it.changedFiles, it.updatedAt, viewer != null && it.reviewRequests.orEmpty().any { r -> r.login == viewer },
+        fromFork = it.isCrossRepository)
+}
+
+/**
+ * Each open PR's commits (newest last), the stack rule's input (spec/README.md, Stacks). Its own call: `gh pr list --json
+ * commits` asks for every commit's authors too, which GitHub refuses past 500,000 nodes (100 PRs did, measured).
+ * ponytail: the last 100 commits of the newest 100 PRs; a parent further back is missed and the PR compares with its base.
+ */
+internal const val COMMIT_IDS_QUERY = "query(\$owner:String!,\$name:String!){repository(owner:\$owner,name:\$name){pullRequests(states:OPEN,first:100,orderBy:{field:CREATED_AT,direction:DESC})" +
+    "{nodes{number commits(last:100){nodes{commit{oid}}}}}}}"
+internal const val COMMIT_IDS_JQ = ".data.repository.pullRequests.nodes[] | \"\\(.number)\\t\\([.commits.nodes[].commit.oid] | join(\",\"))\""
+
+/** Reads `number<TAB>oid,oid,…` lines into each PR's commits. */
+fun parseCommitIds(text: String): Map<Int, List<String>> = text.lines().filter { '\t' in it }.associate { line ->
+    val (number, oids) = line.split('\t', limit = 2)
+    number.toInt() to oids.split(',').filter { it.isNotEmpty() }
 }
 
 /** Reads `PR_id<TAB>head<TAB>pendingId<TAB>comments<TAB>own`; pendingId is empty and comments 0 when there is no pending review. */
@@ -31,6 +48,16 @@ fun parseReviewSlot(text: String): GitHubSlot {
     require(pr.isNotEmpty() && head.isNotEmpty()) { "GitHub did not return this pull request" }
     return GitHubSlot(pr, head, pending.ifEmpty { null }?.let { PendingReview(it, comments.toIntOrNull() ?: 0) }, own == "true")
 }
+
+/** Reads `STATE<TAB>count` of one review. */
+fun parseReviewRead(text: String): ReviewRead {
+    val (state, comments) = text.trim().split('\t').let { it + List(2 - it.size) { "" } }
+    require(state.isNotEmpty()) { "GitHub did not return this review" }
+    return ReviewRead(state == "PENDING", comments.toIntOrNull() ?: 0)
+}
+
+internal const val REVIEW_READ_QUERY = "query(\$id:ID!){node(id:\$id){... on PullRequestReview{state comments{totalCount}}}}"
+internal const val REVIEW_READ_JQ = ".data.node | [.state, (.comments.totalCount | tostring)] | @tsv"
 
 // reviews(states: PENDING) lists only the viewer's own: nobody else's pending review is visible
 internal const val REVIEW_SLOT_QUERY = "query(\$owner:String!,\$name:String!,\$number:Int!){repository(owner:\$owner,name:\$name){pullRequest(number:\$number)" +
@@ -109,6 +136,16 @@ fun addThreadBody(reviewId: String, comment: Draft) = graphqlBody(ADD_THREAD, ma
 fun deleteCommentBody(commentId: String) = graphqlBody(DELETE_COMMENT, mapOf("comment" to commentId))
 /** Replaces a posted comment's text on GitHub at once. */
 fun editCommentBody(commentId: String, body: String) = graphqlBody(UPDATE_COMMENT, mapOf("comment" to commentId, "body" to body))
+/**
+ * Ticks (true) and unticks (false) files in one call, one aliased mutation each, the paths passed as variables. GitHub
+ * runs them all and answers an error for any it refused, which fails the call.
+ * ponytail: one call however many files; measured to 300 (2.5 s), split into chunks if a PR past that is ever refused.
+ */
+fun viewedBody(pullRequestId: String, ticks: Map<String, Boolean>): String {
+    val calls = ticks.entries.mapIndexed { i, (_, viewed) -> "m$i:${if (viewed) "markFileAsViewed" else "unmarkFileAsViewed"}(input:{pullRequestId:\$id,path:\$p$i}){clientMutationId}" }
+    return graphqlBody("mutation(\$id:ID!${ticks.keys.indices.joinToString("") { ",\$p$it:String!" }}){${calls.joinToString(" ")}}",
+        mapOf("id" to pullRequestId) + ticks.keys.mapIndexed { i, path -> "p$i" to path })
+}
 /** Resolves a thread, or reopens it ([resolved] false), on GitHub at once: GitHub can't hold it in a pending review. */
 fun resolveBody(threadId: String, resolved: Boolean) = graphqlBody(if (resolved) RESOLVE_THREAD else UNRESOLVE_THREAD, mapOf("thread" to threadId))
 

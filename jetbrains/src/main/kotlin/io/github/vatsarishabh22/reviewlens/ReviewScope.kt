@@ -17,10 +17,11 @@ data class ReviewTarget(val key: String, val label: String, val prNumber: Int?, 
 
     companion object {
         fun refOf(number: Int) = "#$number"
+        fun keyOf(number: Int) = "pr-$number"
 
         // [key] names the state file `.git/review-lens/<key>.json`: the pr- and branch- prefixes keep a branch named
         // "active" or "pr-7" from overwriting the review in progress or another PR's state.
-        fun forPr(number: Int, title: String, head: String, base: String) = ReviewTarget("pr-$number", "${refOf(number)} $title", number, head, base)
+        fun forPr(number: Int, title: String, head: String, base: String) = ReviewTarget(keyOf(number), "${refOf(number)} $title", number, head, base)
 
         fun forBranch(remoteBranch: String, base: String) = ReviewTarget(
             "branch-" + remoteBranch.removePrefix("${GitClient.REMOTE}/").replace(Regex("[^A-Za-z0-9._-]"), "_"), remoteBranch, null, remoteBranch, base)
