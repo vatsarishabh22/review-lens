@@ -113,7 +113,8 @@ parent's head. The list shows at once with the counts kept in `stacks.json`, ask
 (GitHub: `gh api repos/{owner}/{repo}/compare/<parent head>...<head>`, all at once), and shows them as they come. The
 bottom PR, a PR whose parent moved and a PR stacked the host's way compare with their base, so the host's own count is
 theirs. A PR that merged a newer base than its parent counts that base's changes too in the list (the host has no merge
-of the two to count from); its detail and its review count exactly what it adds.
+of the two to count from); its detail and its review count exactly what it adds. While its detail loads, it shows
+the list's own count without lines (none while the list has none), never the host's count against the base.
 
 The list shows a stack as one card, named by its bottom PR's title (always there, whatever the team calls its branches),
 in **Waiting on you** when any PR in it asks for your review (else Other open): one PR asking brings the rest along, so
