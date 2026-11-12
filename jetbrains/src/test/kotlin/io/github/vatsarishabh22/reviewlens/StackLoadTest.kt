@@ -67,7 +67,7 @@ class StackLoadTest {
         val loaded = session.loaded(child, sh("rev-parse", "child"), StackParent(1), parent)
         assertEquals(git.mergeBase("main", loaded.head), loaded.start)
         assertNull(loaded.parent)
-        assertTrue(loaded.note!!, loaded.note!!.startsWith("This PR took a newer main than #1, and the two don't merge cleanly"))
+        assertTrue(loaded.note!!, loaded.note.startsWith("This PR took a newer main than #1, and the two don't merge cleanly"))
     }
 
     @Test

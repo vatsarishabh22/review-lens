@@ -4,6 +4,7 @@ import com.intellij.ui.RoundedLineBorder
 import com.intellij.ui.components.ActionLink
 import com.intellij.ui.components.JBLabel
 import com.intellij.ui.components.JBScrollPane
+import com.intellij.ui.scale.JBUIScale
 import com.intellij.util.ui.JBFont
 import com.intellij.util.ui.JBUI
 import java.awt.BasicStroke
@@ -197,11 +198,11 @@ private class RailMark(private val done: Boolean, private val next: Boolean, pri
         g2.color = ReviewColors.line
         g2.stroke = BasicStroke(JBUI.scale(1).toFloat(), BasicStroke.CAP_BUTT, BasicStroke.JOIN_MITER, 10f, floatArrayOf(JBUI.scale(3).toFloat(), JBUI.scale(3).toFloat()), 0f)
         g2.drawLine(width / 2, if (first) mid else 0, width / 2, if (last) mid else height)
-        g2.stroke = BasicStroke(JBUI.scale(1.5f))
+        g2.stroke = BasicStroke(JBUIScale.scale(1.5f))
         when {
             done -> {
                 g2.color = ReviewColors.ok; g2.fillOval(x, dotTop, d, d)
-                g2.color = ReviewColors.surface; g2.stroke = BasicStroke(JBUI.scale(1.8f))
+                g2.color = ReviewColors.surface; g2.stroke = BasicStroke(JBUIScale.scale(1.8f))
                 g2.drawPolyline(intArrayOf(x + d * 3 / 12, x + d * 5 / 12, x + d * 9 / 12), intArrayOf(dotTop + d / 2, dotTop + d * 3 / 4, dotTop + d * 4 / 12), 3)
             }
             next -> {
