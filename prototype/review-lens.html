@@ -590,7 +590,7 @@ function status() {
   if (S.pushed && started()) return { text: `🔄 ${plural(changedSince().length, "file", "files")} changed since your review`, again: true };
   if (FINAL[S.verdict]) return { text: allViewed() ? `✓ Reviewed · ${S.verdict}` : `✓ ${FINAL[S.verdict]} · ${x}`, done: true };
   if (started() && allViewed()) return { text: `✓ Reviewed · ${S.verdict || `${n} of ${n}`}`, done: true };
-  if (S.verdict) return { text: `Commented · ${x}` };
+  if (S.verdict) return { text: `Commented · ${x}`, answered: true };
   if (started()) return { text: `Resume · ${x}` };
   if (pendingCount()) return { text: `Resume · ${plural(pendingCount(), "draft", "drafts")}` };
   return S.resume ? { text: "Resume · 4 of 9 viewed" } : null;
@@ -710,6 +710,11 @@ function projectTree(highlight) {
 }
 // A PR's word in the list: the sample PR's real status, the stack's sample statuses
 const listStatus = pr => pr.n === 148 ? (S.mode === "normal" ? status() : null) : pr.demo || null;
+// the sample stack as the list shows it, in build order, for the scenario bar's state
+const stackPrs = () => (S.stack === "long" ? LONG : []).concat(STACK.filter(n => !(S.stack === "merged" && n === 144)).map(n => PRS.find(p => p.n === n)), S.stack === "branch" ? [SIBLING] : []);
+// after Finish on [n]: the stack card's next PR, leaving out [n] and every PR already answered (a Commented one isn't done,
+// yet offering it again sends two Commented PRs round in circles); new commits ("again") make an answered one news
+const nextAfter = n => stackPrs().find(pr => pr.n !== n && !listStatus(pr)?.done && !listStatus(pr)?.answered);
 function prList() {
   const item = pr => {
     const st = listStatus(pr);
@@ -719,7 +724,7 @@ function prList() {
       <div class="m"><span>#${pr.n}</span><span>${person(pr.who).name}</span><span>${pr.files} files</span>
       ${pill}${pr.requested ? '<span class="pill req">Review requested</span>' : ""}</div></div>`;
   };
-  const stack = (S.stack === "long" ? LONG : []).concat(STACK.filter(n => !(S.stack === "merged" && n === 144)).map(n => PRS.find(p => p.n === n)), S.stack === "branch" ? [SIBLING] : []);
+  const stack = stackPrs();
   const done = stack.filter(pr => listStatus(pr)?.done).length, next = stack.find(pr => !listStatus(pr)?.done);
   // a stack stays whole: one PR in it asking for you brings the rest along, in the section of the one that asked
   const waiting = stack.some(pr => pr.requested && !(pr.n === 148 && S.submitted));
@@ -1045,7 +1050,7 @@ function statusbar() {
 }
 function toast() {
   if (!S.toast) return "";
-  const acts = (S.toast[2] || []).map(([label, act, pop]) => `<button data-act="${act}" ${pop ? `data-pop="${pop}"` : ""}>${label}</button>`).join("");
+  const acts = (S.toast[2] || []).map(([label, act, pop, n]) => `<button data-act="${act}" ${pop ? `data-pop="${pop}"` : ""} ${n ? `data-n="${n}"` : ""}>${label}</button>`).join("");
   return `<div class="toast" role="status"><span class="ic">${I.ok}</span><b>${esc(S.toast[0])}</b><span class="sub">${esc(S.toast[1])}</span>${acts ? `<div class="acts">${acts}</div>` : ""}</div>`;
 }
 // Mark as reviewed posts nothing: the summary has nowhere to go, and the button stops promising GitHub
@@ -1159,7 +1164,9 @@ function startReview() {
 function finishReview(what) {
   exitReview();
   S.tool = "review"; S.panel = "list";
-  say("Finished #148", `${what} ${S.dirty ? "Your 3 parked changes are restored." : ""}`.trim());
+  // a stacked PR offers the next one: its detail, so the park card says what Start review stashes before it does
+  const next = nextAfter(148);
+  say("Finished #148", `${what} ${S.dirty ? "Your 3 parked changes are restored." : ""}`.trim(), next && [[`Review #${next.n} next →`, "pick-pr", null, next.n]]);
 }
 function exitReview() {
   const pend = pendingCount();
