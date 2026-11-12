@@ -169,13 +169,16 @@ class PrDetailView(private val project: Project, private val onBack: () -> Unit,
 
     private fun showStart() {
         starting = false
-        val ready = loaded != null && loaded!!.commits.isNotEmpty()
+        // a start, a re-scope, a Finish or an Exit under way: Start waits for it, as Finish and Exit do
+        val busy = ReviewService.of(project).ending
+        val ready = loaded != null && loaded!!.commits.isNotEmpty() && busy == null
         val start = primaryButton(progress?.startLabel(since != null) ?: "Start review").apply {
             isEnabled = ready
             addActionListener { checkWorkThenStart() }
         }
         // while greyed out, the button says why: on hover, and beside it while the fetch runs
         val (status, hint) = when {
+            busy != null -> null to "${busy.busy} Start review is back once that's done."
             fetchFailed -> null to "Couldn't fetch the PR from ${ReviewHosts.nameOf(session?.git)}."
             loaded == null -> JBLabel("Fetching the PR from ${ReviewHosts.nameOf(session?.git)}…", AnimatedIcon.Default.INSTANCE, SwingConstants.LEFT)
                 .apply { foreground = ReviewColors.muted; font = JBFont.small() } to null
@@ -188,6 +191,11 @@ class PrDetailView(private val project: Project, private val onBack: () -> Unit,
             row(*listOfNotNull<JComponent>(start, status).toTypedArray(), gap = 10), vgap(8),
             row(*listOfNotNull<JComponent>(hint?.let(::mutedLabel), retry).toTypedArray(), gap = 6),
         ))
+    }
+
+    /** The review's busy state changed: the Start button follows it, unless this page is already starting. */
+    fun busyChanged() {
+        if (listed != null && !starting) showStart()
     }
 
     private fun checkWorkThenStart() {

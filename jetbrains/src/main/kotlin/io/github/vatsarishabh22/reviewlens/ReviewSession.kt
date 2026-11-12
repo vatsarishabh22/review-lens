@@ -87,9 +87,10 @@ class ReviewSession(val git: GitClient) {
         // the start may be a commit on no branch (a stack's merge base): kept from git's cleanup, so the saved range resolves
         git.pin(git.reviewRef("${loaded.target.key}-from"), range.from)
         // copy, not rebuild: the ticks and the queue of ticks GitHub has not confirmed outlive a change of scope
-        val meta = ReviewMeta.load(git, loaded.target.key)?.copy(target = loaded.target, range = range, scopeLabel = scopeLabel, seenHead = loaded.head, parentHead = loaded.parentHead)
-            ?: ReviewMeta(loaded.target, range, scopeLabel, seenHead = loaded.head, parentHead = loaded.parentHead)
-        ReviewMeta.save(git, meta)
+        ReviewMeta.change(git, loaded.target.key) { saved ->
+            saved?.copy(target = loaded.target, range = range, scopeLabel = scopeLabel, seenHead = loaded.head, parentHead = loaded.parentHead)
+                ?: ReviewMeta(loaded.target, range, scopeLabel, seenHead = loaded.head, parentHead = loaded.parentHead)
+        }
         return review
     }
 }

@@ -51,7 +51,7 @@ class ReviewPanel(private val project: Project, private val toolWindow: ToolWind
         } else if (wasActive != false) { // first paint, or the review just ended: back to a fresh list
             show(LIST)
             loadList()
-        }
+        } else detail.busyChanged()
         wasActive = active
     }
 

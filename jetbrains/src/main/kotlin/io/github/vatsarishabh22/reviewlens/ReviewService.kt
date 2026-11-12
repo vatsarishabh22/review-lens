@@ -30,8 +30,12 @@ class ReviewService(private val project: Project) : Disposable {
 
     override fun dispose() = Unit
 
-    /** How the review is ending, or null; every Finish and Exit reads it, so one click ends it once. */
-    enum class Ending(val busy: String) { POSTING("Posting…"), EXITING("Exiting…") }
+    /**
+     * What the review is busy with, or null; Start, re-scope, Finish and Exit all read it, so none runs under another and
+     * one click does it once. [ofReview]: a state of a review that exists (it ends when the review is gone); a start
+     * runs before its review exists.
+     */
+    enum class Ending(val busy: String, val ofReview: Boolean) { SWITCHING("Switching…", false), POSTING("Posting…", true), EXITING("Exiting…", true) }
 
     @Volatile var ending: Ending? = null
         set(value) { if (field != value) { field = value; fireChanged() } }
@@ -61,11 +65,11 @@ class ReviewService(private val project: Project) : Disposable {
         val review = ReviewLifecycle(git).active()
         val loaded = review?.let { ReviewMeta.load(git, it.target.key) }
         changes = loaded?.let { git.changes(it.range) }.orEmpty()
-        val fresh = loaded?.let { HostViewed.of(project).fold(git, it, changes).also { synced -> if (synced != it) ReviewMeta.save(git, synced) } }
+        val fresh = loaded?.let { ReviewMeta.foldIn(git, it, HostViewed.of(project).fold(git, it, changes)) }
         trackedFiles = if (fresh != null) git.trackedFiles() else emptyList()
         active = review
         meta = fresh
-        if (review == null) ending = null // whatever ended it, nothing is ending any more
+        if (review == null && ending?.ofReview == true) ending = null // whatever ended it, nothing is ending any more
         HostThreads.of(project).load()
         fireChanged()
     }
@@ -94,10 +98,12 @@ class ReviewService(private val project: Project) : Disposable {
     /** Marks [files] viewed, or un-marks them, here at once; the ones the host lists go there in one call in the background. Callers hold the lock. */
     private fun setReviewed(files: List<FileChange>, viewed: Boolean) {
         val current = meta ?: return
-        val reviewed = if (viewed) current.reviewed + files.associate { it.path to it.newBlob } else current.reviewed - files.map { it.path }.toSet()
         // A PR tick is queued even when the host is unreachable now, so the next load sends it instead of erasing it.
         val sent = files.filter { HostViewed.of(project).sends(current, it) }.associate { it.path to viewed }
-        update { current.copy(reviewed = reviewed, unsent = if (sent.isEmpty()) current.unsent else current.unsent.orEmpty() + sent) }
+        update { m ->
+            m.copy(reviewed = if (viewed) m.reviewed + files.associate { it.path to it.newBlob } else m.reviewed - files.map { it.path }.toSet(),
+                unsent = if (sent.isEmpty()) m.unsent else m.unsent.orEmpty() + sent)
+        }
         // the last tick is the moment to finish: say so once, with the way to do it
         if (viewed && current.target.reviewable && reviewedCount() == changes.size) notify(project, "All ${changes.size} files viewed",
             "Finish the review to post a verdict, or mark it reviewed without posting.", NotificationType.INFORMATION,
@@ -111,16 +117,15 @@ class ReviewService(private val project: Project) : Disposable {
     /** The host took [sent] ([confirmed]). */
     @Synchronized
     private fun confirmSent(sent: Map<String, Boolean>) {
-        val current = meta ?: return
-        val unsent = confirmed(current.unsent, sent)
-        if (unsent != current.unsent) meta = current.copy(unsent = unsent).also { ReviewMeta.save(git!!, it) }
+        update { it.copy(unsent = confirmed(it.unsent, sent)) }
     }
 
     /** Every change to the saved review: written at once (it survives exit and a crash), then the editor and panel redraw. */
     @Synchronized
     fun update(change: (ReviewMeta) -> ReviewMeta) {
         val current = meta ?: return
-        meta = change(current).also { ReviewMeta.save(git!!, it) }
+        // built on what the file holds now, so a change saved meanwhile by a re-scope or a load is kept
+        meta = ReviewMeta.change(git!!, current.target.key) { change(it ?: current) }
         fireChanged()
     }
 

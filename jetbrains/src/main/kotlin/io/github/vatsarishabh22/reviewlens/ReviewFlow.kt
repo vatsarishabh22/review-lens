@@ -52,6 +52,16 @@ fun <T> background(project: Project, title: String, work: () -> T, current: () -
     }.queue()
 }
 
+/**
+ * Refuses [step] while a start, a re-scope, Finish or Exit is under way, and says so: a greyed control never gets here,
+ * but a balloon's link or a shortcut can, and a click must never vanish without a word. True when refused.
+ */
+fun refusedBusy(project: Project, step: String): Boolean {
+    val busy = ReviewService.of(project).ending ?: return false
+    notify(project, busy.busy, "$step is back once that's done.")
+    return true
+}
+
 fun notify(project: Project, title: String, content: String, type: NotificationType = NotificationType.INFORMATION, vararg actions: AnAction) {
     NotificationGroupManager.getInstance().getNotificationGroup(TITLE).createNotification(title, content, type)
         .apply { actions.forEach(::addAction) }.notify(project)
@@ -65,14 +75,19 @@ fun beginReview(
     project: Project, session: ReviewSession, loaded: LoadedTarget, range: ScopeRange, label: String,
     progress: (StartStep) -> Unit = {}, failed: () -> Unit = {},
 ) {
-    val wasActive = ReviewService.of(project).isActive
-    if (ReviewService.of(project).ending != null) return // a review that is ending can't be re-scoped under it
-    if (!wasActive) ReviewService.of(project).rememberOpenTabs()
+    val service = ReviewService.of(project)
+    val wasActive = service.isActive
+    // busy: a start, a re-scope, a Finish or an Exit is already under way; refused, and the caller hears it
+    if (refusedBusy(project, "Start review")) return failed()
+    if (!wasActive) service.rememberOpenTabs()
+    // Finish, Exit and another re-scope wait for this one: the checkout and the saved review change under it
+    service.ending = ReviewService.Ending.SWITCHING
     val onEdt = { step: StartStep -> ApplicationManager.getApplication().invokeLater({ progress(step) }, project.disposed) }
+    // always current: nothing else can run on the review until it clears the busy state
     background(project, "Starting review of ${loaded.target.label}", {
         session.begin(loaded, range, label, onEdt).also { afterCheckout(project, session.git) }
-    }, current = { true }, failed = failed) { review ->
-        val service = ReviewService.of(project)
+    }, current = { true }, failed = { service.ending = null; failed() }) { review ->
+        service.ending = null
         refreshViews(project)
         ToolWindowManager.getInstance(project).getToolWindow(TOOL_WINDOW_ID)?.activate(null)
         service.nextUnreviewed(null)?.let { openChange(project, it) }
@@ -89,7 +104,7 @@ fun beginReview(
 fun finishReview(project: Project, summary: String, verdict: Verdict?, posted: () -> Unit, failed: (String) -> Unit) {
     val service = ReviewService.of(project)
     val number = service.meta?.target?.prNumber ?: return
-    if (service.ending != null) return // already ending: a second click is the same click
+    if (refusedBusy(project, "Finish review")) return
     if (verdict == null) { endReview(project, number, "Marked as reviewed. Nothing was posted to ${service.hostName}."); return posted() }
     service.ending = ReviewService.Ending.POSTING
     // the host's refusal is the popup's to say, where the click was: caught here, so no second balloon says it too
@@ -113,7 +128,7 @@ fun viewedFromFile(project: Project, change: FileChange, file: VirtualFile?) {
 /** Goes back to the reviewer's branch and restores their parked work; the review can be resumed later. */
 fun exitReview(project: Project) {
     val service = ReviewService.of(project)
-    if (service.ending != null) return // already ending: a second click is the same click
+    if (refusedBusy(project, "Exit")) return
     val total = service.changes.size
     endReview(project, null, if (allViewed(service.reviewedCount(), total)) "All $total files reviewed." else "")
 }

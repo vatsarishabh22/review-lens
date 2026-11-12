@@ -51,11 +51,27 @@ data class ReviewMeta(
         fun load(git: GitClient, key: String): ReviewMeta? =
             fileFor(git, key).takeIf(Files::exists)?.let { gson.fromJson(Files.readString(it), ReviewMeta::class.java) }
 
-        fun save(git: GitClient, meta: ReviewMeta) {
-            val file = fileFor(git, meta.target.key)
-            Files.createDirectories(file.parent)
-            Files.writeString(file, gson.toJson(meta))
+        /**
+         * The only way the review [key]'s file is written: [change] gets what it holds now (null: none yet) and returns
+         * what it becomes, one change at a time, so a tick, a draft, a re-scope and a load each build on the others and
+         * none writes over one made while it worked.
+         */
+        fun change(git: GitClient, key: String, change: (ReviewMeta?) -> ReviewMeta): ReviewMeta = synchronized(LOCK) {
+            change(load(git, key)).also { meta ->
+                val file = fileFor(git, key)
+                Files.createDirectories(file.parent)
+                Files.writeString(file, gson.toJson(meta))
+            }
         }
+
+        /**
+         * Writes [folded], an answer worked out from [read] while the host was asked, only if the file still holds [read]:
+         * a tick or a draft saved meanwhile is newer and stays, and the next load folds the host in again.
+         */
+        fun foldIn(git: GitClient, read: ReviewMeta, folded: ReviewMeta): ReviewMeta =
+            change(git, read.target.key) { now -> if (now == null || now == read) folded else now }
+
+        private val LOCK = Any()
     }
 }
 
