@@ -1,9 +1,9 @@
 {
   "rule": "viewed-sync",
-  "about": "Re-send queued ticks in one call (`takes`: whether the host takes it), then merge the answer read before the re-send. `tried`: each call's ticks, in order.",
+  "about": "On load: fold the host's answer in, the queued ticks keeping this machine's value, and drop from the queue a path the host doesn't list (it stays ticked here). `unsent`: what is left to send, through the tick line.",
   "cases": [
     {
-      "name": "a batch the host refuses stays queued whole, its ticks kept, not erased by the answer read before it went out",
+      "name": "queued ticks keep this machine's value, not erased by the answer read before they go, and stay queued for the tick line",
       "given": {
         "reviewed": {
           "a.kt": "a2",
@@ -26,8 +26,7 @@
             "path": "b.kt",
             "newBlob": "b2"
           }
-        ],
-        "takes": false
+        ]
       },
       "expect": {
         "reviewed": {
@@ -37,58 +36,11 @@
         "unsent": {
           "a.kt": true,
           "b.kt": true
-        },
-        "tried": [
-          {
-            "a.kt": true,
-            "b.kt": true
-          }
-        ]
+        }
       }
     },
     {
-      "name": "a batch the host takes leaves the queue whole, and its ticks are kept, not erased by the answer read before it went out",
-      "given": {
-        "reviewed": {
-          "a.kt": "a2",
-          "b.kt": "b2"
-        },
-        "unsent": {
-          "a.kt": true,
-          "b.kt": true
-        },
-        "host": {
-          "a.kt": "UNVIEWED",
-          "b.kt": "UNVIEWED"
-        },
-        "changes": [
-          {
-            "path": "a.kt",
-            "newBlob": "a2"
-          },
-          {
-            "path": "b.kt",
-            "newBlob": "b2"
-          }
-        ],
-        "takes": true
-      },
-      "expect": {
-        "reviewed": {
-          "a.kt": "a2",
-          "b.kt": "b2"
-        },
-        "unsent": null,
-        "tried": [
-          {
-            "a.kt": true,
-            "b.kt": true
-          }
-        ]
-      }
-    },
-    {
-      "name": "a queued tick for a file outside the PR on the host is dropped, never re-sent, and stays ticked here",
+      "name": "a queued tick for a file outside the PR on the host leaves the queue, never sent, and stays ticked here",
       "given": {
         "reviewed": {
           "a.kt": "a2",
@@ -116,8 +68,7 @@
             "path": "c.kt",
             "newBlob": "c2"
           }
-        ],
-        "takes": true
+        ]
       },
       "expect": {
         "reviewed": {
@@ -125,16 +76,13 @@
           "b.kt": "b2",
           "c.kt": "c2"
         },
-        "unsent": null,
-        "tried": [
-          {
-            "a.kt": true
-          }
-        ]
+        "unsent": {
+          "a.kt": true
+        }
       }
     },
     {
-      "name": "ticks and unticks go in one call",
+      "name": "ticks and unticks stay queued together, for one call",
       "given": {
         "reviewed": {
           "a.kt": "a2"
@@ -156,24 +104,20 @@
             "path": "b.kt",
             "newBlob": "b2"
           }
-        ],
-        "takes": true
+        ]
       },
       "expect": {
         "reviewed": {
           "a.kt": "a2"
         },
-        "unsent": null,
-        "tried": [
-          {
-            "a.kt": true,
-            "b.kt": false
-          }
-        ]
+        "unsent": {
+          "a.kt": true,
+          "b.kt": false
+        }
       }
     },
     {
-      "name": "nothing queued sends nothing",
+      "name": "nothing queued leaves nothing to send",
       "given": {
         "reviewed": {},
         "unsent": null,
@@ -185,15 +129,13 @@
             "path": "a.kt",
             "newBlob": "a2"
           }
-        ],
-        "takes": false
+        ]
       },
       "expect": {
         "reviewed": {
           "a.kt": "a2"
         },
-        "unsent": null,
-        "tried": []
+        "unsent": null
       }
     }
   ]

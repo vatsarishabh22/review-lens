@@ -28,13 +28,8 @@ flowchart LR
 | Finish | Opening it reloads the threads, so a thread resolved or deleted meanwhile is said before anything posts (a reply to a resolved thread still posts; one to a deleted thread waits as a draft). Then one review: summary, verdict, the pending comments **written on the file versions this scope shows** (`!posted && !replyTo && blob == the file's blob at range.to`; the others wait for their scope), and every pending reply whose thread still exists (when the threads could not be read, every reply is tried, and GitHub refusing one posts nothing). Sent drafts get `posted: true` and `verdict` = the event. GitHub keeps one pending review per person per PR, so a review you started on github.com is **adopted**: yours go into it and its comments post too (Finish says how many). What is added to a pending review lands on the PR's latest push, so when one exists and the scope ends earlier, comments can't join it: Submit is greyed with the reason (replies alone still can). If any step fails, only what Finish added is undone (a review it started is deleted; an adopted one loses just the comments Finish added): nothing is posted, nothing is marked sent, the review stays open. Or **Mark as reviewed**, offered once every file of the scope is viewed (before that it would record nothing): nothing is posted, drafts stay pending, `verdict` unchanged. Every finish then does Exit, and the editor shows the PR list. | GraphQL, in order: `pullRequest{id headRefOid reviews(states:PENDING,first:1){nodes{id comments{totalCount}}}}` → no pending review: `addPullRequestReview{pullRequestId commitOID threads:[{path line side:RIGHT body}]}`; adopted: `addPullRequestReviewThread{pullRequestReviewId path line side:RIGHT body}` per comment → `addPullRequestReviewThreadReply{pullRequestReviewId pullRequestReviewThreadId body}` per reply → `submitPullRequestReview{event body}`; on failure `deletePullRequestReview` (started) or `deletePullRequestReviewComment` per added comment (adopted) |
 | Exit | Tracked files written during the review (the editor rewriting its settings) that differ between the review commit and `originalRef` would block the checkout: only those are parked first as `review-lens: changed during review of <label>`, never applied, and the editor names them (a re-scope does the same before moving). Then back to `originalRef`, pop the stash by its message (`--index` first, plain pop as fallback; a conflict keeps the stash), delete `active.json`. `<key>.json` stays for next time. | `git diff --name-only HEAD` ∩ `git diff --name-only HEAD <originalRef>` · `git stash push -m "review-lens: changed during review of <label>" -- <those paths>` · `git checkout <originalRef>` · `git stash list --format=%gd%x09%gs` · `git stash pop --index stash@{n}` |
 
-Start, a re-scope, Finish and Exit never run under one another: while one runs (the checkout and the saved review
-change under it), the others are greyed and refused, and come back once it is done; only the step that took the busy
-state frees it, so an older step's end never frees a newer one. The saved review (`<key>.json`) is changed one change at a time, each made to
-what it holds then, so a tick or a draft made during a re-scope is kept; a load's answer from the host, worked out from
-what was read before asking, is written only if nothing changed the file meanwhile (the next load folds the host in again). What the editor shows is
-the file as the last change left it and, of two loads landing in either order, the one started last, with what that one heard from the host (where ticks go,
-its files, the sync status).
+Start, a re-scope, Finish, Exit and the load an editor does when it opens on a review never run under one another (see
+[Running at the same time](#running-at-the-same-time)).
 
 Badges: ⭐ not viewed · ✅ viewed at the current version · 🔄 changed since viewed.
 
@@ -146,23 +141,44 @@ balloon. The link opens that PR's detail, never its review: Start review there s
 click once another review began, or on a PR no longer listed, does nothing. Nothing left, no link; Exit offers none, nor
 does a Finish whose parked work needs a hand (that warning shows at once).
 
+### Running at the same time
+
+An editor does several things at once: the reviewer clicks while the host is asked, a list loads, a tick is on its way.
+Every editor keeps these rules, so no two of them can undo each other:
+
+| # | Rule | So that |
+|---|---|---|
+| 1 | **One writer per store.** `<key>.json` is changed only through one change function, one change at a time, each made to what the file holds then; `stacks.json` likewise; Viewed ticks go to the host only through the one tick line ([Viewed sync](#viewed-sync) step 4); a thread or a posted comment has one write on its way at a time. | A tick or a draft made while anything else runs is kept, and the host gets every tick in click order. |
+| 2 | **Start, a re-scope, Finish, Exit and the load on opening hold the busy state**; only the step that took it frees it or hands it on (Finish's post becomes its exit). Meanwhile the others are greyed, and reached anyway (a link in a notice, a shortcut) are refused with a notice saying what is under way. The review's state in memory is published only by the load that holds it. | An older step ending late never frees a newer one, and a load never shows a review another step has since ended or started. |
+| 3 | **A background answer lands only on what it was asked for**, if that is still on screen (the page as opened, the review, its scope, the list); of two reads of one thing, the one started last wins. | A late answer never lands on the next PR, review or list. |
+| 4 | **A saved file is replaced whole** (written beside it, then moved over it). | A reader never sees half a file. |
+| 5 | **What Finish posts is frozen while it posts**: changing a draft meanwhile is refused with a notice, the text kept. | A draft is posted as it is marked, never posted again. |
+| 6 | **Every failure is said**: in place for a click, and once per session for the Viewed sync. | Nothing fails in silence. |
+| 7 | **Every call to the host has a time limit**: a read 30 s, a write 60 s (a Viewed tick 20 s). A write stopped unanswered may still land after any read of it, so a read proves only what landed. Finish's post is read back by the review's id: it is marked posted only when the call that hung was the submit and the review is submitted holding exactly what was sent, and undone only when it is a review Finish started, still pending: deleted by its id, so a call still on its way to it fails. Anything else can't be told: the start hung (a review it may still make has no id to undo by), or the review was adopted (a call landing after the undo would post it). When it can't be told, or an undo itself fails (what it leaves would be adopted and post twice), the drafts stay and the reviewer is told to check the pull request before finishing again. | No step waits on the host forever, and a slow answer never posts a review twice. |
+
+A load's answer from the host, worked out from what was read before asking, is written only if nothing changed the file
+meanwhile (the next load folds the host in again).
+
 ### Viewed sync
 
 For a PR, GitHub's "Viewed" checkboxes and `reviewed` are one checklist:
 
-1. On load, re-send every tick in `unsent` first (path → viewed), all in one call. If GitHub takes the call, they all leave `unsent`; if
-   it fails, they all stay and go again at the next load (sending a tick twice changes nothing). A path GitHub doesn't list among
-   the PR's files (a scope file whose change the PR undoes, or one that came in with a merge from the base) has no Viewed box there: it
-   leaves `unsent` unsent, keeps its local tick, and its later ticks stay local too.
-2. Then fold in GitHub's state, except for paths that were in `unsent`, where this machine's answer wins:
+1. On load, fold in GitHub's state, except for paths in `unsent`, where this machine's answer wins:
    `VIEWED` → `reviewed[path] = blob` · `UNVIEWED` → remove the path · `DISMISSED` (changed since viewed) →
-   `"dismissed"`, only when the path has no local entry or its entry equals the current blob. Steps 1 and 2 are
-   written only if the saved review is unchanged since it was read for them (see the paragraph under the flow table).
+   `"dismissed"`, only when the path has no local entry or its entry equals the current blob. A path in `unsent` that
+   GitHub doesn't list among the PR's files (a scope file whose change the PR undoes, or one that came in with a merge
+   from the base) has no Viewed box there: it leaves `unsent`, keeps its local tick, and its later ticks stay local too.
+   This is written only if the saved review is unchanged since it was read for it ([Running at the same time](#running-at-the-same-time)).
+2. Then what is left in `unsent` for the files GitHub lists, as the saved review holds it then, goes to GitHub in one call
+   through the same tick line as the ticks being made (step 4), never a call of its own, queued before any tick made from
+   then on, so the ticks land in click order (a tick may go twice, by its click and with a load; sending it twice changes
+   nothing). Its answer counts as any other call's (step 3); a failure is said as any other (once per session).
 3. A tick is saved locally at once and queued in `unsent`. GitHub's confirmation removes it, unless the reviewer has
    flipped it again since: a path a later call still out also carries stays queued until that later call answers.
 4. Calls go one at a time, in click order, so a tick and an untick sent close together land as made. A call GitHub hasn't
    answered in 20 s is stopped and counts as failed (its ticks stay in `unsent`, and the panel says the sync failed until
-   the next load sends them). Once a call has waited 0.5 s unanswered, the review panel says "Sending *n* to GitHub…",
+   the next load sends them). A stopped call may still land later, after a tick made since: click order holds only for
+   calls GitHub answered, and the next load shows what GitHub ended with (rule 7). Once a call has waited 0.5 s unanswered, the review panel says "Sending *n* to GitHub…",
    *n* the distinct files in calls not answered yet, until none is left; a quick answer never shows it. A call made for
    a review since left answers only that review's next load.
 
