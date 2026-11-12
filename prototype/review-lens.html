@@ -584,10 +584,12 @@ const started = () => Object.keys(S.viewed).length > 0 || !!S.verdict;
 // done whatever was read; a Comment is done once every file is viewed; a peek with no tick, draft or verdict leaves no mark.
 const FINAL = { approved: "Approved", "changes requested": "Changes requested" };
 // the files the commits pushed after your review touch: counted by content, so a rebase that changes nothing isn't news
-const changedSince = () => FILES.filter(f => f.lines.some(e => e[0] !== "c" && [3, 4].includes(e[e.length - 1])));
+const changedSince = () => FILES.filter(f => S.viewed[f.path] && f.lines.some(e => e[0] !== "c" && [3, 4].includes(e[e.length - 1])));
 function status() {
   const n = scopedFiles().length, x = `${prViewed()} of ${n} viewed`;
-  if (S.pushed && started()) return { text: `🔄 ${plural(changedSince().length, "file", "files")} changed since your review`, again: true };
+  // the count is GitHub's (files it un-marked), asked after the list shows: until it answers the pill says only that
+  // commits came; a push that changed none of your viewed files (a rebase) isn't news
+  if (S.pushed && started() && !(S.counted && Object.keys(S.viewed).length && !changedSince().length)) return { text: S.counted ? `🔄 ${plural(changedSince().length, "file", "files")} changed since your review` : "🔄 New commits since your review", again: true };
   if (FINAL[S.verdict]) return { text: allViewed() ? `✓ Reviewed · ${S.verdict}` : `✓ ${FINAL[S.verdict]} · ${x}`, done: true };
   if (started() && allViewed()) return { text: `✓ Reviewed · ${S.verdict || `${n} of ${n}`}`, done: true };
   if (S.verdict) return { text: `Commented · ${x}`, answered: true };
@@ -1357,6 +1359,7 @@ document.getElementById("opt-moved").addEventListener("click", () => {
 document.getElementById("opt-pushed").addEventListener("click", () => {
   S = fresh(); FILES.forEach(f => S.viewed[f.path] = true); S.verdict = "approved"; S.submitted = true; S.pushed = true;
   S.tool = "review"; S.panel = "list"; S.scope = "since"; S.picked = new Set([3, 4]); // the detail offers what's new, chosen
+  S.counted = false; setTimeout(() => { S.counted = true; render(); }, document.getElementById("opt-slownet").checked ? 3000 : 900);
   render();
 });
 document.getElementById("opt-early").addEventListener("click", () => {
