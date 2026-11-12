@@ -7,7 +7,7 @@
 Review GitHub pull requests in **IntelliJ IDEA, PyCharm, WebStorm, GoLand** or any other JetBrains IDE, version
 **2026.1 or newer**. New to Review Lens? Start with the [main README](../README.md).
 
-<p align="center"><img src="../docs/images/demo.gif" alt="Review Lens in 40 seconds: pick a PR, your work is parked, see who else uses the changed function, suggest a fix on two lines, resolve a thread, tick each file, approve, and you're back on your branch with your work restored"></p>
+<p align="center"><img src="../docs/images/demo.gif" alt="Review Lens in 46 seconds: a stack of PRs shows as one card, pick its bottom PR, your work is parked, see who else uses the changed function, suggest a fix on two lines, resolve a thread, tick a folder of files at once, approve, and Finish offers the next PR in the stack"></p>
 
 ## Install
 
@@ -45,7 +45,14 @@ still review remote branches.
 ## Use it
 
 **1. Pick a PR.** Open the **Review** tool window, or click **Review PR…** in the toolbar. PRs waiting on you come
-first. A PR you've reviewed shows **✓ Reviewed**, or **🔄 New commits since your review** once someone pushes again.
+first. Each PR says where your review stands: **✓ Reviewed · approved**, **Commented · 3 of 8 viewed**, **Resume · 2
+drafts**. Once someone pushes, it says **🔄 2 files changed since your review**, counting only files you viewed that
+really changed, so a rebase that changed none of them isn't news.
+
+**Stacked PRs** (each built on the one before) show as one card in build order, headed **Stack of 4 PRs** and **2 of 4
+reviewed**. Each PR is reviewed on top of the one under it (**on top of #12**), so you read only its own changes. Review
+Lens finds the stack from git history, even when every PR targets main. If the PR under it changed since, it says **#12
+changed under it**.
 
 ![The PR list](../docs/images/pr-list.png)
 
@@ -93,19 +100,24 @@ The **Comments** tab, next to Changed files, lists every conversation and draft 
 | Scope ▾ | | Switch commits, or check GitHub for new ones |
 | Next unviewed | `⌥N` / `Alt+N` | Go to the next file you haven't viewed |
 | File / Diff | `⌥D` / `Alt+D` | The full file with changes marked, or a side-by-side diff |
-| Viewed | `⌥R` / `Alt+R` | Tick the file and open the next one |
+| Viewed | `⌥R` / `Alt+R` | Tick the file, open the next one and close this tab (unless you opened it before the review, or its comment box holds text) |
 | Next place to check | `⌥I` / `Alt+I` | Go to the next place the impact map hasn't ticked |
 
-**5. Finish review.** Once every file is viewed, Review Lens offers **Finish review…**. Add a summary, pick **Comment**,
-**Approve** or **Request changes**, and click **Submit to GitHub**: your comments and replies go to GitHub as one review. If someone resolved or deleted a conversation you replied to
-meanwhile, the popup says so first. Comments you started on github.com and didn't submit go out with yours. Nothing to
-say? Pick **Mark as reviewed**: nothing is posted, and any drafts are kept. Either way you're back on your branch with
-your work restored, on the pull request list, where the PR shows **✓ Reviewed** in green. Click it to **Review again**.
+In **Changed files**, a folder's box ticks every file directly in it. Ticks go to GitHub as you make them; if GitHub is
+slow, the panel says **Sending 2 to GitHub…** until they land.
+
+**5. Finish review.** Click **Finish review** in the Review panel, or wait for Review Lens to offer it once every file
+is viewed. Add a summary, pick **Comment**, **Approve** or **Request changes**, and click **Submit to GitHub**: your
+comments and replies go to GitHub as one review. If someone resolved or deleted a conversation you replied to meanwhile,
+the popup says so first. Comments you started on github.com and didn't submit go out with yours. Nothing to say? Pick
+**Mark as reviewed**: nothing is posted, and any drafts are kept. Either way you're back on your branch with your work
+restored, on the pull request list, where the PR shows its verdict in green. Click it to **Review again**. In a stack,
+the message offers **Review #13 next →**, the next PR you haven't answered.
 
 ![Finish review](../docs/images/finish.png)
 
-**6. Or exit partway.** **Exit** puts you back on your branch with your work restored, without finishing. Come back any
-time: **Resume review** keeps your ticks and drafts.
+**6. Or exit partway.** **Exit**, in the Review panel, puts you back on your branch with your work restored, without
+finishing. Come back any time: **Resume review** keeps your ticks and drafts.
 
 ## Troubleshooting
 

@@ -20,7 +20,7 @@
   <!-- when VS Code ships, turn its badge green -->
 </p>
 
-<p align="center"><img src="docs/images/demo.gif" alt="Review Lens in 40 seconds: pick a PR, your work is parked, see who else uses the changed function, suggest a fix on two lines, resolve a thread, tick each file, approve, and you're back on your branch with your work restored"></p>
+<p align="center"><img src="docs/images/demo.gif" alt="Review Lens in 46 seconds: a stack of PRs shows as one card, pick its bottom PR, your work is parked, see who else uses the changed function, suggest a fix on two lines, resolve a thread, tick a folder of files at once, approve, and Finish offers the next PR in the stack"></p>
 
 ## Why
 
@@ -50,7 +50,8 @@ flowchart LR
 - **Suggest the fix.** Comment on several lines, or propose replacement lines the author applies from GitHub.
 - **Comment, then post once.** Comments, replies, summary and verdict go to GitHub as a single review, or mark it reviewed without posting.
 - **See what's done.** Reviewed PRs turn green in the list with their verdict: ✓ Reviewed · approved.
-- **Review only what's new.** Someone pushed after your review? The PR shows 🔄 New commits, and one click reviews only those.
+- **Review only what's new.** Someone pushed after your review? The PR shows 🔄 2 files changed since your review, and one click reviews only the new commits.
+- **Review a stack in order.** Stacked PRs show as one card, each reviewed on top of the one under it, and Finish offers the next.
 
 ## Get started
 

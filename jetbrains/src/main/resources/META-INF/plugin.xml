@@ -26,6 +26,27 @@
     ]]></description>
 
     <change-notes><![CDATA[
+        <h3>0.1.5</h3>
+        <ul>
+          <li>Stacked PRs: the list shows a stack as one card ("Stack of 4 PRs", "2 of 4 reviewed"), and each PR is
+          reviewed on top of the one under it, so you read only its own changes. Found from git history even when every
+          PR targets main; a PR whose parent moved says "#12 changed under it".</li>
+          <li>Finish on a stacked PR offers "Review #13 next →", the next PR you haven't answered.</li>
+          <li>The list says where each review stands: "✓ Reviewed · approved", "Commented · 3 of 8 viewed",
+          "Resume · 2 drafts".</li>
+          <li>"🔄 2 files changed since your review" counts the files you viewed that really changed, from GitHub's
+          own Viewed boxes: a rebase that changed none of them is no longer news.</li>
+          <li>A folder's box ticks every file directly in it.</li>
+          <li>Finish review and Exit sit in the Review panel; Finish review opens at once and checks GitHub inside.</li>
+          <li>⌥R / Alt+R ticks the file, opens the next and closes the one you finished, unless you opened it before the
+          review or its comment box holds text.</li>
+          <li>Ticks reach GitHub in click order; when GitHub is slow the panel says "Sending 2 to GitHub…", and a call
+          stuck past 20 s is retried at the next load.</li>
+          <li>A stacked PR's detail never shows GitHub's count for the whole PR: the list's own count while it loads, then
+          its own files and lines.</li>
+          <li>A PR with many commits no longer opens its detail scrolled to the bottom, and progress bars no longer
+          offer a Cancel that threw the result away.</li>
+        </ul>
         <h3>0.1.4</h3>
         <ul>
           <li>Impact map: every function the PR changed gets a chip such as "3 places use this · logic changed". Open it
