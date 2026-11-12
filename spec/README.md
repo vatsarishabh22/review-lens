@@ -84,7 +84,9 @@ PR's commits than the head the note saw) is closer, and wins:
 | #13 no longer holds `abc` (it was rebuilt somewhere else) | The note is dropped; the exact fact decides again |
 
 With no note, the exact fact decides and is written down; with neither, the PR has no parent. Notes of PRs no longer
-open are dropped at each list.
+open are dropped at each list. When the host doesn't say a PR's commits (its lookup failed), neither rule can be
+checked: the PR finds no parent from its commits this time (one based on another PR's branch still shows it), and its
+note is kept as it is for the next list, never read as "no parent".
 
 A wider grouping, said rather than guessed: a long-lived branch with its own PR (a release PR `develop` → `main`) is the
 parent of every PR into that branch, so they all show as one card on top of it, the release PR first. Every diff is
@@ -148,7 +150,7 @@ For a PR, GitHub's "Viewed" checkboxes and `reviewed` are one checklist:
    `VIEWED` → `reviewed[path] = blob` · `UNVIEWED` → remove the path · `DISMISSED` (changed since viewed) →
    `"dismissed"`, only when the path has no local entry or its entry equals the current blob.
 3. A tick is saved locally at once and queued in `unsent`. GitHub's confirmation removes it, unless the reviewer has
-   flipped it again since.
+   flipped it again since: a path a later call still out also carries stays queued until that later call answers.
 4. Calls go one at a time, in click order, so a tick and an untick sent close together land as made. A call GitHub hasn't
    answered in 20 s is stopped and counts as failed (its ticks stay in `unsent`, and the panel says the sync failed until
    the next load sends them). Once a call has waited 0.5 s unanswered, the review panel says "Sending *n* to GitHub…",
