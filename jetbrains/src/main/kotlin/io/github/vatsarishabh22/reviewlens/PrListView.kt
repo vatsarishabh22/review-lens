@@ -93,10 +93,13 @@ class PrListView(private val onPick: (ListedTarget) -> Unit, onRefresh: () -> Un
     }
 
     /** A PR's own file count: the host's, except a stacked PR's, which is what it adds on top of its parent. */
-    private fun ownFiles(t: ListedTarget): Int? {
+    fun ownFiles(t: ListedTarget): Int? {
         val pr = t.pr ?: return null
-        return stackKeys[pr.number]?.let { counts[it] } ?: pr.changedFiles.takeIf { pr.number !in stackKeys }
+        return stackKeys[pr.number]?.let { counts[it] } ?: pr.changedFiles.takeIf { !stacked(t) }
     }
+
+    /** Whether the list counts [t]'s own files, not the host's: a PR still built on its parent's head. */
+    fun stacked(t: ListedTarget) = t.pr?.number?.let { it in stackKeys } == true
 
     private fun showEmpty() {
         rows.removeAll(); rows.add(empty); rows.revalidate(); rows.repaint()

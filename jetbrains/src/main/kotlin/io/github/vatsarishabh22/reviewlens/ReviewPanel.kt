@@ -130,7 +130,7 @@ class ReviewPanel(private val project: Project, private val toolWindow: ToolWind
     }
 
     private fun openDetail(listed: ListedTarget) {
-        detail.open(git ?: return, listed, progress[listed.target.key])
+        detail.open(git ?: return, listed, progress[listed.target.key], list.stacked(listed), list.ownFiles(listed))
         show(DETAIL)
     }
 

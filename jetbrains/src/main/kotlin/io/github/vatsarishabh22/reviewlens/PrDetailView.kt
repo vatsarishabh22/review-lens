@@ -40,11 +40,13 @@ class PrDetailView(private val project: Project, private val onBack: () -> Unit,
     private val actionSlot = JPanel(BorderLayout()).apply { isOpaque = false; alignmentX = LEFT_ALIGNMENT }
     private val scopeSlot = JPanel(BorderLayout()).apply { isOpaque = false; alignmentX = LEFT_ALIGNMENT }
     private val checksLabel = JBLabel().apply { font = JBFont.small() }
-    /** "on top of #p" and the file counts wait for the fetch: in a stack they are the PR's own, not the host's whole-PR numbers. */
+    /** "on top of #p" waits for the fetch; the counts are [prSize]'s. */
     private val onTop = JPanel(BorderLayout()).apply { isOpaque = false }
     private val stackSlot = JPanel(BorderLayout()).apply { isOpaque = false; alignmentX = LEFT_ALIGNMENT }
     private val statsSlot = JPanel(BorderLayout()).apply { isOpaque = false; alignmentX = LEFT_ALIGNMENT }
     private var own: List<FileChange>? = null
+    private var stacked = false
+    private var listFiles: Int? = null
 
     private var listed: ListedTarget? = null
     private var session: ReviewSession? = null
@@ -65,9 +67,12 @@ class PrDetailView(private val project: Project, private val onBack: () -> Unit,
         add(JBScrollPane(content).apply { border = null; horizontalScrollBarPolicy = JBScrollPane.HORIZONTAL_SCROLLBAR_NEVER })
     }
 
-    /** Shows [target] and starts fetching it; [progress] when the reviewer has started this PR before. */
-    fun open(git: GitClient, target: ListedTarget, progress: ReviewProgress?) {
-        listed = target; this.progress = progress; loaded = null; own = null; picked = emptySet(); since = null; sinceChosen = false; scopePicked = false; fetchFailed = false
+    /**
+     * Shows [target] and starts fetching it; [progress] when the reviewer has started this PR before. [stacked] and
+     * [listFiles] are the list's: whether it counts the PR's own files, and its count.
+     */
+    fun open(git: GitClient, target: ListedTarget, progress: ReviewProgress?, stacked: Boolean, listFiles: Int?) {
+        listed = target; this.progress = progress; this.stacked = stacked; this.listFiles = listFiles; loaded = null; own = null; picked = emptySet(); since = null; sinceChosen = false; scopePicked = false; fetchFailed = false
         session = ReviewSession(git)
         build()
         val session = session!!
@@ -151,16 +156,13 @@ class PrDetailView(private val project: Project, private val onBack: () -> Unit,
         listOf(onTop, stackSlot).forEach { it.revalidate(); it.repaint() }
     }
 
-    /** The host's counts for the whole PR, or a stacked PR's own once fetched. */
     private fun showStats() {
         val pr = listed?.pr ?: return
-        val own = own
-        val (count, added, deleted) = if (own != null) Triple(own.size, own.sumOf { it.added ?: 0 }, own.sumOf { it.deleted ?: 0 })
-            else Triple(pr.changedFiles, pr.additions, pr.deletions)
+        val size = prSize(pr, stacked, loaded != null, listFiles, own)
         statsSlot.removeAll()
-        statsSlot.add(row(mutedLabel(files(count)),
-            JBLabel("+$added").apply { foreground = ReviewColors.add; font = JBFont.small() },
-            JBLabel("−$deleted").apply { foreground = ReviewColors.del; font = JBFont.small() }, checksLabel))
+        statsSlot.add(row(*listOfNotNull(size?.let { mutedLabel(files(it.files)) },
+            size?.added?.let { JBLabel("+$it").apply { foreground = ReviewColors.add; font = JBFont.small() } },
+            size?.deleted?.let { JBLabel("−$it").apply { foreground = ReviewColors.del; font = JBFont.small() } }, checksLabel).toTypedArray()))
         statsSlot.revalidate(); statsSlot.repaint()
     }
 
@@ -180,7 +182,7 @@ class PrDetailView(private val project: Project, private val onBack: () -> Unit,
             else -> null to "Opens the PR in this window, read-only."
         }
         if (!ready) start.toolTipText = hint ?: status?.text
-        val retry = ActionLink("Try again") { open(session!!.git, listed!!, progress) }.takeIf { fetchFailed }
+        val retry = ActionLink("Try again") { open(session!!.git, listed!!, progress, stacked, listFiles) }.takeIf { fetchFailed }
         setAction(stack(
             row(*listOfNotNull<JComponent>(start, status).toTypedArray(), gap = 10), vgap(8),
             row(*listOfNotNull<JComponent>(hint?.let(::mutedLabel), retry).toTypedArray(), gap = 6),
@@ -308,4 +310,16 @@ private fun divider() = JPanel().apply {
     alignmentX = Component.LEFT_ALIGNMENT
 }
 
+/** A PR's size on its detail page: its files, and lines added and deleted when known. */
+data class PrSize(val files: Int, val added: Int?, val deleted: Int?)
 
+/**
+ * A stacked PR's own changes once [fetched]; while it loads, its own count from the list without lines (the host's
+ * numbers are the whole PR's, its parent's changes included), or nothing while the list has none. Any other PR, and one
+ * fetched with no parent (it left its stack since the list), shows the host's.
+ */
+fun prSize(pr: PullRequest, stacked: Boolean, fetched: Boolean, listFiles: Int?, own: List<FileChange>?): PrSize? = when {
+    own != null -> PrSize(own.size, own.sumOf { it.added ?: 0 }, own.sumOf { it.deleted ?: 0 })
+    stacked && !fetched -> listFiles?.let { PrSize(it, null, null) }
+    else -> PrSize(pr.changedFiles, pr.additions, pr.deletions)
+}
