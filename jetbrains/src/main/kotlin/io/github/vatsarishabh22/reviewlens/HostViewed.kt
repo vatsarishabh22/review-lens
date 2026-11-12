@@ -6,6 +6,7 @@ import com.intellij.openapi.components.service
 import com.intellij.openapi.diagnostic.thisLogger
 import com.intellij.openapi.project.Project
 import com.intellij.util.concurrency.AppExecutorUtil
+import java.util.concurrent.atomic.AtomicBoolean
 
 /**
  * The review's Viewed ticks on the host (README, Viewed sync): the host's answer folded in at load, each tick sent as
@@ -40,30 +41,46 @@ class HostViewed internal constructor(
     @Volatile private var hostKeepsViewed = true
     /** The review's files on the host, read at load; null when unknown (a branch, or the host didn't answer). */
     @Volatile private var hostFiles: Set<String>? = null
-    private var failureShown = false
+    private val failureShown = AtomicBoolean()
+
+    /** What a load heard from the host: kept by [adopt] only once that load is the newest, so a late one changes nothing. */
+    data class View(val reviewId: String?, val hostFiles: Set<String>?, val keepsViewed: Boolean, val status: Status, val failure: Failure? = null)
+
+    /** Why [host] couldn't be reached: said once per session, by the load that is kept. */
+    data class Failure(val host: String, val error: Throwable)
     /** A call made and not answered yet: the review it is for, the paths it carries, when it was made. */
     private data class Call(val reviewId: String, val paths: Set<String>, val made: Long)
     /** This review's unanswered calls, oldest first; [shown] once one waited [SHOW_SENDING_MS], until none is left. */
     private val inFlight = ArrayDeque<Call>()
     private var shown = false
 
-    /** At load: [meta] with the host's ticks folded in (the host wins for its files); a branch review stays local. Runs the host's CLI: off EDT. */
-    fun fold(git: GitClient, meta: ReviewMeta, changes: List<FileChange>): ReviewMeta {
-        hostFiles = null
-        val number = meta.target.prNumber ?: return local(meta)
+    /**
+     * At load: [meta] with the host's ticks folded in (the host wins for its files), and what the host said, for [adopt];
+     * a branch review stays local. Keeps nothing itself. Runs the host's CLI: off EDT.
+     */
+    fun answer(git: GitClient, meta: ReviewMeta, changes: List<FileChange>): Pair<ReviewMeta, View> {
+        val local = View(null, null, keepsViewed = true, Status.LOCAL)
+        val number = meta.target.prNumber ?: return meta to local
         val host = hostOf(git)
-        hostKeepsViewed = host == null || host.viewed != null // unknown while no host answers: ticks queue for when one does
+        val keeps = host == null || host.viewed != null // unknown while no host answers: ticks queue for when one does
         val viewed = host?.viewed
-        if (host != null && viewed == null) return local(meta) // a host with no Viewed checkboxes
+        if (host != null && viewed == null) return meta to local.copy(keepsViewed = false) // a host with no Viewed checkboxes
         return runCatching { (viewed ?: throw ReviewHosts.notSignedIn()).viewedStates(number) }.fold(
             onSuccess = { states ->
-                reviewId = states.pullRequestId
-                hostFiles = states.files.keys
-                syncViewed(meta, states.files, changes) { ticks -> runCatching { viewed!!.setViewed(states.pullRequestId, ticks) }.isSuccess }
-                    .also { status = if (it.unsent == null) Status.HOST else Status.FAILED }
+                val synced = syncViewed(meta, states.files, changes) { ticks -> runCatching { viewed!!.setViewed(states.pullRequestId, ticks) }.isSuccess }
+                synced to View(states.pullRequestId, states.files.keys, keeps, if (synced.unsent == null) Status.HOST else Status.FAILED)
             },
-            onFailure = { failed(git, it); meta },
+            onFailure = { meta to View(null, null, keeps, Status.FAILED, Failure(ReviewHosts.nameOf(git), it)) },
         )
+    }
+
+    /** Keeps what the newest load heard ([answer]). */
+    fun adopt(view: View) {
+        reviewId = view.reviewId
+        hostFiles = view.hostFiles
+        hostKeepsViewed = view.keepsViewed
+        status = view.status
+        view.failure?.let(::warnOnce)
     }
 
     /**
@@ -87,7 +104,7 @@ class HostViewed internal constructor(
             // a call for a review since left only answers that review's next load: its ticks stay in its unsent queue,
             // and its failure is that review's, never the status of the one under way
             if (id == reviewId) {
-                sent.onFailure { failed(git, it) }
+                sent.onFailure { status = Status.FAILED; warnOnce(Failure(ReviewHosts.nameOf(git), it)) }
                 done(if (sent.isSuccess) ticks - later else null)
             }
         }
@@ -109,15 +126,11 @@ class HostViewed internal constructor(
 
     private fun current() = inFlight.filter { it.reviewId == reviewId }
 
-    private fun local(meta: ReviewMeta) = meta.also { status = Status.LOCAL; reviewId = null }
-
     /** Says once per session that the ticks stay on the laptop, so a failed sync is never silent. */
-    private fun failed(git: GitClient, error: Throwable) {
-        status = Status.FAILED
-        if (failureShown) return
-        failureShown = true
-        thisLogger().info("Host viewed sync failed", error)
-        val name = ReviewHosts.nameOf(git)
+    private fun warnOnce(failure: Failure) {
+        if (!failureShown.compareAndSet(false, true)) return // the pool's send and a load can fail at once
+        thisLogger().info("Host viewed sync failed", failure.error)
+        val name = failure.host
         warn("Can't reach $name right now", "Your viewed ticks are kept on this laptop and sent when $name is back.")
     }
 

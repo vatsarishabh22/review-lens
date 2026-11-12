@@ -33,6 +33,9 @@ class HostViewedTest {
         override val viewed = viewed
     }
 
+    /** A load that is the newest: what the host said is kept at once. */
+    private fun HostViewed.fold(git: GitClient, meta: ReviewMeta, changes: List<FileChange>) = answer(git, meta, changes).let { (folded, view) -> adopt(view); folded }
+
     private fun synced(host: ReviewHost?) = HostViewed({ host }, { it() }, { title, _ -> warned += title })
     /** Calls held back until the test lets them go, as a slow host keeps them. */
     private val held = mutableListOf<() -> Unit>()
@@ -206,5 +209,25 @@ class HostViewedTest {
         held.removeAt(0)()
         assertEquals(HostViewed.Status.HOST, viewed.status)
         assertEquals(emptyList<String>(), warned)
+    }
+
+    @Test
+    fun `a load's answer changes nothing until it is adopted, so a late one never redirects the ticks`() {
+        val viewed = synced(host(viewedSync))
+        answer = ViewedStates("PR_2", mapOf("a.kt" to ViewedState.UNVIEWED))
+        viewed.fold(git, pr.copy(target = ReviewTarget.forPr(2, "t", "h", "origin/main")), listOf(a))
+        answer = null // the late load, of the review left, fails: kept, it would mark this one failed
+        viewed.answer(git, pr, listOf(a, b))
+        answer = ViewedStates("PR_1", mapOf("b.kt" to ViewedState.UNVIEWED)) // kept, it would send to PR_1 and drop a.kt
+        viewed.answer(git, pr, listOf(a, b))
+        assertEquals(HostViewed.Status.HOST, viewed.status)
+        val pr2 = pr.copy(target = ReviewTarget.forPr(2, "t", "h", "origin/main"))
+        assertEquals(true, viewed.sends(pr2, a))
+        viewed.send(git, mapOf("a.kt" to true)) {}
+        assertEquals(listOf("PR_2 {a.kt=true}"), sent)
+        assertEquals(emptyList<String>(), warned) // the late failure didn't use up the once-a-session warning
+        answer = null
+        viewed.fold(git, pr2, listOf(a))
+        assertEquals(1, warned.size) // the kept one says it
     }
 }

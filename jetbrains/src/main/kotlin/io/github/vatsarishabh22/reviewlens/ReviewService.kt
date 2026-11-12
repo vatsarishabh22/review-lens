@@ -30,15 +30,13 @@ class ReviewService(private val project: Project) : Disposable {
 
     override fun dispose() = Unit
 
-    /**
-     * What the review is busy with, or null; Start, re-scope, Finish and Exit all read it, so none runs under another and
-     * one click does it once. [ofReview]: a state of a review that exists (it ends when the review is gone); a start
-     * runs before its review exists.
-     */
-    enum class Ending(val busy: String, val ofReview: Boolean) { SWITCHING("Switching…", false), POSTING("Posting…", true), EXITING("Exiting…", true) }
+    /** What a start, a re-scope, Finish or Exit is busy with, as [ReviewService.busy] holds it; [busy] is its words. */
+    enum class Ending(val busy: String) { SWITCHING("Switching…"), POSTING("Posting…"), EXITING("Exiting…") }
 
-    @Volatile var ending: Ending? = null
-        set(value) { if (field != value) { field = value; fireChanged() } }
+    /** Start, re-scope, Finish and Exit each claim it, so none runs under another and one click does it once. */
+    val busy = Busy(::fireChanged)
+
+    val ending get() = busy.ending
 
     /** The reviewer's own tabs (file URLs), which a tick never closes. */
     var openBefore: Set<String> = emptySet(); private set
@@ -59,17 +57,31 @@ class ReviewService(private val project: Project) : Disposable {
     val hostName get() = ReviewHosts.nameOf(git)
     val isActive get() = meta != null
 
+    private val reloads = Newest()
+
     /** Re-reads which review is active and recomputes its changes. Runs git: call off EDT. */
     fun reload() {
+        val ticket = reloads.ask()
         val git = git ?: project.basePath?.let { runCatching { GitClient.forProject(it) }.getOrNull() }?.also { git = it } ?: return
         val review = ReviewLifecycle(git).active()
-        val loaded = review?.let { ReviewMeta.load(git, it.target.key) }
-        changes = loaded?.let { git.changes(it.range) }.orEmpty()
-        val fresh = loaded?.let { ReviewMeta.foldIn(git, it, HostViewed.of(project).fold(git, it, changes)) }
-        trackedFiles = if (fresh != null) git.trackedFiles() else emptyList()
-        active = review
-        meta = fresh
-        if (review == null && ending?.ofReview == true) ending = null // whatever ended it, nothing is ending any more
+        val read = review?.let { ReviewMeta.load(git, it.target.key) }
+        val changed = read?.let { git.changes(it.range) }.orEmpty()
+        val heard = read?.let { it to HostViewed.of(project).answer(git, it, changed) }
+        val tracked = if (read != null) git.trackedFiles() else emptyList()
+        // dropped, host answer and all, when a reload started after it (a Start or Exit during the startup's); kept under
+        // update()'s lock, from the file as it is then, so a tick saved meanwhile stays on screen
+        synchronized(this) {
+            reloads.keep(ticket) {
+                changes = changed
+                trackedFiles = tracked
+                active = review
+                meta = heard?.let { (read, answer) ->
+                    val (folded, view) = answer
+                    HostViewed.of(project).adopt(view)
+                    ReviewMeta.foldIn(git, read, folded)
+                }
+            }
+        }
         HostThreads.of(project).load()
         fireChanged()
     }
@@ -124,7 +136,8 @@ class ReviewService(private val project: Project) : Disposable {
     @Synchronized
     fun update(change: (ReviewMeta) -> ReviewMeta) {
         val current = meta ?: return
-        // built on what the file holds now, so a change saved meanwhile by a re-scope or a load is kept
+        // built on what the file holds now, so a change saved meanwhile by a re-scope or a load is kept; published under
+        // the lock reload() publishes under
         meta = ReviewMeta.change(git!!, current.target.key) { change(it ?: current) }
         fireChanged()
     }
@@ -152,4 +165,49 @@ class ReviewService(private val project: Project) : Disposable {
     companion object {
         fun of(project: Project): ReviewService = project.service()
     }
+}
+
+/**
+ * The one busy state. A step [claim]s it and only that claim releases it or hands it on, so an older step's end (an
+ * Exit finishing after a new Start began) never clears a newer one's. [changed] runs on every change.
+ */
+class Busy(private val changed: () -> Unit) {
+    /** A step's hold on the state: a token, so only [hand] and [release] change what it holds. */
+    class Claim
+
+    private var held: Claim? = null
+    @Volatile var ending: ReviewService.Ending? = null; private set
+
+    /** The busy state for [ending], or null when another step holds it, which [refused] hears as it was then. */
+    fun claim(ending: ReviewService.Ending, refused: (ReviewService.Ending) -> Unit = {}): Claim? {
+        // decided under the lock, said outside it: neither callback runs while holding it
+        val mine = Claim()
+        val holder = synchronized(this) { this.ending ?: run { this.ending = ending; held = mine; null } }
+        if (holder != null) { refused(holder); return null }
+        changed()
+        return mine
+    }
+
+    /** [claim] now does [ending] (Finish's posting becomes its exit), while it still holds the state. */
+    fun hand(claim: Claim, ending: ReviewService.Ending) {
+        if (synchronized(this) { (held === claim).also { if (it) this.ending = ending } }) changed()
+    }
+
+    /** Frees the state, if [claim] still holds it. */
+    fun release(claim: Claim) {
+        if (synchronized(this) { (held === claim).also { if (it) { held = null; ending = null } } }) changed()
+    }
+}
+
+/** Answers asked for in one order and landing in any: the one asked last wins, so an older one landing late is dropped. */
+class Newest {
+    private var asked = 0L
+    private var kept = 0L
+
+    @Synchronized
+    fun ask() = ++asked
+
+    /** Runs [write] for [ticket]'s answer unless one asked after it was kept already. */
+    @Synchronized
+    fun keep(ticket: Long, write: () -> Unit) { if (ticket > kept) { kept = ticket; write() } }
 }

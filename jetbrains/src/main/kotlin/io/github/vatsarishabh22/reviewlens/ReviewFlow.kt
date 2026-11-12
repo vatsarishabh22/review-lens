@@ -58,9 +58,15 @@ fun <T> background(project: Project, title: String, work: () -> T, current: () -
  */
 fun refusedBusy(project: Project, step: String): Boolean {
     val busy = ReviewService.of(project).ending ?: return false
-    notify(project, busy.busy, "$step is back once that's done.")
+    sayBusy(project, busy, step)
     return true
 }
+
+private fun sayBusy(project: Project, busy: ReviewService.Ending, step: String) = notify(project, busy.busy, "$step is back once that's done.")
+
+/** The busy state for [step], doing [ending]; null when refused, said with what held it at that moment. */
+private fun claimed(project: Project, ending: ReviewService.Ending, step: String): Busy.Claim? =
+    ReviewService.of(project).busy.claim(ending) { sayBusy(project, it, step) }
 
 fun notify(project: Project, title: String, content: String, type: NotificationType = NotificationType.INFORMATION, vararg actions: AnAction) {
     NotificationGroupManager.getInstance().getNotificationGroup(TITLE).createNotification(title, content, type)
@@ -77,17 +83,16 @@ fun beginReview(
 ) {
     val service = ReviewService.of(project)
     val wasActive = service.isActive
-    // busy: a start, a re-scope, a Finish or an Exit is already under way; refused, and the caller hears it
-    if (refusedBusy(project, "Start review")) return failed()
+    // Finish, Exit and another re-scope wait for this one: the checkout and the saved review change under it. Busy with
+    // one of them already: refused, and the caller hears it
+    val claim = claimed(project, ReviewService.Ending.SWITCHING, "Start review") ?: return failed()
     if (!wasActive) service.rememberOpenTabs()
-    // Finish, Exit and another re-scope wait for this one: the checkout and the saved review change under it
-    service.ending = ReviewService.Ending.SWITCHING
     val onEdt = { step: StartStep -> ApplicationManager.getApplication().invokeLater({ progress(step) }, project.disposed) }
-    // always current: nothing else can run on the review until it clears the busy state
+    // always current: nothing else can run on the review until it releases its claim
     background(project, "Starting review of ${loaded.target.label}", {
         session.begin(loaded, range, label, onEdt).also { afterCheckout(project, session.git) }
-    }, current = { true }, failed = { service.ending = null; failed() }) { review ->
-        service.ending = null
+    }, current = { true }, failed = { service.busy.release(claim); failed() }) { review ->
+        service.busy.release(claim)
         refreshViews(project)
         ToolWindowManager.getInstance(project).getToolWindow(TOOL_WINDOW_ID)?.activate(null)
         service.nextUnreviewed(null)?.let { openChange(project, it) }
@@ -104,15 +109,14 @@ fun beginReview(
 fun finishReview(project: Project, summary: String, verdict: Verdict?, posted: () -> Unit, failed: (String) -> Unit) {
     val service = ReviewService.of(project)
     val number = service.meta?.target?.prNumber ?: return
-    if (refusedBusy(project, "Finish review")) return
-    if (verdict == null) { endReview(project, number, "Marked as reviewed. Nothing was posted to ${service.hostName}."); return posted() }
-    service.ending = ReviewService.Ending.POSTING
+    val claim = claimed(project, ReviewService.Ending.POSTING, "Finish review") ?: return
+    if (verdict == null) { endReview(project, claim, number, "Marked as reviewed. Nothing was posted to ${service.hostName}."); return posted() }
     // the host's refusal is the popup's to say, where the click was: caught here, so no second balloon says it too
     background(project, "Posting your review", { runCatching { ReviewDrafts.of(project).submit(summary, verdict) } }, current = { true }) { result ->
         result.onSuccess { sent ->
-            endReview(project, number, "${verdict.posted} on ${service.hostName}${if (sent.isEmpty()) "" else " with $sent"}.")
+            endReview(project, claim, number, "${verdict.posted} on ${service.hostName}${if (sent.isEmpty()) "" else " with $sent"}.")
             posted()
-        }.onFailure { service.ending = null; failed("${it.message}. Your comments are kept as drafts.") }
+        }.onFailure { service.busy.release(claim); failed("${it.message}. Your comments are kept as drafts.") }
     }
 }
 
@@ -128,29 +132,29 @@ fun viewedFromFile(project: Project, change: FileChange, file: VirtualFile?) {
 /** Goes back to the reviewer's branch and restores their parked work; the review can be resumed later. */
 fun exitReview(project: Project) {
     val service = ReviewService.of(project)
-    if (refusedBusy(project, "Exit")) return
+    val claim = claimed(project, ReviewService.Ending.EXITING, "Exit") ?: return
     val total = service.changes.size
-    endReview(project, null, if (allViewed(service.reviewedCount(), total)) "All $total files reviewed." else "")
+    endReview(project, claim, null, if (allViewed(service.reviewedCount(), total)) "All $total files reviewed." else "")
 }
 
 /**
- * The one way a review ends: back to the original branch, parked work restored, `active.json` gone. [finished] is the
- * PR a Finish ended (null for Exit): it titles the balloon instead of "Back on <branch>" and offers the next PR of its
- * stack; [said] leads the message.
+ * The one way a review ends: back to the original branch, parked work restored, `active.json` gone, under [claim]
+ * (Exit's, or Finish's handed on) until its own completion. [finished] is the PR a Finish ended (null for Exit): it
+ * titles the balloon instead of "Back on <branch>" and offers the next PR of its stack; [said] leads the message.
  */
-private fun endReview(project: Project, finished: Int?, said: String) {
+private fun endReview(project: Project, claim: Busy.Claim, finished: Int?, said: String) {
     val service = ReviewService.of(project)
     val git = service.git
     val branch = service.active?.originalRef
-    if (git == null || branch == null) { service.ending = null; return } // nothing to exit: Finish's POSTING ends here
-    service.ending = ReviewService.Ending.EXITING
+    if (git == null || branch == null) return service.busy.release(claim) // nothing to exit
+    service.busy.hand(claim, ReviewService.Ending.EXITING)
     val kept = keptText(service.meta?.drafts.orEmpty())
     // ticks on functions this scope no longer changes go now (kept across re-scopes until Exit); unknown until searched.
     // A failed save loses only those ticks, never the exit
     runCatching { project.serviceIfCreated<ImpactService>()?.functions()?.let { keys -> service.update { it.keepChecked(keys) } } }
         .onFailure { logger<ReviewService>().warn("Impact ticks not trimmed at exit", it) }
-    background(project, "Exiting review", { ReviewLifecycle(git).exit().also { afterCheckout(project, git) } }, current = { true }, failed = { service.ending = null }) { exited ->
-        service.ending = null
+    background(project, "Exiting review", { ReviewLifecycle(git).exit().also { afterCheckout(project, git) } }, current = { true }, failed = { service.busy.release(claim) }) { exited ->
+        service.busy.release(claim)
         refreshViews(project)
         // The "Reviewing…" balloons offer Exit, which no longer applies.
         NotificationsManager.getNotificationsManager().getNotificationsOfType(Notification::class.java, project)
