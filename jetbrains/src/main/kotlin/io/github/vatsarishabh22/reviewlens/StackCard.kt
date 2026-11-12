@@ -28,6 +28,17 @@ data class StackRow(val listed: ListedTarget, val progress: ReviewProgress?, val
 /** The stack's next PR to review: the lowest not reviewed, bottom first. */
 fun nextInStack(rows: List<StackRow>): StackRow? = rows.firstOrNull { !it.done }
 
+/**
+ * After Finish on [finished]: its stack card's next PR, leaving out every PR the reviewer already answered (a Commented
+ * one isn't done, yet offering it again would send them round in circles) unless it has commits since; null when
+ * [finished] sits in none of [stacks] or nothing is left.
+ */
+fun nextAfter(stacks: List<List<ListedTarget>>, progress: Map<String, ReviewProgress>, finished: Int): Int? {
+    val stack = stacks.find { s -> s.any { it.pr?.number == finished } } ?: return null
+    val rows = stack.filter { it.pr?.number != finished }.map { StackRow(it, progress[it.target.key], null) }
+    return nextInStack(rows.filter { r -> r.progress.let { it?.verdict == null || it.newCommits } })?.listed?.pr?.number
+}
+
 /** "on #p" for a row whose parent isn't the row above it: the second of two PRs on one parent. */
 fun builtOn(rows: List<StackRow>, index: Int): Int? =
     rows[index].listed.parent?.number?.takeIf { index > 0 && it != rows[index - 1].listed.pr?.number }

@@ -35,6 +35,20 @@ class ListSectionsTest {
     }
 
     @Test
+    fun `after Finish the next PR leaves out the one just finished, even below it or not done, and none once the rest are or outside a stack`() {
+        val commented = mapOf(stack[0].target.key to ReviewProgress(1, 3, Verdict.COMMENT))
+        assertEquals(1, nextInStack(stack.map { StackRow(it, commented[it.target.key], 1) })?.listed?.pr?.number) // Commented isn't done
+        assertEquals(2, nextAfter(listOf(stack), commented, 1)) // yet it was just finished
+        assertEquals(1, nextAfter(listOf(stack), emptyMap(), 3)) // the lowest open, below the one finished
+        val done = ReviewProgress(1, 1, Verdict.APPROVE)
+        assertEquals(null, nextAfter(listOf(stack), stack.take(2).associate { it.target.key to done }, 3))
+        assertEquals(null, nextAfter(listOf(stack), emptyMap(), 9)) // a PR in no stack
+        // a Commented one is never offered again, so two of them don't send you round; new commits make it news again
+        assertEquals(3, nextAfter(listOf(stack), commented, 2))
+        assertEquals(1, nextAfter(listOf(stack), mapOf(stack[0].target.key to ReviewProgress(1, 3, Verdict.COMMENT, headMoved = true)), 2))
+    }
+
+    @Test
     fun `the second of two PRs on one parent says which it sits on`() {
         val rows = listOf(t(1), t(2, parent = 1), t(4, parent = 2), t(3, parent = 1)).map { StackRow(it, null, 1) } // 1 <- 2 <- 4, and 1 <- 3
         assertEquals(listOf(null, null, null, 1), rows.indices.map { builtOn(rows, it) })

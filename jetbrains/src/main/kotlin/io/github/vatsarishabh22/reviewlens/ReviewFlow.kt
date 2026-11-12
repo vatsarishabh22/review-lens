@@ -4,6 +4,7 @@ import com.intellij.diff.DiffContentFactory
 import com.intellij.diff.DiffManager
 import com.intellij.diff.requests.SimpleDiffRequest
 import com.intellij.notification.Notification
+import com.intellij.notification.NotificationAction
 import com.intellij.notification.NotificationGroupManager
 import com.intellij.notification.NotificationsManager
 import com.intellij.notification.NotificationType
@@ -27,6 +28,7 @@ import com.intellij.openapi.vfs.VfsUtil
 import com.intellij.openapi.vfs.VirtualFile
 import com.intellij.openapi.wm.ToolWindowManager
 import com.intellij.util.concurrency.AppExecutorUtil
+import javax.swing.Timer
 
 const val TITLE = "Review Lens"
 
@@ -35,7 +37,8 @@ const val TITLE = "Review Lens"
  * and [failed] lets the caller put its UI back.
  */
 fun <T> background(project: Project, title: String, work: () -> T, failed: () -> Unit = {}, then: (T) -> Unit = {}) {
-    object : Task.Backgroundable(project, title) {
+    // not cancellable: no work here checks the indicator, so a cancel would only drop a result that still happened
+    object : Task.Backgroundable(project, title, false) {
         private var result: Result<T>? = null
         override fun run(indicator: ProgressIndicator) {
             result = runCatching(work)
@@ -84,12 +87,12 @@ fun finishReview(project: Project, summary: String, verdict: Verdict?, posted: (
     val service = ReviewService.of(project)
     val number = service.meta?.target?.prNumber ?: return
     if (service.ending != null) return // already ending: a second click is the same click
-    if (verdict == null) { endReview(project, "Finished ${ReviewTarget.refOf(number)}", "Marked as reviewed. Nothing was posted to ${service.hostName}."); return posted() }
+    if (verdict == null) { endReview(project, number, "Marked as reviewed. Nothing was posted to ${service.hostName}."); return posted() }
     service.ending = ReviewService.Ending.POSTING
     // the host's refusal is the popup's to say, where the click was: caught here, so no second balloon says it too
     background(project, "Posting your review", { runCatching { ReviewDrafts.of(project).submit(summary, verdict) } }) { result ->
         result.onSuccess { sent ->
-            endReview(project, "Finished ${ReviewTarget.refOf(number)}", "${verdict.posted} on ${service.hostName}${if (sent.isEmpty()) "" else " with $sent"}.")
+            endReview(project, number, "${verdict.posted} on ${service.hostName}${if (sent.isEmpty()) "" else " with $sent"}.")
             posted()
         }.onFailure { service.ending = null; failed("${it.message}. Your comments are kept as drafts.") }
     }
@@ -113,10 +116,11 @@ fun exitReview(project: Project) {
 }
 
 /**
- * The one way a review ends: back to the original branch, parked work restored, `active.json` gone. [finished] titles
- * a Finish review (which then lands on the PR list) instead of "Back on <branch>"; [said] leads the message.
+ * The one way a review ends: back to the original branch, parked work restored, `active.json` gone. [finished] is the
+ * PR a Finish ended (null for Exit): it titles the balloon instead of "Back on <branch>" and offers the next PR of its
+ * stack; [said] leads the message.
  */
-private fun endReview(project: Project, finished: String?, said: String) {
+private fun endReview(project: Project, finished: Int?, said: String) {
     val service = ReviewService.of(project)
     val git = service.git
     val branch = service.active?.originalRef
@@ -133,21 +137,48 @@ private fun endReview(project: Project, finished: String?, said: String) {
         // The "Reviewing…" balloons offer Exit, which no longer applies.
         NotificationsManager.getNotificationsManager().getNotificationsOfType(Notification::class.java, project)
             .filter { it.groupId == TITLE }.forEach(Notification::expire)
-        // the panel turns back to the PR list on its own once the review ends; a finish brings it forward
-        if (finished != null) ToolWindowManager.getInstance(project).getToolWindow(TOOL_WINDOW_ID)?.activate(null)
-        val title = finished ?: "Back on $branch"
+        val title = finished?.let { "Finished ${ReviewTarget.refOf(it)}" } ?: "Back on $branch"
         val lead = if (said.isEmpty()) "" else "$said "
         exited.changedStash?.let { stash ->
             val files = exited.changedDuringReview.joinToString(", ")
             notify(project, "Changed during the review", "$files changed while you reviewed (the IDE rewrites its settings). Kept in the stash \"$stash\", not applied.", NotificationType.WARNING)
         }
-        when (exited.restored) {
-            Restored.RESTORED -> notify(project, title, "${lead}Your parked changes are restored.$kept")
-            Restored.NOTHING_TO_RESTORE -> notify(project, title, "${lead}Nothing was parked, so nothing to restore.$kept")
-            Restored.KEPT_IN_STASH -> notify(project, "$title: your changes need a hand", "${lead}Your parked changes didn't apply cleanly, so they are still safe in the stash \"review-lens: parked from $branch…\". Resolve the conflicts, or run git stash pop.", NotificationType.WARNING)
-            Restored.STASH_MISSING -> notify(project, title, "${lead}The parked stash was not found; it may have been popped by hand.", NotificationType.WARNING)
+        var told = false
+        fun say(nextPr: Int?) {
+            if (told) return
+            told = true
+            val next = listOfNotNull(nextPr?.let { nextAction(project, it) }).toTypedArray()
+            when (exited.restored) {
+                Restored.RESTORED -> notify(project, title, "${lead}Your parked changes are restored.$kept", NotificationType.INFORMATION, *next)
+                Restored.NOTHING_TO_RESTORE -> notify(project, title, "${lead}Nothing was parked, so nothing to restore.$kept", NotificationType.INFORMATION, *next)
+                Restored.KEPT_IN_STASH -> notify(project, "$title: your changes need a hand", "${lead}Your parked changes didn't apply cleanly, so they are still safe in the stash \"review-lens: parked from $branch…\". Resolve the conflicts, or run git stash pop.", NotificationType.WARNING)
+                Restored.STASH_MISSING -> notify(project, title, "${lead}The parked stash was not found; it may have been popped by hand.", NotificationType.WARNING, *next)
+            }
+        }
+        val toolWindow = ToolWindowManager.getInstance(project).getToolWindow(TOOL_WINDOW_ID)
+        if (finished == null || toolWindow == null || exited.restored == Restored.KEPT_IN_STASH) {
+            if (finished != null) toolWindow?.activate(null) // a finish brings the PR list forward whatever it says
+            return@background say(null)
+        }
+        // a finish brings the PR list forward and says it once the list ending the review loads is in (about a second),
+        // so a stacked PR's next one comes from today's list, even after a restart that never showed it; a list that
+        // fails or is slower than NEXT_WAIT_MS gives the balloon without the link, never no balloon
+        Timer(NEXT_WAIT_MS) { say(null) }.apply { isRepeats = false }.start()
+        toolWindow.activate {
+            val panel = ReviewPanel.of(project) ?: return@activate say(null)
+            panel.whenListed { listed -> say(if (listed) panel.nextInStackAfter(finished) else null) }
         }
     }
+}
+
+/** How long a Finish balloon waits for the list before it is said without "Review #n next →". */
+private const val NEXT_WAIT_MS = 5_000
+
+/** "Review #n next →" in a Finish balloon: PR [number]'s detail; a click from the log once another review began does nothing. */
+private fun nextAction(project: Project, number: Int): AnAction = NotificationAction.createSimpleExpiring("Review ${ReviewTarget.refOf(number)} next →") {
+    if (ReviewService.of(project).isActive) return@createSimpleExpiring
+    ToolWindowManager.getInstance(project).getToolWindow(TOOL_WINDOW_ID)?.activate(null)
+    ReviewPanel.of(project)?.openPr(number)
 }
 
 /** After a checkout outside the IDE's own git calls: reload changed files and the changes view, then the review. */

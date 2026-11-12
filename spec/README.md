@@ -119,6 +119,15 @@ opened scrolled to the next one, so a long stack never pushes the other PRs out 
 counted over the card's top and bottom edges ("↑ 10 reviewed above", "↓ 2 more below"), a row more than half hidden
 counting as out.
 
+Finish on a stacked PR offers the next one in its balloon ("Review #*n* next →"): the card's next PR, leaving out the one
+just finished and every PR the reviewer already answered with a verdict (a Commented one isn't done, yet offering it again
+would send two Commented PRs round in circles), unless it has commits since; so it can sit below the one finished. The
+balloon waits for the list that ending the review loads (about a second), so the link comes from today's list, even
+after a restart that never showed it; a list that fails, or takes over 5 s, gives the balloon without the link, never no
+balloon. The link opens that PR's detail, never its review: Start review there says what it parks before it does; a
+click once another review began, or on a PR no longer listed, does nothing. Nothing left, no link; Exit offers none, nor
+does a Finish whose parked work needs a hand (that warning shows at once).
+
 ### Viewed sync
 
 For a PR, GitHub's "Viewed" checkboxes and `reviewed` are one checklist:
