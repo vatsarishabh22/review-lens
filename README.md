@@ -22,6 +22,8 @@
 
 <p align="center"><img src="docs/images/demo.gif" alt="Review Lens in 46 seconds: a stack of PRs shows as one card, pick its bottom PR, your work is parked, see who else uses the changed function, suggest a fix on two lines, resolve a thread, tick a folder of files at once, approve, and Finish offers the next PR in the stack"></p>
 
+<p align="center">▶ <a href="https://youtu.be/7Cfu-zS8M4k"><b>Watch the 2-minute narrated tour</b></a>: every feature, start to finish.</p>
+
 ## Why
 
 A diff page shows the lines that changed. To judge them, you need the code around them: the caller, the test, the
