@@ -1,0 +1,253 @@
+{
+  "$comment": "Which files are code, so a changed file in a language the editor can't analyse says so instead of staying silent (spec/impact.md). Names and extensions from GitHub Linguist's programming languages; an extension sits in one row only.",
+  "languages": [
+    {
+      "name": "Python",
+      "extensions": [
+        "py",
+        "pyi",
+        "pyw"
+      ]
+    },
+    {
+      "name": "Java",
+      "extensions": [
+        "java"
+      ]
+    },
+    {
+      "name": "Kotlin",
+      "extensions": [
+        "kt",
+        "kts"
+      ]
+    },
+    {
+      "name": "Go",
+      "extensions": [
+        "go"
+      ]
+    },
+    {
+      "name": "Rust",
+      "extensions": [
+        "rs"
+      ]
+    },
+    {
+      "name": "TypeScript",
+      "extensions": [
+        "ts",
+        "cts",
+        "mts"
+      ]
+    },
+    {
+      "name": "TSX",
+      "extensions": [
+        "tsx"
+      ]
+    },
+    {
+      "name": "JavaScript",
+      "extensions": [
+        "js",
+        "cjs",
+        "mjs",
+        "jsx"
+      ]
+    },
+    {
+      "name": "Ruby",
+      "extensions": [
+        "rb",
+        "rake",
+        "gemspec"
+      ]
+    },
+    {
+      "name": "PHP",
+      "extensions": [
+        "php"
+      ]
+    },
+    {
+      "name": "C",
+      "extensions": [
+        "c",
+        "h"
+      ]
+    },
+    {
+      "name": "C++",
+      "extensions": [
+        "cpp",
+        "cc",
+        "cxx",
+        "c++",
+        "hpp",
+        "hh",
+        "hxx"
+      ]
+    },
+    {
+      "name": "C#",
+      "extensions": [
+        "cs",
+        "csx"
+      ]
+    },
+    {
+      "name": "Swift",
+      "extensions": [
+        "swift"
+      ]
+    },
+    {
+      "name": "Scala",
+      "extensions": [
+        "scala",
+        "sc"
+      ]
+    },
+    {
+      "name": "Groovy",
+      "extensions": [
+        "groovy",
+        "gvy"
+      ]
+    },
+    {
+      "name": "Dart",
+      "extensions": [
+        "dart"
+      ]
+    },
+    {
+      "name": "Objective-C",
+      "extensions": [
+        "m",
+        "mm"
+      ]
+    },
+    {
+      "name": "Elixir",
+      "extensions": [
+        "ex",
+        "exs"
+      ]
+    },
+    {
+      "name": "Erlang",
+      "extensions": [
+        "erl",
+        "hrl"
+      ]
+    },
+    {
+      "name": "Haskell",
+      "extensions": [
+        "hs"
+      ]
+    },
+    {
+      "name": "Clojure",
+      "extensions": [
+        "clj",
+        "cljs",
+        "cljc"
+      ]
+    },
+    {
+      "name": "F#",
+      "extensions": [
+        "fs",
+        "fsi",
+        "fsx"
+      ]
+    },
+    {
+      "name": "Lua",
+      "extensions": [
+        "lua"
+      ]
+    },
+    {
+      "name": "Perl",
+      "extensions": [
+        "pl",
+        "pm"
+      ]
+    },
+    {
+      "name": "R",
+      "extensions": [
+        "r"
+      ]
+    },
+    {
+      "name": "Julia",
+      "extensions": [
+        "jl"
+      ]
+    },
+    {
+      "name": "Shell",
+      "extensions": [
+        "sh",
+        "bash",
+        "zsh"
+      ]
+    },
+    {
+      "name": "PowerShell",
+      "extensions": [
+        "ps1",
+        "psm1"
+      ]
+    },
+    {
+      "name": "Visual Basic .NET",
+      "extensions": [
+        "vb"
+      ]
+    },
+    {
+      "name": "Zig",
+      "extensions": [
+        "zig"
+      ]
+    },
+    {
+      "name": "OCaml",
+      "extensions": [
+        "ml",
+        "mli"
+      ]
+    },
+    {
+      "name": "Solidity",
+      "extensions": [
+        "sol"
+      ]
+    },
+    {
+      "name": "Nim",
+      "extensions": [
+        "nim"
+      ]
+    },
+    {
+      "name": "Crystal",
+      "extensions": [
+        "cr"
+      ]
+    },
+    {
+      "name": "Elm",
+      "extensions": [
+        "elm"
+      ]
+    }
+  ]
+}
