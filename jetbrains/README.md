@@ -101,7 +101,7 @@ The **Comments** tab, next to Changed files, lists every conversation and draft 
 |---|---|---|
 | Scope ▾ | | Switch commits, or check GitHub for new ones |
 | Next unviewed | `⌥N` / `Alt+N` | Go to the next file you haven't viewed |
-| File / Diff | `⌥D` / `Alt+D` | The full file with changes marked, or a side-by-side diff |
+| File / Diff | `⌥D` / `Alt+D` | The full file with changes marked, or the diff, side by side or unified (its viewer menu remembers your pick) |
 | Viewed | `⌥R` / `Alt+R` | Tick the file, open the next one and close this tab (unless you opened it before the review, or its comment box holds text) |
 | Next place to check | `⌥I` / `Alt+I` | Go to the next place the impact map hasn't ticked |
 
