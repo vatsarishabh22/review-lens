@@ -1,5 +1,6 @@
 package io.github.vatsarishabh22.reviewlens
 
+import io.github.vatsarishabh22.reviewlens.core.*
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertNull
 import org.junit.Test

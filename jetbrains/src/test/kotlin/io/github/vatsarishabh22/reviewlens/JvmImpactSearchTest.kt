@@ -1,6 +1,7 @@
 package io.github.vatsarishabh22.reviewlens
 
 import com.intellij.testFramework.fixtures.LightJavaCodeInsightFixtureTestCase
+import io.github.vatsarishabh22.reviewlens.impact.*
 
 /** A real Java and Kotlin project on a mock JDK, real references: the places the impact map finds. */
 class JvmImpactSearchTest : LightJavaCodeInsightFixtureTestCase() {

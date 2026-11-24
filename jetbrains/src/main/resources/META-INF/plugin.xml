@@ -106,48 +106,48 @@
         <supportsKotlinPluginMode supportsK1="true" supportsK2="true"/>
     </extensions>
     <extensionPoints>
-        <extensionPoint name="impactLanguage" interface="io.github.vatsarishabh22.reviewlens.ImpactLanguage" dynamic="true"/>
+        <extensionPoint name="impactLanguage" interface="io.github.vatsarishabh22.reviewlens.impact.ImpactLanguage" dynamic="true"/>
     </extensionPoints>
 
     <extensions defaultExtensionNs="com.intellij">
-        <writingAccessProvider implementation="io.github.vatsarishabh22.reviewlens.ReadOnlyGuard"/>
+        <writingAccessProvider implementation="io.github.vatsarishabh22.reviewlens.ui.ReadOnlyGuard"/>
         <toolWindow id="Review" anchor="left" icon="AllIcons.Actions.Preview"
-                    factoryClass="io.github.vatsarishabh22.reviewlens.ReviewToolWindowFactory"/>
-        <fileEditorProvider implementation="io.github.vatsarishabh22.reviewlens.ReviewDiffEditorProvider"/>
-        <editorNotificationProvider implementation="io.github.vatsarishabh22.reviewlens.ReviewBanner"/>
-        <editor.linePainter implementation="io.github.vatsarishabh22.reviewlens.InlineBlame"/>
-        <projectViewNodeDecorator implementation="io.github.vatsarishabh22.reviewlens.TreeBadges"/>
-        <postStartupActivity implementation="io.github.vatsarishabh22.reviewlens.ReviewStartup"/>
+                    factoryClass="io.github.vatsarishabh22.reviewlens.ui.ReviewToolWindowFactory"/>
+        <fileEditorProvider implementation="io.github.vatsarishabh22.reviewlens.ui.ReviewDiffEditorProvider"/>
+        <editorNotificationProvider implementation="io.github.vatsarishabh22.reviewlens.ui.ReviewBanner"/>
+        <editor.linePainter implementation="io.github.vatsarishabh22.reviewlens.ui.InlineBlame"/>
+        <projectViewNodeDecorator implementation="io.github.vatsarishabh22.reviewlens.ui.TreeBadges"/>
+        <postStartupActivity implementation="io.github.vatsarishabh22.reviewlens.ui.ReviewStartup"/>
         <notificationGroup id="Review Lens" displayType="BALLOON"/>
-        <statusBarWidgetFactory id="ReviewLens.Status" implementation="io.github.vatsarishabh22.reviewlens.ReviewStatusWidgetFactory"/>
+        <statusBarWidgetFactory id="ReviewLens.Status" implementation="io.github.vatsarishabh22.reviewlens.ui.ReviewStatusWidgetFactory"/>
     </extensions>
 
     <actions>
-        <action id="ReviewLens.ReviewPr" class="io.github.vatsarishabh22.reviewlens.ReviewPrAction"
+        <action id="ReviewLens.ReviewPr" class="io.github.vatsarishabh22.reviewlens.ui.ReviewPrAction"
                 text="Review PR…" description="Review a pull request in this window"
                 icon="AllIcons.Actions.Preview">
             <add-to-group group-id="MainToolbarRight" anchor="first"/>
             <add-to-group group-id="ToolsMenu" anchor="last"/>
         </action>
 
-        <action id="ReviewLens.MarkReviewed" class="io.github.vatsarishabh22.reviewlens.MarkReviewedAction"
+        <action id="ReviewLens.MarkReviewed" class="io.github.vatsarishabh22.reviewlens.ui.MarkReviewedAction"
                 text="Mark Viewed" description="Mark this file viewed and open the next unviewed one"
                 icon="AllIcons.Actions.Checked">
             <keyboard-shortcut keymap="$default" first-keystroke="alt R"/>
         </action>
-        <action id="ReviewLens.NextFile" class="io.github.vatsarishabh22.reviewlens.NextFileAction"
+        <action id="ReviewLens.NextFile" class="io.github.vatsarishabh22.reviewlens.ui.NextFileAction"
                 text="Next Unviewed File" icon="AllIcons.Actions.Forward">
             <keyboard-shortcut keymap="$default" first-keystroke="alt N"/>
         </action>
-        <action id="ReviewLens.ShowDiff" class="io.github.vatsarishabh22.reviewlens.ShowDiffAction"
+        <action id="ReviewLens.ShowDiff" class="io.github.vatsarishabh22.reviewlens.ui.ShowDiffAction"
                 text="File / Diff" description="Flip this file between the file and its diff against the scope's base" icon="AllIcons.Actions.Diff">
             <keyboard-shortcut keymap="$default" first-keystroke="alt D"/>
         </action>
-        <action id="ReviewLens.NextPlace" class="io.github.vatsarishabh22.reviewlens.NextPlaceAction"
+        <action id="ReviewLens.NextPlace" class="io.github.vatsarishabh22.reviewlens.ui.NextPlaceAction"
                 text="Next Place to Check" description="Unfold the next place outside the PR that uses a changed function">
             <keyboard-shortcut keymap="$default" first-keystroke="alt I"/>
         </action>
-        <action id="ReviewLens.Exit" class="io.github.vatsarishabh22.reviewlens.ExitReviewAction"
+        <action id="ReviewLens.Exit" class="io.github.vatsarishabh22.reviewlens.ui.ExitReviewAction"
                 text="Exit Review" description="Go back to your branch and restore your parked changes" icon="AllIcons.Actions.Exit"/>
     </actions>
 </idea-plugin>

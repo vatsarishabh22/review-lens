@@ -1,9 +1,13 @@
 package io.github.vatsarishabh22.reviewlens
 
+import io.github.vatsarishabh22.reviewlens.core.*
+import io.github.vatsarishabh22.reviewlens.host.*
+import io.github.vatsarishabh22.reviewlens.host.github.*
+import io.github.vatsarishabh22.reviewlens.services.*
+import io.github.vatsarishabh22.reviewlens.ui.*
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertNull
 import org.junit.Test
-import io.github.vatsarishabh22.reviewlens.github.GhClient
 import java.nio.file.Files
 
 /** Which host a checkout talks to, from `origin`'s URL (spec/gitlab.md, "Picking the host"), and fetching a review's head. */

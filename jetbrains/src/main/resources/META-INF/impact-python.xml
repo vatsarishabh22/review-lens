@@ -1,6 +1,6 @@
 <!-- Loaded only where the Python plugin is (PyCharm, or IDEA with Python): the impact map for Python files. -->
 <idea-plugin>
     <extensions defaultExtensionNs="io.github.vatsarishabh22.reviewlens">
-        <impactLanguage implementation="io.github.vatsarishabh22.reviewlens.PythonImpact"/>
+        <impactLanguage implementation="io.github.vatsarishabh22.reviewlens.impact.PythonImpact"/>
     </extensions>
 </idea-plugin>

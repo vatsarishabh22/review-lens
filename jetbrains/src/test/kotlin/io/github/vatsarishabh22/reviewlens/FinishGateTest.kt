@@ -1,6 +1,8 @@
 package io.github.vatsarishabh22.reviewlens
 
-import io.github.vatsarishabh22.reviewlens.github.GitHubSlot
+import io.github.vatsarishabh22.reviewlens.core.*
+import io.github.vatsarishabh22.reviewlens.host.github.*
+import io.github.vatsarishabh22.reviewlens.ui.*
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertNull
 import org.junit.Test

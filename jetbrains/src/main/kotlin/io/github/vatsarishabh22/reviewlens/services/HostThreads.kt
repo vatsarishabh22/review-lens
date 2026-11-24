@@ -1,0 +1,137 @@
+package io.github.vatsarishabh22.reviewlens.services
+
+import com.intellij.openapi.Disposable
+import com.intellij.openapi.application.ApplicationManager
+import com.intellij.openapi.components.Service
+import com.intellij.openapi.components.service
+import com.intellij.openapi.diagnostic.thisLogger
+import com.intellij.openapi.project.Project
+import com.intellij.openapi.util.Disposer
+import io.github.vatsarishabh22.reviewlens.core.*
+import io.github.vatsarishabh22.reviewlens.host.*
+import java.util.concurrent.ConcurrentHashMap
+import java.util.concurrent.CopyOnWriteArrayList
+
+/**
+ * The review's threads on the host and the viewer's slot there: read at load, read again before Finish, and changed at
+ * once (edit or delete a posted comment, resolve or reopen a thread; spec: posted is public, so these can't wait for
+ * Finish). Each write runs off EDT, then the threads are read again so the views show what the host now has. The views
+ * only draw: [pending] says what is on its way, [onChanged] when to redraw.
+ */
+@Service(Service.Level.PROJECT)
+class HostThreads internal constructor(
+    private val host: () -> ReviewHost,
+    /** The review under way's number on the host, or null (none, or a branch review). */
+    private val number: () -> Int?,
+    private val pool: (() -> Unit) -> Unit,
+    private val onEdt: (() -> Unit) -> Unit,
+) {
+    constructor(project: Project) : this(
+        host = { ReviewHosts.required(ReviewService.of(project).git ?: throw CliException("No review in progress")) },
+        number = { ReviewService.of(project).meta?.target?.prNumber },
+        pool = { ApplicationManager.getApplication().executeOnPooledThread(it) },
+        onEdt = { ApplicationManager.getApplication().invokeLater(it, project.disposed) },
+    )
+
+    /** Everyone's threads on the review, read at load; null for a branch review or when the host didn't answer. */
+    val threads: List<ReviewThread>? get() = threadsRead?.takeIf { it.first == number() }?.second
+    /** The viewer's slot as Finish review last read it; null when it wasn't read or the host didn't answer. */
+    val slot: ReviewSlot? get() = slotRead?.takeIf { it.first == number() }?.second
+
+    // each answer carries the PR it was read for, so one never shows for another and a failed read needn't clear it
+    @Volatile private var threadsRead: Pair<Int, List<ReviewThread>>? = null
+    @Volatile private var slotRead: Pair<Int, ReviewSlot>? = null
+
+    private val writing = ConcurrentHashMap<String, String>()
+    private val listeners = CopyOnWriteArrayList<() -> Unit>()
+
+    /** What each comment or thread on its way to the host says meanwhile ("Saving…"), by its id. */
+    val pending: Map<String, String> get() = HashMap(writing)
+
+    fun onChanged(parent: Disposable, listener: () -> Unit) {
+        listeners += listener
+        Disposer.register(parent) { listeners -= listener }
+    }
+
+    /** At load: the review's threads, or none. The loader redraws; runs the host's CLI: off EDT. */
+    fun load() {
+        val ticket = ticket()
+        val number = number() ?: return
+        keep(number, ticket, fetch(number), null)
+    }
+
+    /**
+     * Reads the threads and the viewer's slot again (Finish review does, so a thread resolved or deleted meanwhile, or a
+     * review started on the host's website, is said before anything posts). Off EDT. False when either read failed: the
+     * last ones stay, and the caller says they may be old.
+     */
+    fun reload(): Boolean {
+        val ticket = ticket()
+        val number = number() ?: return false
+        val read = runCatching { host().reviewSlot(number) }.onFailure { thisLogger().info("Host pending review not read", it) }
+        val fetched = fetch(number)
+        val current = keep(number, ticket, fetched, read.getOrNull())
+        if (current && fetched != null) changed()
+        return current && read.isSuccess && fetched != null
+    }
+
+    private var started = 0L
+    private var threadsWritten = 0L
+    private var slotWritten = 0L
+
+    /** Numbers each read as it starts, so the answers can be put back in that order whatever order they land in. */
+    private fun ticket() = synchronized(this) { ++started }
+
+    /**
+     * Writes what read [ticket] got for PR [number] only while that PR is still the review under way (an answer that
+     * lands after the reviewer moved on is dropped), and only when no read started after it was written already (two
+     * reads of one PR, a Finish check and the one after an edit, land in either order). The threads and the slot each
+     * keep their own newest: a newer read that brought only one of them never drops the other from an older read that
+     * brought it. One lock for every write. True while the PR is the one under way: a read overtaken still read it fine.
+     */
+    private fun keep(number: Int, ticket: Long, threads: List<ReviewThread>?, slot: ReviewSlot?): Boolean = synchronized(this) {
+        (number() == number).also { current ->
+            if (current && threads != null && ticket > threadsWritten) { threadsRead = number to threads; threadsWritten = ticket }
+            if (current && slot != null && ticket > slotWritten) { slotRead = number to slot; slotWritten = ticket }
+        }
+    }
+
+    /** [change]'s threads, each with the line it sits under in the file at [scopeEnd], or null when it is only listed. */
+    fun threadsOn(change: FileChange, scopeEnd: String?): List<Pair<ReviewThread, Int?>> {
+        val end = scopeEnd ?: return emptyList()
+        return threads.orEmpty().filter { it.path == change.path }.map { it to it.lineAt(end) }
+    }
+
+    /** [failed] gets the host's refusal on EDT, so the caller can reopen the box with [body]: nothing typed is lost. */
+    fun edit(comment: ThreadComment, body: String, failed: (Throwable) -> Unit) = write(comment.id, "Saving…", failed) { it.editComment(comment.id, body) }
+
+    fun delete(comment: ThreadComment, failed: (Throwable) -> Unit) = write(comment.id, "Deleting…", failed) { it.deleteComment(comment.id) }
+
+    fun resolve(thread: ReviewThread, resolved: Boolean, failed: (Throwable) -> Unit) =
+        write(thread.id, if (resolved) "Resolving…" else "Unresolving…", failed) { it.resolveThread(thread.id, resolved) }
+
+    private fun fetch(number: Int): List<ReviewThread>? =
+        runCatching { host().reviewThreads(number) }.onFailure { thisLogger().info("Host review threads not loaded", it) }.getOrNull()
+
+    /** One write per thread or comment at a time: a second, while the first is on its way, is refused with why. */
+    private fun write(id: String, saying: String, failed: (Throwable) -> Unit, call: (ReviewHost) -> Unit) {
+        writing.putIfAbsent(id, saying)?.let { return failed(IllegalStateException("It is still ${it.lowercase().removeSuffix("…")}: wait for that to finish.")) }
+        changed()
+        pool {
+            val sent = runCatching { call(host()) }
+            reload()
+            onEdt {
+                writing -= id
+                sent.onFailure(failed)
+                changed()
+            }
+        }
+    }
+
+    /** Listeners redraw, so they always hear it on EDT, whichever thread changed what. */
+    private fun changed() = onEdt { listeners.forEach { it() } }
+
+    companion object {
+        fun of(project: Project): HostThreads = project.service()
+    }
+}

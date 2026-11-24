@@ -1,6 +1,7 @@
 package io.github.vatsarishabh22.reviewlens
 
-import io.github.vatsarishabh22.reviewlens.ReviewService.Ending
+import io.github.vatsarishabh22.reviewlens.services.*
+import io.github.vatsarishabh22.reviewlens.services.ReviewService.Ending
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertNull
 import org.junit.Test

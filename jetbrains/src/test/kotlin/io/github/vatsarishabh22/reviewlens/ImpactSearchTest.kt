@@ -3,6 +3,7 @@ package io.github.vatsarishabh22.reviewlens
 import com.intellij.testFramework.fixtures.BasePlatformTestCase
 import com.intellij.psi.PsiFileFactory
 import com.intellij.testFramework.fixtures.CodeInsightTestFixture
+import io.github.vatsarishabh22.reviewlens.impact.*
 import kotlin.time.Duration
 
 /** A real Python project, real references: which places the impact map finds for a changed function. */

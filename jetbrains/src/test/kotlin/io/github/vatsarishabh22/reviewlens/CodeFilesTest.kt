@@ -1,6 +1,7 @@
 package io.github.vatsarishabh22.reviewlens
 
 import com.google.gson.JsonParser
+import io.github.vatsarishabh22.reviewlens.impact.*
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertNull
 import org.junit.Assert.assertTrue

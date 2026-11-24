@@ -2,6 +2,7 @@ package io.github.vatsarishabh22.reviewlens
 
 import com.google.gson.Gson
 import com.google.gson.JsonParser
+import io.github.vatsarishabh22.reviewlens.core.*
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertTrue
 import org.junit.Test

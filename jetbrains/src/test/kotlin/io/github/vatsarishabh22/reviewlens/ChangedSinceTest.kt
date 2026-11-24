@@ -1,8 +1,9 @@
 package io.github.vatsarishabh22.reviewlens
 
-import io.github.vatsarishabh22.reviewlens.ViewedState.DISMISSED
-import io.github.vatsarishabh22.reviewlens.ViewedState.UNVIEWED
-import io.github.vatsarishabh22.reviewlens.ViewedState.VIEWED
+import io.github.vatsarishabh22.reviewlens.core.*
+import io.github.vatsarishabh22.reviewlens.core.ViewedState.VIEWED
+import io.github.vatsarishabh22.reviewlens.core.ViewedState.UNVIEWED
+import io.github.vatsarishabh22.reviewlens.core.ViewedState.DISMISSED
 import org.junit.Assert.assertEquals
 import org.junit.Test
 

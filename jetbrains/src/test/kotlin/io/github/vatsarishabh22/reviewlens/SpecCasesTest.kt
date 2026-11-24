@@ -6,9 +6,8 @@ import com.google.gson.JsonElement
 import com.google.gson.JsonNull
 import com.google.gson.JsonObject
 import com.google.gson.JsonParser
-import io.github.vatsarishabh22.reviewlens.github.githubRefusal
-import io.github.vatsarishabh22.reviewlens.github.parseViewedStates
-import io.github.vatsarishabh22.reviewlens.github.summarizeChecks
+import io.github.vatsarishabh22.reviewlens.core.*
+import io.github.vatsarishabh22.reviewlens.host.github.*
 import org.junit.Assert.assertEquals
 import org.junit.Assert.fail
 import org.junit.Test

@@ -1,0 +1,75 @@
+package io.github.vatsarishabh22.reviewlens.services
+
+import com.intellij.notification.NotificationType
+import com.intellij.openapi.components.Service
+import com.intellij.openapi.components.service
+import com.intellij.openapi.project.Project
+import io.github.vatsarishabh22.reviewlens.core.*
+import io.github.vatsarishabh22.reviewlens.host.*
+
+/** The review's draft comments and summary, and posting them; the drafts are saved in [ReviewMeta.drafts] through [ReviewService.update]. */
+@Service(Service.Level.PROJECT)
+class ReviewDrafts(private val project: Project) {
+
+    private val review get() = ReviewService.of(project)
+
+    /** The Finish review summary while it is being written; cleared once the review is posted. */
+    @Volatile var summary = ""
+
+    /** Comments on [change]'s file as this scope shows it; posted ones stay visible as "on <host>" until the host's own threads are loaded. */
+    fun on(change: FileChange): List<Draft> = mine().filter { it.path == change.path && it.blob == change.newBlob }
+
+    /** [ownComments] of this review. */
+    fun mine(): List<Draft> = ownComments(review.meta?.drafts.orEmpty(), HostThreads.of(project).threads)
+
+    /** [pendingReplies] to [thread]. */
+    fun repliesTo(thread: ReviewThread): List<Draft> = pendingReplies(review.meta?.drafts.orEmpty(), thread)
+
+    /** What Finish review would post now: comments on the versions this scope shows, and replies to threads GitHub still has. */
+    fun outbox(): Outbox = review.meta?.drafts.orEmpty().let { Outbox(toPost(it, review.changes), repliesToPost(it, HostThreads.of(project).threads)) }
+
+    fun add(change: FileChange, line: Int, body: String, startLine: Int? = null) = update { it + Draft(change.path, line, change.newBlob, body, startLine = startLine) }
+
+    /** A reply to [thread], shown under [change]'s line [line]; posted with the review, into the thread. */
+    fun reply(change: FileChange, line: Int, thread: ReviewThread, body: String) = update { it + Draft(change.path, line, change.newBlob, body, replyTo = thread.id) }
+
+    /** Replaces a pending comment's text, keeping its line and its place among the drafts. Each change says whether it was made ([update]). */
+    fun edit(draft: Draft, body: String) = pending(draft) && update { drafts -> drafts.map { if (it == draft) it.copy(body = body) else it } }
+
+    /** Removes a pending comment; the way out when GitHub refuses one, which would otherwise block every Finish review. */
+    fun delete(draft: Draft) = pending(draft) && update { it - draft }
+
+    /** Whether [draft] is still pending; once posted or deleted, or its review ended, a change to it would change nothing, so it is refused and said. */
+    private fun pending(draft: Draft): Boolean = (!draft.posted && draft in review.meta?.drafts.orEmpty()).also {
+        if (!it) notify(project, "That comment is no longer pending", "It was posted or deleted, or its review ended, so it can't be edited or deleted here.", NotificationType.WARNING)
+    }
+
+    /**
+     * Posts the pending comments and replies with [summary] and [verdict] as one GitHub review, remembers [verdict], and
+     * returns what went ("1 comment and 1 reply"). Runs gh: call off EDT.
+     */
+    fun submit(summary: String, verdict: Verdict): String {
+        val meta = review.meta ?: error("No review in progress")
+        val number = meta.target.prNumber ?: error("Only a pull request can be reviewed on its host")
+        val sending = outbox()
+        val host = ReviewHosts.required(review.git!!)
+        host.submitReview(number, meta.range.to, summary, verdict, sending.comments, sending.replies)
+        val sent = (sending.comments + sending.replies).toSet()
+        review.update { m -> m.copy(drafts = m.drafts?.map { if (it in sent) it.copy(posted = true) else it }, verdict = verdict) }
+        this.summary = ""
+        return sending.text
+    }
+
+    /**
+     * A change to the drafts; true when made. Refused, with a notice, while Finish posts them: a draft changed meanwhile
+     * would post as it was and then stay pending, to post again. EDT, as Finish's claim is.
+     */
+    private fun update(change: (List<Draft>) -> List<Draft>): Boolean {
+        if (review.ending == ReviewService.Ending.POSTING) return !refusedBusy(project, "Changing a comment")
+        return review.update { it.copy(drafts = change(it.drafts.orEmpty())) }
+    }
+
+    companion object {
+        fun of(project: Project): ReviewDrafts = project.service()
+    }
+}

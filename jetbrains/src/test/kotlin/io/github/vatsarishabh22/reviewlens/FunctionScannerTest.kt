@@ -2,6 +2,8 @@ package io.github.vatsarishabh22.reviewlens
 
 import com.intellij.psi.PsiFileFactory
 import com.intellij.testFramework.fixtures.BasePlatformTestCase
+import io.github.vatsarishabh22.reviewlens.core.*
+import io.github.vatsarishabh22.reviewlens.impact.*
 import java.nio.file.Files
 
 /** The changed lines between two versions of a file, as real `git diff -U0` reports them. */

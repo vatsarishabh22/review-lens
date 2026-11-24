@@ -3,6 +3,7 @@ package io.github.vatsarishabh22.reviewlens
 import com.intellij.psi.PsiElement
 import com.intellij.psi.util.PsiTreeUtil
 import com.intellij.testFramework.fixtures.BasePlatformTestCase
+import io.github.vatsarishabh22.reviewlens.impact.*
 
 /** Each language's answers on a real file: which declarations are functions, their headers, names and test files. */
 class ImpactLanguageTest : BasePlatformTestCase() {

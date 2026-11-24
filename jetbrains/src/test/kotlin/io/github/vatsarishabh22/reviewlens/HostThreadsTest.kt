@@ -1,7 +1,9 @@
 package io.github.vatsarishabh22.reviewlens
 
 import com.intellij.openapi.util.Disposer
-import io.github.vatsarishabh22.reviewlens.github.GitHubSlot
+import io.github.vatsarishabh22.reviewlens.core.*
+import io.github.vatsarishabh22.reviewlens.host.github.*
+import io.github.vatsarishabh22.reviewlens.services.*
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
 import org.junit.Assert.assertNull
