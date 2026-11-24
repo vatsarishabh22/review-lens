@@ -8,6 +8,10 @@ Same product, same flow, same `.git/review-lens/` files. Only the host calls cha
 requests (MRs) instead of pull requests. Park, checkout, read-only, scope, "since your last review", Exit and the
 [impact map](impact.md) are plain git and don't change at all.
 
+Every wire fact below was measured on gitlab.com (GitLab 19.7, `glab` 1.131) on a private scratch
+project and on public gitlab.org projects (read only), unless the line says it comes from GitLab's docs. One step is
+not measured yet: approving an MR you didn't open (it needs a second account).
+
 ```mermaid
 flowchart LR
     R["origin's host"] --> H{"Which CLI is<br/>signed in to it?"}
@@ -18,12 +22,30 @@ flowchart LR
 
 ## Picking the host
 
-1. Read `origin`'s URL and take its host.
+1. Read `origin`'s URL and take its host, an SSH alias resolved to its `HostName` (as for GitHub).
 2. `gh auth status --hostname <host>` succeeds → GitHub. `glab auth status --hostname <host>` succeeds → GitLab.
 3. Neither → the branch list, as today when `gh` is missing, saying which CLI to sign in with.
 
-Self-managed GitLab works the same way: the host is whatever `origin` points at. `glab api` fills `:id` from the
-checkout's remote, so no project ID is configured.
+Self-managed GitLab works the same way: the host is whatever `origin` points at.
+
+## Calling `glab`
+
+- **Every call names the host and the project itself**: `glab api --hostname <host> projects/<group%2Fproject>/…`,
+  and GraphQL `project(fullPath: "<group/project>")`, the path taken from `origin`'s URL. `glab`'s own `:id` and
+  `:fullpath` placeholders are never used: with an SSH alias in `origin` (`git@gitlab-personal:group/project.git`)
+  they fail ("none of the git remotes configured for this repository point to a known GitLab host").
+- **A write sends its payload as a JSON body** (`--input <file>`, `Content-Type: application/json`). `glab` 1.131
+  refuses field names with brackets (`-f position[new_line]=…`).
+- **A paginated GraphQL read** (`--paginate`, the query taking `$endCursor` and asking `pageInfo{hasNextPage endCursor}`)
+  prints one JSON document per page, back to back (16 threads at one per page: 16 documents, as many as REST lists).
+- **A GraphQL mutation can answer with an `errors` list and still exit 0**: a non-empty list is a refusal, said with
+  its words.
+- `--hostname`, `--input` and `--paginate` are in `glab api` since 1.12.0 (glab's own history).
+- **A 429** ("rate limited by burst_traffic_per_user_free_plan, retry after *n*s", measured after about 30 calls at once)
+  means GitLab didn't take the call: it waits `Retry-After` and is sent again, and the panel says it is waiting. Free
+  allows 100 API calls a minute per user and 5,000 an hour (GitLab's docs), so every call goes one at a time; a Finish
+  makes about 6 calls plus one per comment or reply.
+- Time limits as in the README's rule 7: a read 30 s, a write 60 s. Measured: reads 1.3 to 3.6 s, writes 1.4 to 2.4 s.
 
 ## What's the same, what differs
 
@@ -33,73 +55,155 @@ checkout's remote, so no project ID is configured.
 | State key | `pr-<number>` | `mr-<iid>` |
 | Head ref | `pull/<n>/head` | `refs/merge-requests/<iid>/head` |
 | "Viewed" ticks | Synced with GitHub | **Local only.** GitLab keeps its "Viewed" checkboxes in the browser and has no API for them |
+| "*k* files changed since your review" | GitHub's DISMISSED Viewed state | Your ticked files' blobs against the MR head's, read from GitLab (below) |
 | One review | Pending review, then submit | Draft notes, then publish all |
 | Approve | Review event `APPROVE` | Separate approve call |
-| Request changes | Review event `REQUEST_CHANGES` | Reviewer state on publish |
+| Request changes | Review event `REQUEST_CHANGES` | `reviewer_state` on publish |
 | Undo a failed post | Delete the pending review | Delete the drafts, unapprove |
+| A comment on several lines | `startLine` + `line` | `line_range`, anchored at its last line |
+| Suggest a change | ` ```suggestion ` replaces the comment's lines | ` ```suggestion:-<n>+0 `: a plain block replaces only the last line (measured) |
 
 ## The flow
 
-Every step not listed here is exactly as in the [README](README.md). Calls run through `glab api`, which handles
-the host and the token; `<me>` is `username` from `glab api user`.
+Every step not listed here is exactly as in the [README](README.md).
 
 | Step | What happens | git / glab |
 |---|---|---|
-| List | Open MRs, the ones where you're a reviewer first | `glab api user` · `glab api "projects/:id/merge_requests?state=opened&per_page=100"` · `glab api "projects/:id/merge_requests?state=opened&reviewer_username=<me>&per_page=100"` |
-| Detail | Description, stats, the head on GitLab (`sha`) and the diff SHAs | `glab api projects/:id/merge_requests/<iid>` (`sha`, `diff_refs.base_sha`, `diff_refs.start_sha`, `diff_refs.head_sha`) |
-| Fetch | The MR's head into a private ref, plus its target branch. GitLab deletes the head ref 14 days after an MR closes, so a fetch failing on a closed MR says so | `git fetch --no-tags origin +refs/merge-requests/<iid>/head:refs/review-lens/mr-<iid> +refs/heads/<target>:refs/remotes/origin/<target>`, then as in the README |
-| Viewed | A tick is saved locally as in the README, with `unsent` always empty. The change-since-viewed check (🔄) works unchanged, since it compares blobs | None |
-| Threads | Every diff discussion on the MR. One is placed under its line only when `notes[0].position.head_sha == range.to` and `new_line` is set; the rest are listed, not placed. `resolved` folds it | `glab api --paginate projects/:id/merge_requests/<iid>/discussions`, keeping `notes[0].type == "DiffNote"` |
+| List | Open MRs, the ones waiting on you first, [stacks](README.md#stacks) grouped. Three reads run alongside: the MRs, their commits, their counts (one query with all three took 4.8 to 6.4 s for 100 MRs; split, 2.9 to 3.6 s each). When the commits read fails the list shows no stacks; when the counts read fails it shows no counts. Waiting on you: you are among the MR's `reviewers` and your `reviewState` is `UNREVIEWED` (added, or asked again) or `REVIEW_STARTED` (a draft of yours exists); once you publish it is `REVIEWED`, `REQUESTED_CHANGES`, `APPROVED` or `UNAPPROVED`, as GitHub drops a request once you review. From a fork: `sourceProjectId != targetProjectId` (48 of 100 open MRs on `gitlab-org/cli`); its head ref sits in this project (3 of 3) and its threads are placed the same way | GraphQL `currentUser{username}`, `project(fullPath){mergeRequests(state:opened, first:100)}` with `iid title description updatedAt sourceBranch targetBranch diffHeadSha sourceProjectId targetProjectId author{username name} reviewers{nodes{username mergeRequestInteraction{reviewState}}}` · `commits(first:100){nodes{sha}}` (**newest first**: reversed to GitHub's oldest first) · `diffStatsSummary{additions deletions fileCount}` |
+| Detail | Description, stats, the head on GitLab, the pipeline | `mergeRequest(iid){diffHeadSha headPipeline{status jobs(statuses:[FAILED, CANCELED], retried:false){count}}}` |
+| Checks | The head pipeline's status, read with GitHub's rule (a cancelled check fails, one waiting on a person runs, a skipped one passes): `FAILED`, `CANCELED` → *n* failing, *n* the failed or cancelled jobs not retried, at least 1 (1 or 2 failed on 9 failed public MRs) · `CREATED`, `WAITING_FOR_RESOURCE`, `PREPARING`, `WAITING_FOR_CALLBACK`, `PENDING`, `RUNNING`, `SCHEDULED`, `CANCELING`, `MANUAL` → running · `SUCCESS`, `SKIPPED` → passed · no pipeline → nothing shown | Same query, `jobs(statuses:[FAILED, CANCELED], retried:false)` (`PipelineStatusEnum`, 13 values) |
+| Fetch | The MR's head into a private ref, plus its target branch. GitLab deletes the head ref 14 days after an MR closes (GitLab's docs), so a fetch failing on a closed MR says so | `git fetch --no-tags origin +refs/merge-requests/<iid>/head:refs/review-lens/mr-<iid> +refs/heads/<target>:refs/remotes/origin/<target>`, then as in the README |
+| Viewed | A tick is saved locally as in the README, with `unsent` always empty. Folder ticks are the same ticks. Nothing is sent, so "Sending…" never shows | None |
+| Threads | Every diff discussion on the MR. GitLab moves a thread's line along with each push, as GitHub does (a thread on line 14 sat on line 17 after 3 lines were added above it); when its line itself changes, the thread stays on the older push. So one is placed under its line only when `position.diffRefs.headSha == range.to` and `newLine` is set (a thread on a removed line has none); the rest are listed, not placed. GraphQL's `DiffPosition` has no line range, so a thread on several lines shows at its last line (`startLine` unknown). `resolved` folds it. GitLab puts **system notes inside a thread** ("changed this line in version 3 of the diff"): they are left out | GraphQL `mergeRequest(iid){discussions{nodes{id resolvable resolved resolvedBy{username} notes{nodes{id system url body author{username} userPermissions{adminNote resolveNote} position{newPath newLine oldLine diffRefs{headSha}}}}}}}`, paginated, keeping discussions whose first note has a `position` |
+| Resolve | Shown when the first note's `userPermissions.resolveNote`. Sent at once | `discussionToggleResolve(input:{id, resolve})`, `id` = the discussion's global id (1.6 to 2.4 s) |
+| Edit / delete posted | Shown when the note's `userPermissions.adminNote` (false on 115 of 115 notes by others). Sent at once | `updateNote(input:{id, body})` / `destroyNote(input:{id})`, `id` = the note's global id |
 | Finish | See below | |
+
+`ReviewThread.id` is the discussion's global id (`gid://gitlab/Discussion/<sha>`) and `ThreadComment.id` the note's
+(`gid://gitlab/DiffNote/<n>`), so `resolveThread`, `editComment` and `deleteComment` take one id each, as on GitHub.
+
+### Files changed since your review
+
+GitLab keeps no Viewed state, so the list's "🔄 *k* files changed since your review" comes from the blobs Review Lens
+already saves. *k* = the files ticked at the version you last reviewed whose blob at the MR's head on GitLab is no
+longer the ticked one (a file that is gone counts as changed). This is the same rule as the 🔄 badge, so a rebase or an
+amend that leaves a file alone never counts it. Unlike GitHub, a file whose content was put back to the viewed one
+counts as unchanged. The rest of the README's rule stands: "New commits" when nothing ticked changed but the MR now has
+files outside your review.
+
+GraphQL `project.repository.blobs(ref: <diffHeadSha>, paths: [<ticked paths>]){nodes{path oid}}` gives git's own blob
+ids (equal to `git ls-tree`, 1.3 s for 3 paths; a path that isn't there is left out). One query takes at most 100 paths
+(GitLab's complexity limit is 250, about 2 a path: 120 paths are refused; 100 of 100 came back); more ticks are asked
+in further queries. It is asked for every moved MR with ticks at once, with the same 20 s limit, and a failed ask is
+quiet.
+
+### Stacks
+
+As in the README: the exact fact reads the MR's `commits`, a stacked MR's own count comes from a compare, and a stack
+the host's way is an MR whose `targetBranch` is another open MR's `sourceBranch` (from this project). An MR's own count
+on its parent: `repository/compare?from=<parent head>&to=<head>`, the length of `diffs` (1.5 to 1.8 s). No cap up to
+2,092 files (GitHub's: 300); the count is a little below git's because GitLab pairs more renames (82 more in 2,092).
+`compare_timeout: true` means `diffs` may be cut short, so the count is left unknown.
 
 ### Finish review on GitLab
 
-GitLab has no single call that posts comments and a verdict together, so Review Lens builds it from steps it can undo.
+GitLab has no single call that posts comments and a verdict together, and its GraphQL has no mutation for drafts or
+approvals, so Review Lens builds the review from REST steps it can undo.
 
 **Before posting**
 
 1. Re-read the discussions, as in the README, so a resolved or deleted thread is reported first.
-2. Read your existing drafts: `glab api projects/:id/merge_requests/<iid>/draft_notes`. Publishing posts **every**
-   draft you have on the MR, including ones written in GitLab's web page. If there are any, the Finish popup says
-   `You have 2 unpublished comments from GitLab. They'll be posted too.` before Submit.
-3. Read the diff versions: `glab api projects/:id/merge_requests/<iid>/versions`. A new comment can be placed only on
-   a version whose `head_commit_sha` is `range.to`. When none matches (a scope on older commits), the comments wait for
-   their scope, as the README's rule already says.
+2. Read your existing drafts: `projects/<p>/merge_requests/<iid>/draft_notes`. Publishing posts **every** draft you
+   have on the MR, including ones written in GitLab's web page. If there are any, the Finish popup says
+   `You have 2 unpublished comments from GitLab. They'll be posted too.` before Submit (the slot's `started`).
+3. Read the diff versions: `projects/<p>/merge_requests/<iid>/versions`. A new comment can be placed only on a version
+   whose `head_commit_sha` is `range.to`. When none matches (a scope on older commits), the comments wait for their
+   scope: Submit says why (the slot's `held`), replies alone still post.
+4. Read the newest note id on the MR (`…/notes?sort=desc&order_by=created_at&per_page=1`), kept for a Finish that
+   can't tell what posted (below).
+
+**Where a comment goes.** From the matching version: `base_sha`, `start_sha`, `head_sha`. A line the diff adds has
+`new_line` only. A line the diff doesn't change needs `old_line` too, its number in the version's `base_sha` file,
+worked out from `git diff <base_sha> <range.to> -- <path>`. Without `old_line`, GitLab takes the draft and then
+publishing **skips it without a word**: it stays a draft, and the review posts by halves (measured). A draft on several
+lines sits on its last line, with `line_range.start` and `.end`, each with `old_line`/`new_line` as above, `type` `new`
+for an added line or null, and `line_code` `<sha1 of the path>_<old>_<new>`. A ` ```suggestion ` block in such a comment
+is written `suggestion:-<line - startLine>+0`.
+
+**A draft GitLab won't place is refused before anything posts.** Each new comment's create answer carries `line_code`
+(a reply or a draft without a position answers null and posts fine, so only new comments are checked). It was null
+for exactly the comments publishing then skipped: 8 position shapes measured, 3 skipped (an unchanged line
+without `old_line`, twice, and a `head_sha` that is no version's head) and 5 placed (an added line, an unchanged line
+with `old_line`, an older version, a line outside the diff, a removed line). A null `line_code` on a new comment stops the
+Finish: the drafts this attempt made are deleted, nothing is published, and the reason says which comment GitLab
+couldn't place.
 
 **Posting, in order**
 
 | # | Call | Payload |
 |---|---|---|
-| 1 | One draft per new comment | `POST projects/:id/merge_requests/<iid>/draft_notes` with `note`, `position[position_type]=text`, `position[base_sha]`, `position[start_sha]`, `position[head_sha]` (from the matching version), `position[new_path]`, `position[old_path]`, `position[new_line]` |
-| 2 | One draft per reply | Same endpoint, `note` and `in_reply_to_discussion_id` |
-| 3 | Approve, only for the Approve verdict | `POST projects/:id/merge_requests/<iid>/approve` with `sha=<the MR head>`. A push since the review loaded makes GitLab answer 409, and nothing is posted |
-| 4 | Publish everything, with the summary | `POST projects/:id/merge_requests/<iid>/draft_notes/bulk_publish` with `note` = the summary and `reviewer_state` |
+| 1 | One draft per new comment | `POST projects/<p>/merge_requests/<iid>/draft_notes` `{note, position: {position_type: "text", base_sha, start_sha, head_sha, old_path, new_path, new_line, old_line?, line_range?}}` |
+| 2 | One draft per reply | Same endpoint, `{note, in_reply_to_discussion_id}` (the discussion id without its `gid://` prefix) |
+| 3 | Approve, only for the Approve verdict, and only when `…/approvals` doesn't already say `user_has_approved` (approving twice answers a bare **401**, measured) | `POST …/approve` `{sha: <range.to>}`. GitLab approves only the MR's latest push: any other `sha` answers **409** ("SHA does not match HEAD of source branch"), an older commit every time (measured). So Approve is greyed, with that reason, for a scope ending before the latest push (the slot's `denied`), and a push since loading answers 409 with nothing posted |
+| 4 | Publish everything, with the summary | `POST …/draft_notes/bulk_publish` `{note: <summary>, reviewer_state}`. The summary lands as a plain comment (4 of 4 not resolvable), as GitLab's own "Submit review" sends it; a draft without a position would land as a resolvable thread, which can block merging on a project that requires every thread resolved |
 
 | Verdict | Approve call | `reviewer_state` |
 |---|---|---|
-| Comment | No | `reviewed` |
-| Approve | Yes | `reviewed` |
-| Request changes | No | `requested_changes` |
+| Comment | No | `reviewed` (GitLab adds "left review comments") |
+| Approve | Yes | `reviewed` (your state stays `APPROVED`, measured) |
+| Request changes | No | `requested_changes` (GitLab adds "requested changes") |
 
-A summary with no comments is sent as a draft without a position, so step 4 always has something to publish. An
-Approve with no summary and no comments is step 3 alone.
+An Approve with no summary and no comments is step 3 alone. A summary with no comments is step 4 with no drafts: it
+posts and sets the state (measured). Publishing with no drafts and no summary posts nothing (measured), so a Comment
+with neither is refused before Submit, as on GitHub. GitLab's docs: a reviewer who can't request changes gets
+`reviewed` instead.
 
 **If a step fails**, nothing is left behind:
 
 - Steps 1–2: delete the drafts this attempt created (`DELETE …/draft_notes/<id>`).
-- Step 3: same, then show GitLab's reason.
+- Step 3: same, then say GitLab refused the approval, with its status (the only refusal seen, a repeat approve, was a
+  bare 401 with no reason text).
 - Step 4: unapprove if step 3 ran (`POST …/unapprove`), then delete the drafts.
 
-As in the README, nothing is marked sent and the review stays open. After step 4, drafts get `posted: true` and
-`verdict` is stored in the same three words as on GitHub (`COMMENT`, `APPROVE`, `REQUEST_CHANGES`), so the PR list's
+A refused call never lands, so its undo is safe. As in the README, nothing is marked sent and the review stays open. After step 4, drafts get `posted: true` and
+`verdict` is stored in the same three words as on GitHub (`COMMENT`, `APPROVE`, `REQUEST_CHANGES`), so the list's
 "✓ Reviewed · approved" works unchanged.
+
+**A step stopped unanswered** (rule 7). A delete is no undo here: 30 drafts deleted while a publish ran all answered
+204 and all 30 posted anyway (measured). So after a stopped call Review Lens never deletes; it proves what posted from
+what GitLab holds.
+
+| Stopped at | Then |
+|---|---|
+| A create or the publish (1–2, 4) | Can't tell: a stopped create still lands, with no id (7 of 7, each seen on the next read), and nothing is sent after it; a stopped publish landed whole every time (30 of 30 at each of 3 stops), and once its drafts were gone their notes were visible (0 of 10 gone without one) |
+| Approve (3) | Its drafts were never published, so they are deleted; then unapprove (404 when it didn't land, measured); the attempt failed. An approve landing after the unapprove leaves the MR approved, the verdict you chose, and the next Finish skips step 3 |
+
+**Can't tell** keeps every draft on GitLab and sets `uncertain`: the newest note id this Finish read before posting,
+and the drafts it sent. GitLab keeps no link from a note back to its draft (none of a published note's fields names
+it, measured), but note ids only grow (19 of 19), so "newer than that id" means "posted by this or a later call". The
+next Finish is greyed, saying to open the merge request on GitLab, while you have any draft on the MR; this also waits
+for a create that landed without an id. A held Finish's drafts can't be edited until it settles (rule 5), since an
+edited one would no longer match. Once no draft is left, each sent draft settles once:
+
+- **Posted** when GitLab holds a note of yours newer than the saved id with the same text on the same file (the same
+  thread, for a reply), one note for each such draft: `posted: true`. Never by line: GitLab moves a note's line with
+  each push (14 became 17, measured). Published late, or published by you on GitLab, it never posts twice.
+- **Not posted** otherwise (you deleted it on GitLab): it stays a local draft, and the next Finish sends it.
+- `verdict` is stored only when your `reviewState` or `user_has_approved` shows it.
+
+A Finish with only a summary sends no draft, so nothing waits on GitLab: it is posted once a note of yours with the
+summary's text, newer than the saved id, is seen; until then the held popup says to check the merge request and offers
+**Not posted, send again**.
 
 ### Your own MR
 
-GitLab lets an author approve only when the project allows it (`merge_requests_author_approval`), and ignores
-`reviewer_state` unless the author is also a reviewer. Read `user_can_approve` from
-`glab api projects/:id/merge_requests/<iid>/approvals` and grey out the verdicts it rules out, with the reason, as the
-README does for GitHub's own-PR rule.
+On gitlab.com with no approval rules (Free, 0 approvals required, `merge_requests_author_approval` false), `…/approvals`
+said `user_can_approve: false` and the author's approve still **succeeded** (measured). So no verdict is greyed in
+advance on GitLab. An Approve GitLab refuses fails at step 3: the drafts are deleted and Review Lens says GitLab refused it, with its status.
+Request changes on your own MR, as the author with no reviewers, only adds GitLab's "requested changes" note: the MR's
+state doesn't change (`detailedMergeStatus` stayed `MERGEABLE`, the author's `reviewState` null). It isn't greyed:
+GitLab takes it. As a reviewer of the MR, it sets your state to `REQUESTED_CHANGES` (measured). On Premium and Ultimate,
+GitLab's docs say the author can't approve by default; that refusal comes at step 3, as above.
 
 ## State changes
 
@@ -108,17 +212,17 @@ README does for GitHub's own-PR rule.
 | `target.key` | Pattern becomes `^(pr-[0-9]+\|mr-[0-9]+\|branch-[A-Za-z0-9._-]+)$` |
 | `target.prNumber` | Holds the MR's `iid` when the key starts with `mr-` (renaming it `number` would break every saved file) |
 | `<key>.json` `unsent` | Always empty for `mr-` keys |
-| `drafts[].replyTo` | A GitLab discussion id for `mr-` keys |
+| `drafts[].replyTo` | A GitLab discussion's global id for `mr-` keys |
+| `<key>.json` `uncertain` | New, for both hosts (issue #19): a Finish that couldn't tell what reached the host. GitHub: the pending review's id. GitLab: the newest note id read before posting and the drafts sent. While set, the next Finish greys Submit with the reason (settle it on the host first). It clears once the host's read shows it settled, and settles the drafts as it does: GitHub, the review submitted holding what was sent → `posted: true`, the review gone → they stay drafts (one read of the review by its id, as Finish already does); GitLab, no draft of yours left on the MR, then each sent draft as above |
 | Fixtures | Add `mr-5.json`, a GitLab review with a reply and a verdict |
+| Cases | `cases/gitlab/`: the list answer, checks, a draft's create answer (`line_code` null refused), the suggestion header. Run only by a GitLab client, as `cases/github/` is |
 
 ## Open questions
 
-- **Older self-managed GitLab.** `reviewer_state` on publish and the draft notes API are recent. The minimum GitLab
-  version still needs checking against GitLab's changelog. Below it, fall back to publishing without `reviewer_state`
-  and hide Request changes.
-- **`glab` versions.** `glab api` with `:id` and `--paginate` is the only dependency. The minimum `glab` version is
-  still to be confirmed.
-- **Multi-line comments** (`position[line_range]`) stay out, as on GitHub today.
+- **A second account.** Approving an MR you didn't open.
+- **Older self-managed GitLab.** Publishing with `note` and `reviewer_state` came in GitLab 19.2 (!237813). Below it,
+  the summary posts as its own note and Request changes is hidden. Drafts open resolvable threads only since 18.6
+  (!210553): what Finish does below 18.6 is still to be decided.
 - **Merge request approval rules** (required approvers, code owners) aren't shown. An approval GitLab accepts but that
   doesn't satisfy a rule still says "approved" in the list.
 
@@ -133,12 +237,8 @@ README does for GitHub's own-PR rule.
   `refs/merge-requests/:iid/head`, deleted 14 days after the MR is closed or merged
 - [Merge request diff versions](https://docs.gitlab.com/user/project/merge_requests/versions): each push is a version
   with its own head, base and start commits
-- [`glab api`](https://docs.gitlab.com/cli/api): `:id` placeholder, `--paginate`, GraphQL
-- [`glab mr note draft publish`](https://docs.gitlab.com/cli/mr/note/draft/publish/): `--reviewer-state`, ignored for
-  authors who aren't reviewers
+- [`glab api`](https://docs.gitlab.com/cli/api): `--hostname`, `--input`, `--paginate`, GraphQL
 - [GitLab issue 451995](https://gitlab.com/gitlab-org/gitlab/-/issues/451995): request for a "Request changes" API, raised
   for an IntelliJ plugin
 - [GitLab Workflow for VS Code, MR 3234](https://gitlab.com/gitlab-org/gitlab-vscode-extension/-/merge_requests/3234):
   no public API for GitLab's "Viewed" state, so it's kept locally
-- [python-gitlab discussions](https://python-gitlab.readthedocs.io/en/v3.1.0/gl_objects/discussions.html): diff note
-  positions from the MR's diff SHAs
