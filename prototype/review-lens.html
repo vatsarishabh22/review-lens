@@ -349,6 +349,10 @@ div.cm-row .jump { text-align: left; }
 .dl.del { background: var(--del-bg); } .dl.add { background: var(--add-bg); } .dl.mod { background: var(--mod-bg); }
 .dl.empty { background: repeating-linear-gradient(135deg, transparent 0 5px, var(--panel-2) 5px 7px); }
 .diff .left { border-right: 1px solid var(--line); }
+.diff-bar { display: flex; gap: 6px; align-items: center; padding: 4px 12px; border-bottom: 1px solid var(--line); background: var(--panel); font: 12px var(--ui); }
+.diff-bar button { border: 1px solid var(--line); border-radius: 5px; padding: 1px 8px; background: var(--win); }
+.diff.unified { grid-template-columns: minmax(0, 1fr); }
+.dl.u { grid-template-columns: 40px 40px 1fr; }
 .tok-kw { color: var(--kw); } .tok-str { color: var(--str); } .tok-com { color: var(--com); font-style: italic; } .tok-num { color: var(--num); } .tok-dec { color: var(--dec); } .tok-fn { color: var(--fn); } .tok-self { color: var(--self); }
 .empty-editor { height: 100%; display: grid; place-items: center; color: var(--muted); text-align: center; }
 .empty-editor p { margin: 4px 0; }
@@ -556,7 +560,7 @@ const ownFiles = () => FILES.filter(f => f.lines.some(e => e[0] !== "c" && shown
 const fresh = () => ({
   mode: "normal", tool: "project", panel: "list", pr: 148, scope: "all", picked: new Set(), stack: stackMode(),
   dirty: document.getElementById("opt-dirty").checked, confirm: false, step: 0, busy: null, checking: false, vPick: 0, sumText: "",
-  filesView: "pr", open: OWN_FILE.path, tabs: [OWN_FILE.path], diff: false, caret: null, hunk: null,
+  filesView: "pr", open: OWN_FILE.path, tabs: [OWN_FILE.path], diff: false, unified: false, caret: null, hunk: null,
   viewed: {}, since: {}, comments: {}, sel: null, threads: structuredClone(THREADS_AT_LOAD), replies: {}, replyTo: null, impactTicks: {}, resolving: {}, postedEdit: null, postedDelete: null, postedWrite: {}, peek: {}, impactWide: false, impactSlow: false, noImpact: false, impactBusy: false, dynNote: null, placeFocus: null, remote: false, cmFilter: "all", jump: null, unfold: {}, draft: null, draftText: "", pop: null, toast: null, flash: false, resume: false, submitted: false, verdict: null,
 });
 let S = fresh();
@@ -1035,13 +1039,30 @@ function commentBlock(path, line, list) {
     <div class="actions"><button class="secondary" data-act="suggest" title="Puts the ${S.draft.start ? "lines" : "line"} into a suggestion block to edit: the author commits it from GitHub">Suggest a change</button><span class="fineprint">Posted when you finish the review · <kbd>⌘↩</kbd> add · <kbd>Esc</kbd> cancel</span><button class="secondary" data-act="draft-cancel">Cancel</button><button class="primary" data-act="draft-save">Add comment</button></div>` : "";
   return `<div class="comment-row">${items}${draft}</div>`;
 }
+// IntelliJ's own diff viewer: its toolbar switches Side-by-side / Unified and remembers the choice (no code of ours)
+function unifiedRows(L, R) {
+  const out = [], dels = [], adds = [];
+  const flush = () => { out.push(...dels.splice(0), ...adds.splice(0)); };
+  L.forEach((l, i) => {
+    const r = R[i];
+    if (l && r && !l.k) { flush(); out.push({ o: l.n, n: r.n, t: r.t }); return; }
+    if (l) dels.push({ o: l.n, t: l.t, k: "del" });
+    if (r) adds.push({ n: r.n, t: r.t, k: "add" });
+  });
+  flush();
+  return out;
+}
 function diffView(f) {
   const { L, R } = diffRows(f);
   const side = (rows, cls) => rows.map(r => r ? `<div class="dl ${r.k || ""}"><span class="no">${r.n}</span><span class="txt">${hl(r.t, f.path)}</span></div>` : '<div class="dl empty"><span></span><span></span></div>').join("");
+  const bar = `<div class="diff-bar"><button data-act="viewer">${S.unified ? "Unified viewer" : "Side-by-side viewer"} ▾</button></div>`;
   const tools = f.status === "D" ? `<div class="file-tools"><span class="crumb">${esc(f.path)} · deleted in this PR</span><button class="viewed-toggle ${S.viewed[f.path] ? "on" : ""}" data-act="toggle-viewed" data-from="file" data-path="${esc(f.path)}">${S.viewed[f.path] ? I.check : I.box} Viewed</button></div>` : fileTools(f);
-  return `${tools}<div class="editor" tabindex="0" id="ed"><div class="diff">
-    <div class="left"><div class="col"><div class="side-head"><b>main</b> · before</div>${side(L)}</div></div>
-    <div><div class="col"><div class="side-head"><b>#148</b> · ${f.status === "D" ? "deleted in this PR" : scopeLabel()}</div>${side(R)}</div></div></div></div>`;
+  const pr = `<b>#148</b> · ${f.status === "D" ? "deleted in this PR" : scopeLabel()}`;
+  const body = S.unified ? `<div class="diff unified"><div><div class="col"><div class="side-head"><b>main</b> · before → ${pr}</div>
+    ${unifiedRows(L, R).map(r => `<div class="dl u ${r.k || ""}"><span class="no">${r.o ?? ""}</span><span class="no">${r.n ?? ""}</span><span class="txt">${hl(r.t, f.path)}</span></div>`).join("")}</div></div></div>`
+    : `<div class="diff"><div class="left"><div class="col"><div class="side-head"><b>main</b> · before</div>${side(L)}</div></div>
+    <div><div class="col"><div class="side-head">${pr}</div>${side(R)}</div></div></div>`;
+  return `${tools}${bar}<div class="editor" tabindex="0" id="ed">${body}</div>`;
 }
 function tabs() {
   return `<div class="tabs">${S.tabs.map(p => `<div class="tab ${p === S.open ? "on" : ""}" data-act="open" data-path="${esc(p)}">${iconFor(p)} ${esc(p.split("/").pop())}${S.mode === "review" && file(p) ? `<span class="mark ${badge(p)}" style="width:auto">${badge(p) === "check" ? "" : badge(p) === "since" ? I.since : I.star}</span>` : ""}</div>`).join("")}</div>`;
@@ -1235,6 +1256,7 @@ document.getElementById("ide").addEventListener("click", e => {
     }
     case "unfold": e.stopPropagation(); S.unfold[t.dataset.id] = !S.unfold[t.dataset.id]; keepScroll = true; break;
     case "diff": S.diff = t.dataset.v === "1"; S.hunk = null; break;
+    case "viewer": S.unified = !S.unified; break;
     case "caret": if (e.target.closest(".blame,.plus,.bar button")) return;
       // shift-click selects lines from the caret, as in the IDE; a "+" inside the selection comments on all of them
       S.sel = e.shiftKey && S.caret ? { from: Math.min(S.caret, +t.dataset.line), to: Math.max(S.caret, +t.dataset.line) } : null;
