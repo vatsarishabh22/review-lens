@@ -384,6 +384,10 @@ div.cm-row .jump { text-align: left; }
 .acct-btn b { color: var(--fg); font-weight: 600; }
 .acct-btn .avatar { width: 16px; height: 16px; font-size: 7px; grid-row: auto; }
 .acct-pop { left: 10px; top: 26px; width: 280px; }
+.repo-line { padding: 0 10px 6px; }
+.repo-line .acct-btn { display: block; width: 100%; text-align: left; }
+.repo-line .acct-btn b { display: block; font-size: 12px; }
+.acct-pop b.wrap { overflow-wrap: anywhere; }
 .acct-pop .pop-label { padding: 6px 10px 2px; font-size: 11px; color: var(--muted); }
 .acct-pop .item .who { font-size: 11px; color: var(--muted); }
 .acct-pop .item:disabled { opacity: .55; cursor: default; background: none; }
@@ -457,10 +461,12 @@ div.cm-row .jump { text-align: left; }
       <option value="coHttps">https://git.acme.dev (company, answers)</option><option value="coSilent">https://git.acme.dev (company, silent)</option>
       <option value="none">no remote</option><option value="notgit">not a Git repository</option></select></label>
     <label class="chip-btn" title="Tokens Review Lens can already use">Signed in <select id="opt-signed">
-      <option value="cli" selected>gh / glab, both accounts</option><option value="other">gh, v4tsa only</option><option value="rl">Review Lens, git's account</option><option value="none">nothing</option></select></label>
-    <label class="chip-btn" title="What v4tsa may do on acme/invoices (vatsarishabh22 can always push)">v4tsa here <select id="opt-v4">
+      <option value="cli" selected>gh / glab, both accounts</option><option value="other">gh, example-login only</option><option value="rl">Review Lens, git's account</option><option value="none">nothing</option></select></label>
+    <label class="chip-btn" title="Is origin a fork? Its PRs then live on the parent">Fork <select id="opt-fork">
+      <option value="no" selected>origin isn't a fork</option><option value="yes">fork, parent public</option><option value="gone">fork, parent can't be read</option></select></label>
+    <label class="chip-btn" title="What example-login may do on origin (vatsarishabh22 can always push)">example-login here <select id="opt-v4">
       <option value="push" selected>can push</option><option value="read">can read</option><option value="none">no access</option></select></label>
-    <label class="chip-btn" title="The browser that approves the code, or the token you paste, belongs to v4tsa"><input type="checkbox" id="opt-wrongbrowser"> Sign-in comes back as v4tsa</label>
+    <label class="chip-btn" title="The browser that approves the code, or the token you paste, belongs to example-login"><input type="checkbox" id="opt-wrongbrowser"> Sign-in comes back as example-login</label>
     <button class="chip-btn" id="opt-limited" title="GitLab answers 429: about 30 calls at once hit its per-minute limit">GitLab busy</button>
     <button class="chip-btn" id="opt-webdrafts" title="You wrote 2 comments on GitLab's own page and never submitted them">Drafts from GitLab's page</button>
     <button class="chip-btn" id="opt-held" title="Your last Finish timed out while publishing: 3 drafts are still on the MR">Couldn't tell: drafts</button>
@@ -605,7 +611,7 @@ const THREADS_AT_LOAD = [
 // HTTPS, the username git saved. An SSH key can't call the API, so a token is still needed: from gh/glab, or signing in.
 const ORIGINS = {
   alias: { url: "git@github-personal:acme/invoices.git", kind: "GitHub", who: "vatsarishabh22", by: "SSH key for github-personal", ssh: true },
-  plain: { url: "git@github.com:acme/invoices.git", kind: "GitHub", who: "v4tsa", by: "SSH key for github.com", ssh: true },
+  plain: { url: "git@github.com:acme/invoices.git", kind: "GitHub", who: "example-login", by: "SSH key for github.com", ssh: true },
   // over HTTPS only a user written in the URL (or credential.<url>.username) names the account: git's saved sign-in
   // comes back with its password, which Review Lens never reads
   https: { url: "https://vatsarishabh22@github.com/acme/invoices.git", kind: "GitHub", who: "vatsarishabh22", by: "the user in origin's URL" },
@@ -615,10 +621,14 @@ const ORIGINS = {
   coHttps: { url: "https://git.acme.dev/acme/invoices.git", kind: null, who: null, self: true, probe: "gitlab" },
   coSilent: { url: "https://git.acme.dev/acme/invoices.git", kind: null, who: null, self: true, probe: "unknown" },
 };
-const LOOK = { vatsarishabh22: { initials: "VR", color: "#7b61c9" }, v4tsa: { initials: "V4", color: "#2f8f6f" }, rishabh: { initials: "R", color: "#c06030" } };
+const LOOK = { vatsarishabh22: { initials: "VR", color: "#7b61c9" }, "example-login": { initials: "EL", color: "#2f8f6f" }, rishabh: { initials: "R", color: "#c06030" } };
 const whyOf = s => ({ git: `git connects here as this account (${s.by})`, picked: "You picked it for this repository", new: "You just signed in with it",
-  only: "The only account you're signed in with that can see this repository", push: "The only one of your accounts that can push here" })[s.why] || "";
+  only: "The only account you're signed in with that can see this repository", push: s.fork && s.fork !== "no" ? "The only one of your accounts that can push to this fork" : "The only one of your accounts that can push here" })[s.why] || "";
 const SELF = "git.acme.dev";
+// a fork's parent, at a real length (48 characters), and the fork itself (spec/README.md, "Forks")
+const PARENT_REPO = "acme-platform-engineering/invoice-ledger-service", FORK_REPO = "vatsarishabh22/invoice-ledger-service";
+// your pick of the listed repository in a fork, per sample origin (the list header's switch)
+const LISTED = {};
 const DIRTY = ["M  src/app/modules/payments/refunds.py", "M  tests/test_refunds.py", "?  notes/refunds.md"];
 
 // The sample PR #148 sits on top of a stack. Every PR targets main and is built on the branch below it, so only git history
@@ -640,14 +650,22 @@ const ownFiles = () => FILES.filter(f => f.lines.some(e => e[0] !== "c" && shown
 // ---------- state ----------
 const fresh = () => ({
   mode: "normal", tool: "project", panel: "list", pr: 148, scope: "all", picked: new Set(), stack: stackMode(),
-  dirty: document.getElementById("opt-dirty").checked, origin: document.getElementById("opt-origin").value, signed: document.getElementById("opt-signed").value, v4: document.getElementById("opt-v4").value, limited: false, webDrafts: false, held: null, refuseApprove: false, confirm: false, step: 0, busy: null, checking: false, vPick: 0, sumText: "",
+  dirty: document.getElementById("opt-dirty").checked, origin: document.getElementById("opt-origin").value, signed: document.getElementById("opt-signed").value, v4: document.getElementById("opt-v4").value, fork: document.getElementById("opt-fork").value, limited: false, webDrafts: false, held: null, refuseApprove: false, confirm: false, step: 0, busy: null, checking: false, vPick: 0, sumText: "",
   filesView: "pr", open: OWN_FILE.path, tabs: [OWN_FILE.path], diff: false, unified: false, caret: null, hunk: null,
   viewed: {}, since: {}, comments: {}, sel: null, threads: structuredClone(THREADS_AT_LOAD), replies: {}, replyTo: null, impactTicks: {}, resolving: {}, postedEdit: null, postedDelete: null, postedWrite: {}, peek: {}, impactWide: false, impactSlow: false, noImpact: false, impactBusy: false, dynNote: null, placeFocus: null, remote: false, cmFilter: "all", jump: null, unfold: {}, draft: null, draftText: "", pop: null, toast: null, flash: false, resume: false, submitted: false, verdict: null,
   tokenErr: null, authFrom: "out", adding: false,
 });
 // The account rule (spec/gitlab.md, "Picking the host"): git's own account when a token for it exists; else the only one
 // signed in; else ask once; else sign in, naming the account git connects as
-const access = (s, login) => login === "v4tsa" ? s.v4 : "push";
+// what an account may do on ORIGIN: vatsarishabh22 (and rishabh) push, example-login as the scenario bar says
+const access = (s, login) => login === "example-login" ? s.v4 : "push";
+// the listed repository: origin, or in a fork its parent (unless you switched, or the parent can't be read)
+const listedOf = s => s.fork === "no" || !ORIGINS[s.origin] ? "origin" : s.fork === "gone" ? "origin" : LISTED[s.origin] || "parent";
+const wrapName = n => esc(n).replace("/", "/<wbr>");
+const repoOf = s => s.fork === "no" ? "acme/invoices" : listedOf(s) === "parent" ? PARENT_REPO : FORK_REPO;
+// "can see" reads the listed repository (a public parent: everyone), "can push" reads origin (spec/README.md, "Forks")
+const sees = (s, login) => listedOf(s) === "parent" ? true : access(s, login) !== "none";
+const pushes = (s, login) => access(s, login) === "push";
 // The account rule (spec/gitlab.md, "Picking the host"), over the accounts that can SEE the repository: your pick for it;
 // else git's own account; else, git saying nothing, the only one that can see it, or the only one that can push; else ask.
 // [dry] computes a case for the table without starting the server's question.
@@ -657,8 +675,8 @@ function resolve(s, dry) {
   const saved = o?.self && s.signed === "rl" ? (SERVER_KIND[SELF] || "gitlab") : null;
   Object.assign(s, { noRemote: !o, notGit: s.origin === "notgit", self: !!o?.self, gl: o?.kind === "GitLab" && !o?.self, expect: o?.who || null, by: o?.by || null,
     tokenKind: saved || (o?.self && o.kind === "GitLab" ? "gitlab" : null), probe: o?.self ? (saved || (o.probe ? "asking" : "gitlab")) : null, lost: null });
-  const cli = s.gl ? [{ login: "vatsarishabh22", via: "From your glab sign-in" }] : [{ login: "vatsarishabh22", via: "From your gh sign-in" }, { login: "v4tsa", via: "From your gh sign-in" }];
-  s.tokens = !o ? [] : s.signed === "cli" && !o.self ? cli : s.signed === "other" && !o.self && !s.gl ? [{ login: "v4tsa", via: "From your gh sign-in" }]
+  const cli = s.gl ? [{ login: "vatsarishabh22", via: "From your glab sign-in" }] : [{ login: "vatsarishabh22", via: "From your gh sign-in" }, { login: "example-login", via: "From your gh sign-in" }];
+  s.tokens = !o ? [] : s.signed === "cli" && !o.self ? cli : s.signed === "other" && !o.self && !s.gl ? [{ login: "example-login", via: "From your gh sign-in" }]
     : s.signed === "rl" ? [{ login: o.who || (o.self ? "rishabh" : "vatsarishabh22"), via: "Signed in with Review Lens" }] : [];
   decide(s, dry);
   // an HTTPS company server is asked, signed out, what it runs (the last resort: SSH's greeting already says)
@@ -669,21 +687,21 @@ function resolve(s, dry) {
 function decide(s, dry) {
   if (!ORIGINS[s.origin]) { s.auth = "out"; return s; }
   Object.assign(s, { gitBlind: false, choices: null, lost: null });
-  const sees = s.tokens.filter(t => access(s, t.login) !== "none"), pushes = sees.filter(t => access(s, t.login) === "push");
+  const seeing = s.tokens.filter(t => sees(s, t.login)), pushing = seeing.filter(t => pushes(s, t.login));
   const kept = REMEMBERED[s.origin] && s.tokens.find(t => t.login === REMEMBERED[s.origin]);
-  const mine = s.expect && sees.find(t => t.login === s.expect);
-  if (kept && sees.includes(kept)) Object.assign(s, { auth: "in", account: kept.login, why: "picked" });
+  const mine = s.expect && seeing.find(t => t.login === s.expect);
+  if (kept && seeing.includes(kept)) Object.assign(s, { auth: "in", account: kept.login, why: "picked" });
   else if (mine) Object.assign(s, { auth: "in", account: mine.login, why: "git" });
-  else if (!s.expect && sees.length === 1) Object.assign(s, { auth: "in", account: sees[0].login, why: "only" });
-  else if (!s.expect && pushes.length === 1) Object.assign(s, { auth: "in", account: pushes[0].login, why: "push" });
-  else if (!s.expect && sees.length > 1) Object.assign(s, { auth: "pick", account: sees[0].login, choices: sees });
+  else if (!s.expect && seeing.length === 1) Object.assign(s, { auth: "in", account: seeing[0].login, why: "only" });
+  else if (!s.expect && pushing.length === 1) Object.assign(s, { auth: "in", account: pushing[0].login, why: "push" });
+  else if (!s.expect && seeing.length > 1) Object.assign(s, { auth: "pick", account: seeing[0].login, choices: seeing });
   else {
     // git's account signed in but its token can't see the repository (an organisation's single sign-on not authorised, a missing scope)
     s.gitBlind = !!(s.expect && s.tokens.some(t => t.login === s.expect));
-    s.auth = s.gitBlind || (s.tokens.length && !sees.length && !s.expect) ? "blind" : "out";
+    s.auth = s.gitBlind || (s.tokens.length && !seeing.length && !s.expect) ? "blind" : "out";
   }
   // a remembered pick that lost access is said, never dropped in silence
-  if (kept && !sees.includes(kept)) { s.lost = kept.login; if (!dry && s.auth === "in") s.toast = [`${kept.login} can't see acme/invoices any more`, `Reviewing as ${s.account}. ${whyOf(s)}.`]; }
+  if (kept && !seeing.includes(kept)) { s.lost = kept.login; if (!dry && s.auth === "in") s.toast = [`${kept.login} can't see ${repoOf(s)} any more`, `Reviewing as ${s.account}. ${whyOf(s)}.`]; }
   return s;
 }
 const blank = fresh;
@@ -882,7 +900,9 @@ function prList() {
       <div class="stack-sub"><span>Stack of ${stack.length} PRs</span><span>${done} of ${stack.length} reviewed</span></div>
       <div class="stack-bar" aria-label="${done} of ${stack.length} reviewed">${stack.map(pr => `<i class="${listStatus(pr)?.done ? "ok" : pr === next ? "next" : ""}"></i>`).join("")}</div></div>
     <div class="stack-rows"><div class="stack-more up" hidden></div>${stack.map(rail).join("")}<div class="stack-more down" hidden></div></div></div>`;
-  return `<div class="search">${I.search}<input id="pr-search" placeholder="Search pull requests" aria-label="Search pull requests"></div>
+  const fork = S.fork !== "no" ? `<div class="repo-line" style="position:relative"><button class="acct-btn" data-act="pop" data-pop="repo" title="${esc(repoOf(S))}">
+      ${S.fork === "gone" ? "Pull requests on this fork · its parent can't be read" : `Pull requests on ${listedOf(S) === "parent" ? "the parent of this fork" : "this fork"}`} ▾<b>${wrapName(repoOf(S))}</b></button>${S.pop === "repo" ? repoPop() : ""}</div>` : "";
+  return `${fork}<div class="search">${I.search}<input id="pr-search" placeholder="Search pull requests" aria-label="Search pull requests"></div>
     <div class="section-label">Waiting on you</div>${waiting ? group : ""}${PRS.filter(p => p.requested && !STACK.includes(p.n)).map(p => item(p)).join("")}
     <div class="section-label">Other open</div>${waiting ? "" : group}${PRS.filter(p => !p.requested && !STACK.includes(p.n)).map(p => item(p)).join("")}`;
 }
@@ -995,13 +1015,19 @@ function acctRow() {
 function acctPop() {
   const inReview = S.mode === "review", list = S.tokens.map(withLook);
   return `<div class="pop acct-pop"><div class="pop-label">${hostKind()} · ${hostName()}</div>
-    ${list.map(a => { const blind = access(S, a.login) === "none";
+    ${list.map(a => { const blind = !sees(S, a.login);
       return `<button class="item" data-act="acct-use" data-login="${a.login}" ${(inReview || blind) && a.login !== S.account ? "disabled" : ""}>
-      <span class="tick">${a.login === S.account ? "✓" : ""}</span><span><b>${esc(a.login)}</b><div class="who">${blind ? "Can't see acme/invoices" : esc(a.via)}</div></span></button>`; }).join("")}
+      <span class="tick">${a.login === S.account ? "✓" : ""}</span><span><b>${esc(a.login)}</b><div class="who">${blind ? `Can't see ${repoOf(S)}` : esc(a.via)}</div></span></button>`; }).join("")}
     <div class="why fineprint">${inReview ? "Switch accounts after you exit the review: your drafts and Viewed ticks belong to this one" : esc(whyOf(S))}.</div><hr>
     ${S.self ? "" : `<button class="item" data-act="add-account" ${inReview ? "disabled" : ""}>Add a ${hostKind()} account…</button>`}
     <button class="item" data-act="token" ${inReview ? "disabled" : ""}>Use a token…</button>
     <button class="item" data-act="signout" ${inReview ? "disabled" : ""}>Sign out of ${esc(acct().login)}</button></div>`;
+}
+// the switch between a fork's parent and the fork itself, remembered per checkout
+function repoPop() {
+  const item = (v, name, note) => `<button class="item" data-act="repo-use" data-v="${v}" ${S.fork === "gone" && v === "parent" ? "disabled" : ""}><span class="tick">${listedOf(S) === v ? "✓" : ""}</span><span><b class="wrap">${wrapName(name)}</b><div class="who">${note}</div></span></button>`;
+  return `<div class="pop acct-pop" style="width:300px"><div class="pop-label">Pull requests from</div>
+    ${item("parent", PARENT_REPO, S.fork === "gone" ? "The fork's parent can't be read" : "The repository this fork was made from")}${item("origin", FORK_REPO, "This fork (origin)")}</div>`;
 }
 // what the panel shows instead of the PR list until an account is picked
 function signIn() {
@@ -1023,19 +1049,20 @@ function signIn() {
   }
   if (S.auth === "mismatch") return `<div class="detail signin"><div class="card"><b>You signed in as ${S.got}, but git connects here as ${S.expect}</b>
       <span class="fineprint">That sign-in belongs to ${S.got} (the browser was signed in to it, or the token is its). Reviews from Review Lens would come from ${S.got} while git connects as ${S.expect} (${S.by}). Sign in again as ${S.expect}, or review as ${S.got} on purpose.</span>
-      ${access(S, S.got) === "none" ? `<span class="fineprint">${S.got} can't see acme/invoices either.</span>` : ""}
-      <div class="btns"><button class="primary" data-act="signin">Sign in again</button>${access(S, S.got) === "none" ? "" : `<button class="secondary" data-act="anyway">Review as ${S.got} anyway</button>`}</div></div></div>`;
+      ${!sees(S, S.got) ? `<span class="fineprint">${S.got} can't see ${repoOf(S)} either.</span>` : ""}
+      <div class="btns"><button class="primary" data-act="signin">Sign in again</button>${!sees(S, S.got) ? "" : `<button class="secondary" data-act="anyway">Review as ${S.got} anyway</button>`}</div></div></div>`;
   if (S.auth === "blind" && S.gitBlind) {
-    const ok = S.tokens.find(t => t.login !== S.expect && access(S, t.login) !== "none");
-    return `<div class="detail signin"><div class="card"><b>${S.expect} can't see acme/invoices</b>
+    const ok = S.tokens.find(t => t.login !== S.expect && sees(S, t.login));
+    return `<div class="detail signin"><div class="card"><b>${S.expect} can't see ${repoOf(S)}</b>
       <span class="fineprint">git connects here as ${S.expect} (${S.by}), but ${hostKind()} says that account's token can't see this repository. If an organisation owns it, it may need you to authorise the token for its single sign-on, or to approve Review Lens.</span>
       <div class="btns"><button class="primary" data-act="signin">Sign in again as ${S.expect}</button>${ok ? `<button class="secondary" data-act="use-other" data-login="${ok.login}">Review as ${ok.login} instead</button>` : ""}</div></div></div>`;
   }
-  if (S.auth === "blind") return `<div class="detail signin"><div class="card"><b>None of your accounts can see acme/invoices</b>
+  const back = S.fork === "yes" && listedOf(S) === "origin" ? `<button class="secondary" data-act="repo-use" data-v="parent">Show ${PARENT_REPO.split("/")[0]}'s pull requests</button>` : "";
+  if (S.auth === "blind") return `<div class="detail signin"><div class="card"><b>None of your accounts can see ${repoOf(S)}</b>
       <span class="fineprint">${S.tokens.map(t => t.login).join(" and ")} ${S.tokens.length > 1 ? "are" : "is"} signed in, but ${hostKind()} says ${S.tokens.length > 1 ? "none of them can" : "that account can't"} see this repository. Sign in with the account you use for it.</span>
-      <div class="btns"><button class="primary" data-act="signin">Sign in with ${hostKind()}</button><button class="secondary" data-act="token">Use a token</button></div></div></div>`;
+      <div class="btns"><button class="primary" data-act="signin">Sign in with ${hostKind()}</button><button class="secondary" data-act="token">Use a token</button>${back}</div></div></div>`;
   if (S.auth === "pick") return `<div class="detail signin"><div class="card"><b>Which account reviews this repository?</b>
-      <span class="fineprint">Both of your GitHub accounts can push to acme/invoices, and its HTTPS remote names no user, so git can't say which one you push as. Review Lens remembers your pick for this repository; change it any time from "Reviewing as".</span>
+      <span class="fineprint">Both of your GitHub accounts can push to ${S.fork === "no" ? "acme/invoices" : FORK_REPO}, and its HTTPS remote names no user, so git can't say which one you push as. Review Lens remembers your pick for this repository; change it any time from "Reviewing as".</span>
       ${(S.choices || S.tokens).map(withLook).map(a => `<label class="opt"><input type="radio" name="acct" data-act="acct-pick" data-login="${a.login}" ${S.account === a.login ? "checked" : ""}><span class="avatar" style="width:18px;height:18px;font-size:8px;grid-row:auto;background:${a.color}">${a.initials}</span><span><b>${a.login}</b> <span class="fineprint">${esc(a.via)}</span></span></label>`).join("")}
       <div class="btns"><button class="primary" data-act="pick-go">Review as ${esc(S.account)}</button></div></div></div>`;
   // no remote: say what's missing in the user's words and offer the one step that fixes it (IntelliJ's Manage Remotes)
@@ -1049,8 +1076,8 @@ function signIn() {
   const kind = hostKind(), units = kind === "GitLab" ? "merge requests" : kind ? "pull requests" : "pull or merge requests";
   const as = S.expect ? ` as ${S.expect}` : "";
   const known = S.expect ? `git connects to this repository as <b>${S.expect}</b> (${S.by}). ${ORIGINS[S.origin]?.ssh ? `An SSH key can't call ${kind || "the server"}'s API` : "Review Lens doesn't reuse git's saved password"}, so sign in once as the same account: ` : "";
-  const others = S.tokens.filter(t => t.login !== S.expect && access(S, t.login) !== "none");
-  const blindOnes = S.tokens.filter(t => access(S, t.login) === "none").map(t => t.login);
+  const others = S.tokens.filter(t => t.login !== S.expect && sees(S, t.login));
+  const blindOnes = S.tokens.filter(t => !sees(S, t.login)).map(t => t.login);
   const other = S.expect && others.length ? `<button class="secondary" data-act="use-other" data-login="${others[0].login}">Review as ${others[0].login} instead</button>` : "";
   return S.self ? `<div class="detail signin"><div class="card"><b>Sign in to ${SELF}${kind ? ` (${kind})` : ""}${as}</b>
       ${S.probe === "asking" ? `<span class="wait fineprint"><span class="spin"></span> Asking ${SELF} whether it runs GitHub or GitLab…</span>`
@@ -1060,7 +1087,7 @@ function signIn() {
     <p class="fineprint">Without signing in, the panel lists this repository's branches to review.</p></div>`
     : `<div class="detail signin"><div class="card"><b>${S.expect ? `Sign in to GitHub${as}` : "Sign in to GitHub to see pull requests"}</b>
       <span class="fineprint">${known || "This repository's origin is on github.com. Signed in, "}Review Lens lists the PRs waiting on you and posts your review as you${gl() ? "" : ", and syncs Viewed"}.</span>
-      ${blindOnes.length ? `<span class="fineprint">${blindOnes.join(", ")} ${blindOnes.length > 1 ? "are" : "is"} signed in but can't see acme/invoices.</span>` : ""}
+      ${blindOnes.length ? `<span class="fineprint">${blindOnes.join(", ")} ${blindOnes.length > 1 ? "are" : "is"} signed in but can't see ${repoOf(S)}.</span>` : ""}
       <div class="btns"><button class="primary" data-act="signin">Sign in with GitHub</button><button class="secondary" data-act="token">Use a token</button>${other}</div></div>
     <p class="fineprint">Without signing in, the panel lists this repository's branches to review.</p></div>`;
 }
@@ -1511,7 +1538,7 @@ document.getElementById("ide").addEventListener("click", e => {
       // the browser approves; Review Lens polls GitHub and picks up the token
       // then checks who approved: the browser may be signed in to the other account
       setTimeout(() => { if (S.auth !== "code") return; S.approving = false;
-        const got = document.getElementById("opt-wrongbrowser").checked ? "v4tsa" : S.expect || "vatsarishabh22";
+        const got = document.getElementById("opt-wrongbrowser").checked ? "example-login" : S.expect || "vatsarishabh22";
         const token = { login: got, via: "Signed in with Review Lens" };
         if (S.adding) { // a second account: added to the menu, the one you review as stays
           if (!S.tokens.some(t => t.login === got)) S.tokens.push(token);
@@ -1529,7 +1556,7 @@ document.getElementById("ide").addEventListener("click", e => {
       if (S.self && !S.tokenKind) { S.tokenErr = `Pick what ${SELF} runs: GitHub Enterprise or GitLab.`; break; }
       if (!v) { S.tokenErr = "Paste a token first."; break; }
       if (v.length < 8) { S.tokenErr = `${hostName()} refused that token (401). Check it hasn't expired and has the right scope.`; break; }
-      const login = document.getElementById("opt-wrongbrowser").checked && !S.self ? "v4tsa" : S.expect || (S.self ? "rishabh" : "vatsarishabh22");
+      const login = document.getElementById("opt-wrongbrowser").checked && !S.self ? "example-login" : S.expect || (S.self ? "rishabh" : "vatsarishabh22");
       if (S.self) SERVER_KIND[SELF] = S.tokenKind;
       if (S.expect && login !== S.expect) { S.pending = { login, via: "Token you pasted" }; S.auth = "mismatch"; S.got = login; break; }
       if (!S.tokens.some(t => t.login === login)) S.tokens.push({ login, via: "Token you pasted" });
@@ -1537,11 +1564,12 @@ document.getElementById("ide").addEventListener("click", e => {
       if (S.auth === "in") say(`Signed in to ${hostName()} as ${acct().login}`, "Kept in your IDE's password store."); break;
     }
     case "acct-pick": S.account = t.dataset.login; break;
-    case "pick-go": REMEMBERED[S.origin] = S.account; decide(S); say(`Reviewing acme/invoices as ${S.account}`, "Remembered for this repository."); break;
-    case "acct-use": S.pop = null; if (t.disabled) break; if (access(S, t.dataset.login) === "none") { say(`${t.dataset.login} can't see acme/invoices`, "Pick an account that can, or sign in with one."); break; }
+    case "pick-go": REMEMBERED[S.origin] = S.account; decide(S); say(`Reviewing ${repoOf(S)} as ${S.account}`, "Remembered for this repository."); break;
+    case "acct-use": S.pop = null; if (t.disabled) break; if (!sees(S, t.dataset.login)) { say(`${t.dataset.login} can't see ${repoOf(S)}`, "Pick an account that can, or sign in with one."); break; }
       if (t.dataset.login !== S.account) { REMEMBERED[S.origin] = t.dataset.login; decide(S); say(`Reviewing as ${S.account}`, "Remembered for this repository. The list now shows what's waiting on this account."); } break;
     case "signout": S.pop = null; say(`Signed out of ${acct().login}`, "Its token is removed from your IDE's password store."); S.tokens = S.tokens.filter(t => t.login !== S.account); decide(S); S.panel = "list"; break;
     case "noop": break;
+    case "repo-use": S.pop = null; if (t.disabled) break; LISTED[S.origin] = t.dataset.v; decide(S); say(`Pull requests on ${repoOf(S)}`, "Remembered for this project."); break;
     case "remotes": say("Opens Git › Manage Remotes", "Paste the repository's URL from GitHub or GitLab; Review Lens picks it up at once."); break;
     case "held-open": say("Opens !148 on GitLab in your browser", "Publish or delete your drafts there, then open Finish review again."); break;
     case "held-resend": S.held = null; S.pop = null; say("Summary sent again", "Posted on !148."); break;
@@ -1660,21 +1688,21 @@ document.addEventListener("keydown", e => {
   }
 });
 document.getElementById("opt-dirty").addEventListener("change", e => { S.dirty = e.target.checked; render(); });
-document.getElementById("opt-reset").addEventListener("click", () => { for (const k in REMEMBERED) delete REMEMBERED[k]; for (const k in SERVER_KIND) delete SERVER_KIND[k]; S = resolve(blank()); render(); });
+document.getElementById("opt-reset").addEventListener("click", () => { for (const k in REMEMBERED) delete REMEMBERED[k]; for (const k in SERVER_KIND) delete SERVER_KIND[k]; for (const k in LISTED) delete LISTED[k]; S = resolve(blank()); render(); });
 document.querySelectorAll('input[name="stack"]').forEach(r => r.addEventListener("change", () => { S.stack = stackMode(); stackFresh = true; if (S.scope !== "since") { S.scope = "all"; S.picked = new Set(); } render(); }));
 // the GitLab chips turn the GitLab repository on, as they only happen there
 // One cell per case, worked out by resolve() itself, so the table can't disagree with the screens
-const SIGNED = [["cli", "gh / glab, both accounts"], ["other", "gh, v4tsa only"], ["rl", "Review Lens, git's account"], ["none", "nothing"]];
+const SIGNED = [["cli", "gh / glab, both accounts"], ["other", "gh, example-login only"], ["rl", "Review Lens, git's account"], ["none", "nothing"]];
 function cellOf(origin, signed) {
   const s = resolve(Object.assign(blank(), { origin, signed }), true), kind = s.self ? ({ gitlab: "GitLab", github: "GitHub Enterprise" }[s.tokenKind] || null) : s.gl ? "GitLab" : "GitHub";
   if (s.notGit) return ["none", "Not a Git repository", "Nothing to review"];
   if (s.noRemote) return ["none", "Link a repository…", "No remote"];
   if (s.auth === "in") return ["in", `Reviewing as ${s.account}`, whyOf(s) + (s.lost ? ` · ${s.lost} lost access` : "")];
   if (s.auth === "pick") return ["pick", `Asks: ${s.choices.map(t => t.login).join(" or ")}`, "git can't say, and more than one can push"];
-  if (s.auth === "blind" && s.gitBlind) { const ok = s.tokens.find(t => t.login !== s.expect && access(s, t.login) !== "none");
+  if (s.auth === "blind" && s.gitBlind) { const ok = s.tokens.find(t => t.login !== s.expect && sees(s, t.login));
     return ["blind", `${s.expect} can't see the repo${ok ? ` · or review as ${ok.login}` : ""}`, "git's account is signed in, but its token can't see it"]; }
   if (s.auth === "blind") return ["blind", "None can see the repo", `${s.tokens.map(t => t.login).join(", ")} signed in without access`];
-  const other = s.tokens.find(t => t.login !== s.expect && access(s, t.login) !== "none");
+  const other = s.tokens.find(t => t.login !== s.expect && sees(s, t.login));
   const o = ORIGINS[origin], host = s.self ? SELF : s.gl ? "gitlab.com" : "github.com";
   const asking = s.self && !s.tokenKind ? (o.probe === "unknown" ? "the server doesn't say what it runs: you pick" : "asks the server what it runs") : kind ? `${kind}, ${o.ssh ? "from the SSH greeting" : s.self ? "as the server said" : "by its name"}` : "";
   return ["out", `Sign in${s.expect ? ` as ${s.expect}` : ""}${other ? ` · or review as ${other.login}` : ""}`, [s.expect ? `no token for git's account` : `no account for ${host}`, asking].filter(Boolean).join(" · ")];
@@ -1682,7 +1710,7 @@ function cellOf(origin, signed) {
 function renderTable() {
   const opts = [...document.getElementById("opt-origin").options];
   document.getElementById("rules").innerHTML = `<h2>Who reviews as whom</h2>
-    <p class="lead">Every origin × what's signed in, worked out by the same rule the screens use, with v4tsa ${document.getElementById("opt-v4").selectedOptions[0].text} on acme/invoices. Click a case to load it above.</p>
+    <p class="lead">Every origin × what's signed in, worked out by the same rule the screens use, with example-login ${document.getElementById("opt-v4").selectedOptions[0].text} on origin, ${document.getElementById("opt-fork").selectedOptions[0].text}. Click a case to load it above.</p>
     <p class="legend"><span class="in">Reviews right away</span><span class="out">You sign in first</span><span class="pick">Asks you which account, once</span><span class="blind">Signed in, but no account can see the repo</span><span class="none">Nothing to review here</span></p>
     <table><tr><th class="o">Origin</th>${SIGNED.map(([, l]) => `<th>${l}</th>`).join("")}</tr>
     ${opts.map(o => `<tr><th class="o">${esc(o.text)}</th>${SIGNED.map(([g]) => { const [k, t, why] = cellOf(o.value, g);
@@ -1699,6 +1727,7 @@ const pickOrigin = () => { S = resolve(blank()); S.tool = "review"; render(); re
 document.getElementById("opt-origin").addEventListener("change", pickOrigin);
 document.getElementById("opt-signed").addEventListener("change", pickOrigin);
 document.getElementById("opt-v4").addEventListener("change", pickOrigin);
+document.getElementById("opt-fork").addEventListener("change", pickOrigin);
 document.getElementById("opt-limited").addEventListener("click", () => { glOn(); S.limited = true; if (S.mode !== "review") S.tool = "review"; render(); setTimeout(() => { S.limited = false; render(); }, 3500); });
 const toFinish = () => { if (S.mode === "review") { S.pop = "submit"; S.popAt = S.tabs.length ? "bar" : "panel"; if (S.popAt === "panel") S.tool = "review"; } else say("Start the review of !148 first", "Then open Finish review."); };
 document.getElementById("opt-webdrafts").addEventListener("click", () => { glOn(); S.webDrafts = true; toFinish(); render(); });

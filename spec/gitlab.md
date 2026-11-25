@@ -30,7 +30,7 @@ What git already knows comes first; the host is asked only when git can't say.
    says so, with no button (a repository made now has nothing to review).
 2. **Over SSH, the greeting names both the host's kind and the account git connects as** (whose key it is, not what it may do): `ssh -T git@<host or alias>`, the same key
    git connects with. GitHub answers `Hi <login>! You've successfully authenticated, but GitHub does not provide shell
-   access.` (measured: `github-personal` greeted vatsarishabh22, plain `github.com` greeted v4tsa); GitLab answers
+   access.` (measured: an SSH alias and plain `github.com` greeted two different accounts, one per key); GitLab answers
    `Welcome to GitLab, @<username>!` (GitLab's docs; not measured, as no key here is on gitlab.com). It runs with
    `BatchMode=yes`, stdin closed and a 5 s limit on the whole process (a `ConnectTimeout` alone doesn't stop a session
    that connects and then hangs), so a key behind a passphrase or a host that doesn't answer stays quiet. A deploy key
@@ -47,26 +47,31 @@ What git already knows comes first; the host is asked only when git can't say.
    GitHub Enterprise (api.github.com/meta carries it, measured; an Enterprise server's answer is from GitHub's docs).
    No answer within 5 s, or any other answer: the token card asks which the server runs. You can change the kind there.
 5. **The account Review Lens acts as** needs a token, as an SSH key can't call the API. Only accounts whose token can
-   **see** the repository count (a read of the repository answers: an account without access gets **404**, measured with v4tsa on a private repository of vatsarishabh22; an organisation's single sign-on not authorised for the token answers 403 with an `X-GitHub-SSO` header, from GitHub's docs, not measured). In order: the account you
+   **see** the listed repository count (in a fork, the parent: README's [Forks](README.md#forks)), and "can push" is read
+   on `origin`. Seeing means a read of the repository answers: an account without access gets **404**, measured with one account's token on another account's private repository; an organisation's single sign-on not authorised for the token answers 403 with an `X-GitHub-SSO` header, from GitHub's docs, not measured. In order: the account you
    picked for this repository; else the account git connects as; else, git saying nothing, the only account that can see
-   it, or the only one that can push (the repository's `permissions.push`; on review-lens vatsarishabh22 `push=true`,
-   v4tsa `push=false`, measured); else you pick once among those that can see it, remembered for this repository.
+   it, or the only one that can push (the repository's `permissions.push`; on review-lens the owner's account `push=true`,
+   a second account `push=false`, measured); else you pick once among those that can see it, remembered for this repository.
    - No token for git's account: the sign-in card names it ("Sign in to GitHub as vatsarishabh22", with the branch list below it, as with no token at all), offering
      "Review as <other> instead" only for an account that can see the repository.
    - git's account has a token that can't see the repository (an organisation's single sign-on not authorised for the
      token, an organisation that hasn't approved Review Lens, a missing scope): the card says so, with "Sign in again" or another account that can.
    - Tokens, none of which can see it: "None of your accounts can see <repo>".
-   - A picked account that lost access is said once ("v4tsa can't see acme/invoices any more"), then the order goes on.
+   - A picked account that lost access is said once ("<account> can't see <repo> any more"), then the order goes on.
    - A sign-in or a pasted token that comes back as another account says so; its token is kept only if you choose to
      review as that account. Adding an account from the menu keeps the one you review as; switching is yours.
    - A company server's kind is saved with its token (the token card's choice), so a signed-in server is never asked.
+
+A fork lists its parent's merge requests as in the README's [Forks](README.md#forks); GitLab names the parent
+`forked_from_project` (GitLab's docs; no fork was measured on gitlab.com).
 
 Self-managed GitLab works the same way: the host is whatever `origin` points at.
 
 ## Calling `glab`
 
 - **Every call names the host and the project itself**: `glab api --hostname <host> projects/<group%2Fproject>/…`,
-  and GraphQL `project(fullPath: "<group/project>")`, the path taken from `origin`'s URL. `glab`'s own `:id` and
+  and GraphQL `project(fullPath: "<group/project>")`, the path being the listed project's: `origin`'s URL, or in a
+  fork its parent's (`forked_from_project`, or your pick; README's [Forks](README.md#forks)). `glab`'s own `:id` and
   `:fullpath` placeholders are never used: with an SSH alias in `origin` (`git@gitlab-personal:group/project.git`)
   they fail ("none of the git remotes configured for this repository point to a known GitLab host").
 - **A write sends its payload as a JSON body** (`--input <file>`, `Content-Type: application/json`). `glab` 1.131

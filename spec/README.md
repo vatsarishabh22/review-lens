@@ -16,7 +16,7 @@ flowchart LR
 | Step | What happens | git / gh |
 |---|---|---|
 | List | Open PRs, the ones waiting on you first (your login is in their `reviewRequests`), [stacks](#stacks) grouped. Without `gh`, remote branches instead (and say so). | `gh auth status` · `gh pr list --state open --limit 100 --json number,title,headRefName,headRefOid,baseRefName,author,body,additions,deletions,changedFiles,updatedAt,reviewRequests,commits` · `gh api user --jq .login` · without gh: `git branch -r --format=%(refname:lstrip=2)` and `git symbolic-ref --short refs/remotes/origin/HEAD` (default `origin/main`) |
-| Fetch | A PR's head into a private ref, plus its base, plus its stack parent's head when it has one. A branch: fetch the remote. Then the commits since the merge base, or since the parent's head. | `git fetch --no-tags origin +pull/<n>/head:refs/review-lens/pr-<n> +refs/heads/<base>:refs/remotes/origin/<base>` · branch: `git fetch --no-tags origin` · `git merge-base <base> <head>` · `git log --format=%H%x09%an%x09%ct%x09%s <mergeBase>..<head>` |
+| Fetch | A PR's head into a private ref, plus its base, plus its stack parent's head when it has one. A branch: fetch the remote. Then the commits since the merge base, or since the parent's head. | `git fetch --no-tags origin +pull/<n>/head:refs/review-lens/pr-<n> +refs/heads/<base>:refs/remotes/origin/<base>` · a PR in another repository (a fork's parent): `git fetch --no-tags <its URL> +<head ref>:refs/review-lens/<key> +refs/heads/<base>:refs/review-lens/<key>-into`, plus its stack parent's head the same way into `refs/review-lens/<parent key>`; `<head ref>` is the host's (`pull/<n>/head` on GitHub, `refs/merge-requests/<iid>/head` on GitLab); the base is read from `refs/review-lens/<key>-into` · branch: `git fetch --no-tags origin` · `git merge-base <base> <head>` · `git log --format=%H%x09%an%x09%ct%x09%s <mergeBase>..<head>` |
 | Scope | No pick, or every commit: `from = mergeBase`, or for a PR in a stack the parent's head (see [Stacks](#stacks)). A contiguous pick: `from = <oldest picked>^`, `to = <newest picked>`. "Since your last review": `from = seenHead`, `to = head`, offered only when `seenHead` is still in the PR's history and newer commits exist. Starting or re-scoping sets `seenHead = head`. | |
 | Start | 1. Write `active.json` **first**, so a crash can always get back. 2. Park the work if the tree is dirty: tracked files (the editor's settings folder included, since teams commit files there and a PR can change them) and untracked files, except untracked files in the editor's settings folder (its scratch, rewritten constantly). 3. Check out the review branch **at the scope's end** (`range.to`), so the files on disk are exactly what the scope shows. On any failure: go back, restore, delete `active.json`. | `git status --porcelain` minus `?? .idea/…` lines · `git stash push --include-untracked -m "review-lens: parked from <ref> for <label>" -- . ":(exclude,literal)<each path of git ls-files --others --exclude-standard -- .idea>"` · `git checkout -B review/<key> <range.to>` |
 | Read | Full files at `range.to`, changed lines marked against `range.from`. PR files are read-only. Blame on the caret line only when a commit in the scope last changed it. | `git diff --raw -z --no-abbrev -M <from> <to>` · `git diff --numstat -z -M <from> <to>` · `git show <rev>:<path>` · `git blame --porcelain <to> -- <path>` · `git rev-list <from>..<to>` |
@@ -141,6 +141,35 @@ balloon. The link opens that PR's detail, never its review: Start review there s
 click once another review began, or on a PR no longer listed, does nothing. Nothing left, no link; Exit offers none, nor
 does a Finish whose parked work needs a hand (that warning shows at once).
 
+### Forks
+
+When `origin` is a fork, the PRs to review are on its parent: the list shows the parent's (measured on a fork of
+github-education-resources/GitHubGraduation-2022: 0 open PRs on the fork, the parent's open). Which repository is
+listed, first match wins:
+
+1. Your pick from the list header's switch, remembered per checkout (greyed during a review).
+2. A repository you chose with `gh repo set-default`, as gh reads it (both measured): `remote.<name>.gh-resolved` =
+   `base` names that remote's repository; any other value is an `owner/repo` and names that repository.
+3. The fork's `parent` from the host (the direct parent, so a fork of a fork lists the one it was made from; GitHub:
+   `repos/<origin>` → `fork`, `parent.full_name`; GitLab: `forked_from_project`, from GitLab's docs, not measured),
+   read with each token you have for the host until one answers, as a private parent may be visible to one account only.
+4. `origin` itself: not a fork, or no token can read the parent (deleted, private to you); the header then says so.
+
+A fork that takes PRs of its own opens on the parent's list: the switch covers it (a known limit; counting open PRs on
+both would cost a call per load).
+
+The listed repository is the one every call names: list, fetch, threads, Viewed, Finish, checks, compare. Its URL is
+origin's with the path swapped (same scheme, SSH alias and user): `git ls-remote git@github-personal:<parent>.git`
+answered (5.2 s, measured), so no `upstream` remote is needed. The account rule (`spec/gitlab.md`, "Picking the
+host") reads "can see" on the listed repository and "can push" on `origin`: in a fork nobody pushes to the parent
+(measured: neither of two accounts can push there; on the fork, one can and the other can't).
+
+A PR from a repository other than the default one (see [The state](#the-state)) keeps that repository in its target
+(`target.repo`, its full path) and a code for it in its key, so a switch never sends a saved review to a
+same-numbered PR elsewhere; its base and stack parent are fetched into private refs, never `refs/remotes/origin/*`,
+which belong to the fork. `stacks.json` names the repository it lists
+(`repo`): a list of another repository replaces it whole, so no PR number from one repository is read against another.
+
 ### Running at the same time
 
 An editor does several things at once: the reviewer clicks while the host is asked, a list loads, a tick is on its way.
@@ -196,8 +225,14 @@ Everything lives in `.git/review-lens/`, outside the working tree, as JSON. The 
 | `<key>.json` | Kept across reviews | One PR's scope (`range`, `scopeLabel`), ticks (`reviewed`, `unsent`), `seenHead` for "since your last review", `parentHead`: its stack parent's head at its last load (see [Stacks](#stacks)), `drafts`, `checked`: the impact map's ticks per changed function, kept with a hash of its text ([impact.md](impact.md)), and `verdict`: the last event GitHub accepted (`COMMENT`, `APPROVE`, `REQUEST_CHANGES`), absent until one is posted |
 | `stacks.json` | Rewritten at each list | `parents`: what the last list saw, PR number → its parent's `number`, that parent's `head` then, and `onBranch` when it is stacked the host's way (see [Stacks](#stacks)); `counts`: each stacked PR's own file count, keyed by `<parent head>..<head>`. Two commit ids fix the answer, so an entry never goes stale; a push makes a new key, and keys no PR in the list uses any more are dropped. See [Stacks](#stacks) |
 
-`<key>` is `pr-<number>` for a PR, or `branch-<name>` for a branch, with anything outside `[A-Za-z0-9._-]` replaced
-by `_`. The prefixes keep a branch named `active`, `stacks` or `pr-7` from overwriting another file.
+`<key>` is `pr-<number>` for a PR in the default repository, `pr-<number>-<code>` for a PR in any other (a fork's
+parent, see [Forks](#forks)), or `branch-<name>` for a branch, with anything outside `[A-Za-z0-9._-]` replaced by `_`.
+`<code>` is the first 8 hex digits of the SHA-1 of `<host>/<repository path>`, lowercased (github.com's
+`acme-platform-engineering/invoice-ledger-service` → `c1d2479c`); a code never collides the way joined names do
+(GitLab's `my_team/app` and `my/team_app` → `1194ea87` and `0989e0ae`). The default repository is the one gh listed
+before forks were: the remote whose `gh-resolved` marker names it, else a remote named `upstream`, else `origin` (gh
+picked `upstream` over `origin` with no marker, measured), so a `pr-<number>` written then still names its PR.
+The prefixes keep a branch named `active`, `stacks` or `pr-7` from overwriting another file.
 
 ### The Finish review payload
 
@@ -227,7 +262,7 @@ GitHub client. Change a rule here first, then in every editor, in the same PR.
 | `since-last-review` | "Since your last review" range, or none |
 | `viewed-merge`, `viewed-sync` | One checklist from this laptop's ticks and the host's Viewed answer; re-sending queued ticks |
 | `finish-selection` | Which comments and replies Finish posts |
-| `state-key` | `pr-<n>` / `branch-<name>` |
+| `state-key` | `pr-<n>` / `pr-<n>-<code>` (a PR outside the default repository, see [Forks](#forks)) / `branch-<name>` |
 | `badge` | ⭐ / ✅ / 🔄 |
 | `git-changes`, `git-blame` | `git diff --raw/--numstat -z`, `git blame --porcelain` |
 | `suggestion` | A comment body's text and suggestion blocks |
