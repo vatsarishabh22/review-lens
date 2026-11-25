@@ -22,9 +22,44 @@ flowchart LR
 
 ## Picking the host
 
-1. Read `origin`'s URL and take its host, an SSH alias resolved to its `HostName` (as for GitHub).
-2. `gh auth status --hostname <host>` succeeds → GitHub. `glab auth status --hostname <host>` succeeds → GitLab.
-3. Neither → the branch list, as today when `gh` is missing, saying which CLI to sign in with.
+What git already knows comes first; the host is asked only when git can't say.
+
+1. Read `origin`'s URL and take its host, an SSH alias resolved to its `HostName` (as for GitHub). No remote: the
+   panel says the project isn't on GitHub or GitLab yet, with one button, **Link a repository…**, that opens the IDE's
+   own Manage Remotes (`Git.Configure.Remotes`); the panel picks up the new remote by itself. Not a Git repository: it
+   says so, with no button (a repository made now has nothing to review).
+2. **Over SSH, the greeting names both the host's kind and the account git connects as** (whose key it is, not what it may do): `ssh -T git@<host or alias>`, the same key
+   git connects with. GitHub answers `Hi <login>! You've successfully authenticated, but GitHub does not provide shell
+   access.` (measured: `github-personal` greeted vatsarishabh22, plain `github.com` greeted v4tsa); GitLab answers
+   `Welcome to GitLab, @<username>!` (GitLab's docs; not measured, as no key here is on gitlab.com). It runs with
+   `BatchMode=yes`, stdin closed and a 5 s limit on the whole process (a `ConnectTimeout` alone doesn't stop a session
+   that connects and then hangs), so a key behind a passphrase or a host that doesn't answer stays quiet. A deploy key
+   greets as a repository (`Hi <owner>/<repo>!`, from GitHub's docs, not measured): a name with a `/` is no account.
+   The answer is kept per host or alias, as the list picks again on every load and an SSH agent may ask to approve
+   each use of a key.
+3. **Over HTTPS, the account is a user written in the URL** (`https://<user>@github.com/…`) or `credential.<url>.username`.
+   Git's saved sign-in is never read: `git credential fill` returns its password with the username (on this machine no
+   `credential.*.username` is set, so an HTTPS remote names no account and push rights decide, step 5).
+4. The kind, when git didn't say: `github.com` is GitHub and `gitlab.com` is GitLab, by name. Any other host is asked
+   once, signed out, and the answer is kept for that host: `GET https://<host>/api/v4/version` answering JSON with a
+   `message` or a `version` is GitLab (gitlab.com: **401** `{"message":"401 Unauthorized"}` in 0.56 s, measured;
+   github.com: 404 plain text); `GET https://<host>/api/v3/meta` answering with an `X-GitHub-Request-Id` header is
+   GitHub Enterprise (api.github.com/meta carries it, measured; an Enterprise server's answer is from GitHub's docs).
+   No answer within 5 s, or any other answer: the token card asks which the server runs. You can change the kind there.
+5. **The account Review Lens acts as** needs a token, as an SSH key can't call the API. Only accounts whose token can
+   **see** the repository count (a read of the repository answers: an account without access gets **404**, measured with v4tsa on a private repository of vatsarishabh22; an organisation's single sign-on not authorised for the token answers 403 with an `X-GitHub-SSO` header, from GitHub's docs, not measured). In order: the account you
+   picked for this repository; else the account git connects as; else, git saying nothing, the only account that can see
+   it, or the only one that can push (the repository's `permissions.push`; on review-lens vatsarishabh22 `push=true`,
+   v4tsa `push=false`, measured); else you pick once among those that can see it, remembered for this repository.
+   - No token for git's account: the sign-in card names it ("Sign in to GitHub as vatsarishabh22", with the branch list below it, as with no token at all), offering
+     "Review as <other> instead" only for an account that can see the repository.
+   - git's account has a token that can't see the repository (an organisation's single sign-on not authorised for the
+     token, an organisation that hasn't approved Review Lens, a missing scope): the card says so, with "Sign in again" or another account that can.
+   - Tokens, none of which can see it: "None of your accounts can see <repo>".
+   - A picked account that lost access is said once ("v4tsa can't see acme/invoices any more"), then the order goes on.
+   - A sign-in or a pasted token that comes back as another account says so; its token is kept only if you choose to
+     review as that account. Adding an account from the menu keeps the one you review as; switching is yours.
+   - A company server's kind is saved with its token (the token card's choice), so a signed-in server is never asked.
 
 Self-managed GitLab works the same way: the host is whatever `origin` points at.
 

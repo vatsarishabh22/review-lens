@@ -377,6 +377,49 @@ div.cm-row .jump { text-align: left; }
 .submit-pop textarea:disabled { opacity: .45; }
 .submit-pop .keep { color: var(--warn); font-size: 12px; }
 
+/* accounts: "Reviewing as" and signing in */
+.acct { padding: 0 10px 6px; }
+.acct-btn { display: inline-flex; align-items: center; gap: 6px; border-radius: 6px; padding: 3px 6px; color: var(--muted); font-size: 12px; }
+.acct-btn:hover { background: var(--hover); }
+.acct-btn b { color: var(--fg); font-weight: 600; }
+.acct-btn .avatar { width: 16px; height: 16px; font-size: 7px; grid-row: auto; }
+.acct-pop { left: 10px; top: 26px; width: 280px; }
+.acct-pop .pop-label { padding: 6px 10px 2px; font-size: 11px; color: var(--muted); }
+.acct-pop .item .who { font-size: 11px; color: var(--muted); }
+.acct-pop .item:disabled { opacity: .55; cursor: default; background: none; }
+.acct-pop .why { padding: 4px 10px 6px; }
+.acct-pop hr { border: 0; border-top: 1px solid var(--line); margin: 4px 0; }
+.signin { padding-top: 10px; }
+.limit { display: flex; gap: 8px; align-items: center; margin: 0 10px 8px; padding: 6px 10px; border-radius: 6px; background: var(--review); border: 1px solid var(--review-line); }
+.signin .devcode { font: 600 20px var(--mono); letter-spacing: .08em; display: flex; align-items: center; gap: 10px; }
+.signin .devcode button { font: 400 12px var(--ui); letter-spacing: 0; }
+.signin .wait { display: flex; gap: 8px; align-items: center; }
+.signin label.f { display: grid; gap: 4px; font-size: 12px; color: var(--muted); }
+.signin label.f input { border: 1px solid var(--line); border-radius: 6px; padding: 6px 8px; background: var(--win); color: var(--fg); font: 12px var(--mono); }
+.signin .err { color: var(--del-fg, #d9534f); font-size: 12px; }
+.signin .seg { display: inline-flex; border: 1px solid var(--line); border-radius: 6px; overflow: hidden; }
+.signin .seg button { padding: 4px 10px; font-size: 12px; }
+.signin .seg button.on { background: var(--accent); color: #fff; }
+.signin .link, .acct .link { color: var(--accent); font-weight: 600; }
+.signin .opt { display: flex; gap: 8px; align-items: center; }
+
+/* who reviews as whom: every case of the account rule */
+.rules { max-width: 1320px; margin: 24px auto 0; color: var(--page-fg); }
+.rules h2 { font-size: 15px; margin: 0 0 4px; }
+.rules .lead { color: var(--muted); font-size: 12px; margin: 0 0 10px; }
+.rules table { border-collapse: separate; border-spacing: 4px; width: 100%; table-layout: fixed; }
+.rules th { font-size: 12px; font-weight: 600; text-align: left; padding: 4px 6px; color: var(--muted); }
+.rules th.o { width: 230px; font: 12px var(--mono); color: var(--page-fg); }
+.rules td { vertical-align: top; border-radius: 6px; padding: 7px 9px; cursor: pointer; border: 1px solid transparent; font-size: 12px; line-height: 1.35; }
+.rules td:hover { filter: brightness(.97); }
+.rules td.cur { border-color: var(--accent); box-shadow: 0 0 0 1px var(--accent); }
+.rules .legend { display: flex; flex-wrap: wrap; gap: 6px; margin: 0 0 8px; font-size: 12px; }
+.rules .legend span { padding: 3px 8px; border-radius: 5px; }
+.rules td b { display: block; font-weight: 600; margin-bottom: 2px; }
+.rules td span { color: var(--muted); }
+.rules .in { background: #e6f4ea; } .rules .out { background: #fff4e0; } .rules .pick { background: #e8eefc; } .rules .blind { background: #fbe4e4; } .rules .none { background: var(--hover); }
+@media (prefers-color-scheme: dark) { .rules .in { background: #1f3326; } .rules .out { background: #3a3020; } .rules .pick { background: #222c44; } .rules .blind { background: #432626; } }
+
 /* status bar + toast */
 .statusbar { display: flex; align-items: center; gap: 14px; padding: 0 12px; background: var(--panel); border-top: 1px solid var(--line); color: var(--muted); font-size: 12px; }
 .statusbar .grow { flex: 1; }
@@ -384,6 +427,7 @@ div.cm-row .jump { text-align: left; }
 .toast { position: absolute; right: 16px; bottom: 40px; z-index: 30; width: 360px; background: var(--win); color: var(--fg); border: 1px solid var(--line); border-radius: 8px; box-shadow: var(--shadow); padding: 12px 14px; display: grid; grid-template-columns: 18px 1fr; gap: 4px 10px; animation: rise .25s ease; }
 .toast b { font-weight: 600; }
 .toast .ic { color: var(--ok); grid-row: span 2; margin-top: 1px; }
+.toast.err .ic { color: #fff; background: var(--del-fg); border-radius: 50%; width: 16px; height: 16px; display: grid; place-items: center; font-weight: 700; font-size: 11px; }
 .toast .sub { color: var(--muted); font-size: 12px; }
 .toast .acts { grid-column: 2; display: flex; gap: 14px; margin-top: 4px; }
 .toast .acts button { background: none; border: 0; padding: 0; color: var(--accent); font: inherit; font-size: 12px; cursor: pointer; }
@@ -406,10 +450,28 @@ div.cm-row .jump { text-align: left; }
     <button class="chip-btn" id="opt-noimpact" title="The same review in an IDE that can't read Python, such as WebStorm">Impact: IDE without Python</button>
     <span class="chip-btn">Stack: <label><input type="radio" name="stack" value="open" checked> as is</label> <label><input type="radio" name="stack" value="merged"> #144 merged</label> <label><input type="radio" name="stack" value="moved"> #147 changed, #148 not updated</label> <label><input type="radio" name="stack" value="long"> 16 PRs</label> <label><input type="radio" name="stack" value="branch"> two on #146</label></span>
     <label class="chip-btn" title="GitHub takes 3 s to answer each Viewed tick, as on a slow network"><input type="checkbox" id="opt-slownet"> Slow GitHub</label>
+    <label class="chip-btn" title="The repository's origin, and what git knows from it">Origin <select id="opt-origin">
+      <option value="alias" selected>git@github-personal: (SSH alias)</option><option value="plain">git@github.com: (plain SSH)</option>
+      <option value="https">https://vatsarishabh22@github.com (user in URL)</option><option value="httpsNone">https://github.com (no user)</option>
+      <option value="gitlab">git@gitlab.com:</option><option value="coSsh">git@git.acme.dev: (company, SSH)</option>
+      <option value="coHttps">https://git.acme.dev (company, answers)</option><option value="coSilent">https://git.acme.dev (company, silent)</option>
+      <option value="none">no remote</option><option value="notgit">not a Git repository</option></select></label>
+    <label class="chip-btn" title="Tokens Review Lens can already use">Signed in <select id="opt-signed">
+      <option value="cli" selected>gh / glab, both accounts</option><option value="other">gh, v4tsa only</option><option value="rl">Review Lens, git's account</option><option value="none">nothing</option></select></label>
+    <label class="chip-btn" title="What v4tsa may do on acme/invoices (vatsarishabh22 can always push)">v4tsa here <select id="opt-v4">
+      <option value="push" selected>can push</option><option value="read">can read</option><option value="none">no access</option></select></label>
+    <label class="chip-btn" title="The browser that approves the code, or the token you paste, belongs to v4tsa"><input type="checkbox" id="opt-wrongbrowser"> Sign-in comes back as v4tsa</label>
+    <button class="chip-btn" id="opt-limited" title="GitLab answers 429: about 30 calls at once hit its per-minute limit">GitLab busy</button>
+    <button class="chip-btn" id="opt-webdrafts" title="You wrote 2 comments on GitLab's own page and never submitted them">Drafts from GitLab's page</button>
+    <button class="chip-btn" id="opt-held" title="Your last Finish timed out while publishing: 3 drafts are still on the MR">Couldn't tell: drafts</button>
+    <button class="chip-btn" id="opt-heldsum" title="Your last Finish sent only a summary and timed out">Couldn't tell: summary</button>
+    <button class="chip-btn" id="opt-refuse" title="A paid GitLab where the author can't approve: Approve fails after the drafts are made">GitLab refuses Approve</button>
+    <a class="chip-btn" href="#rules" title="Every origin × signed-in case of the account rule, under the window">Who reviews as whom ↓</a>
     <button class="chip-btn" id="opt-reset">Reset</button>
   </div>
 </div>
 <div class="frame-scroll"><div class="ide" id="ide"></div></div>
+<section class="rules" id="rules"></section>
 
 <script>
 // ---------- sample data ----------
@@ -538,6 +600,25 @@ const THREADS_AT_LOAD = [
   { id: 3, path: "src/app/modules/invoices/repositories/invoice_line_repo.py", line: 25, who: "dan", state: "open", body: "int() raises on \"1,200\". The accounting export prints thousands separators.\n```suggestion\n                quantity=int(row[InvoiceField.QUANTITY].replace(\",\", \"\")),\n```", replies: [] },
   { id: 4, path: "src/app/modules/invoices/observability.py", line: null, oldLine: 9, who: "bob", state: "outdated", body: "Keep parse_failures until the Grafana board moves to the new counter.", replies: [] },
 ];
+// What git already knows about each kind of origin (spec/gitlab.md, "Picking the host"): the host's kind and who git
+// pushes as, from the SSH greeting (ssh -T: "Hi vatsarishabh22! … GitHub", "Welcome to GitLab, @rishabh!") or, over
+// HTTPS, the username git saved. An SSH key can't call the API, so a token is still needed: from gh/glab, or signing in.
+const ORIGINS = {
+  alias: { url: "git@github-personal:acme/invoices.git", kind: "GitHub", who: "vatsarishabh22", by: "SSH key for github-personal", ssh: true },
+  plain: { url: "git@github.com:acme/invoices.git", kind: "GitHub", who: "v4tsa", by: "SSH key for github.com", ssh: true },
+  // over HTTPS only a user written in the URL (or credential.<url>.username) names the account: git's saved sign-in
+  // comes back with its password, which Review Lens never reads
+  https: { url: "https://vatsarishabh22@github.com/acme/invoices.git", kind: "GitHub", who: "vatsarishabh22", by: "the user in origin's URL" },
+  httpsNone: { url: "https://github.com/acme/invoices.git", kind: "GitHub", who: null },
+  gitlab: { url: "git@gitlab.com:acme/invoices.git", kind: "GitLab", who: "vatsarishabh22", by: "SSH key for gitlab.com", ssh: true },
+  coSsh: { url: "git@git.acme.dev:acme/invoices.git", kind: "GitLab", who: "rishabh", by: "SSH key for git.acme.dev", self: true, ssh: true },
+  coHttps: { url: "https://git.acme.dev/acme/invoices.git", kind: null, who: null, self: true, probe: "gitlab" },
+  coSilent: { url: "https://git.acme.dev/acme/invoices.git", kind: null, who: null, self: true, probe: "unknown" },
+};
+const LOOK = { vatsarishabh22: { initials: "VR", color: "#7b61c9" }, v4tsa: { initials: "V4", color: "#2f8f6f" }, rishabh: { initials: "R", color: "#c06030" } };
+const whyOf = s => ({ git: `git connects here as this account (${s.by})`, picked: "You picked it for this repository", new: "You just signed in with it",
+  only: "The only account you're signed in with that can see this repository", push: "The only one of your accounts that can push here" })[s.why] || "";
+const SELF = "git.acme.dev";
 const DIRTY = ["M  src/app/modules/payments/refunds.py", "M  tests/test_refunds.py", "?  notes/refunds.md"];
 
 // The sample PR #148 sits on top of a stack. Every PR targets main and is built on the branch below it, so only git history
@@ -559,11 +640,58 @@ const ownFiles = () => FILES.filter(f => f.lines.some(e => e[0] !== "c" && shown
 // ---------- state ----------
 const fresh = () => ({
   mode: "normal", tool: "project", panel: "list", pr: 148, scope: "all", picked: new Set(), stack: stackMode(),
-  dirty: document.getElementById("opt-dirty").checked, confirm: false, step: 0, busy: null, checking: false, vPick: 0, sumText: "",
+  dirty: document.getElementById("opt-dirty").checked, origin: document.getElementById("opt-origin").value, signed: document.getElementById("opt-signed").value, v4: document.getElementById("opt-v4").value, limited: false, webDrafts: false, held: null, refuseApprove: false, confirm: false, step: 0, busy: null, checking: false, vPick: 0, sumText: "",
   filesView: "pr", open: OWN_FILE.path, tabs: [OWN_FILE.path], diff: false, unified: false, caret: null, hunk: null,
   viewed: {}, since: {}, comments: {}, sel: null, threads: structuredClone(THREADS_AT_LOAD), replies: {}, replyTo: null, impactTicks: {}, resolving: {}, postedEdit: null, postedDelete: null, postedWrite: {}, peek: {}, impactWide: false, impactSlow: false, noImpact: false, impactBusy: false, dynNote: null, placeFocus: null, remote: false, cmFilter: "all", jump: null, unfold: {}, draft: null, draftText: "", pop: null, toast: null, flash: false, resume: false, submitted: false, verdict: null,
+  tokenErr: null, authFrom: "out", adding: false,
 });
-let S = fresh();
+// The account rule (spec/gitlab.md, "Picking the host"): git's own account when a token for it exists; else the only one
+// signed in; else ask once; else sign in, naming the account git connects as
+const access = (s, login) => login === "v4tsa" ? s.v4 : "push";
+// The account rule (spec/gitlab.md, "Picking the host"), over the accounts that can SEE the repository: your pick for it;
+// else git's own account; else, git saying nothing, the only one that can see it, or the only one that can push; else ask.
+// [dry] computes a case for the table without starting the server's question.
+function resolve(s, dry) {
+  const o = ORIGINS[s.origin];
+  // a company server you already have a token for: its kind was saved with the token (you set it on the token card)
+  const saved = o?.self && s.signed === "rl" ? (SERVER_KIND[SELF] || "gitlab") : null;
+  Object.assign(s, { noRemote: !o, notGit: s.origin === "notgit", self: !!o?.self, gl: o?.kind === "GitLab" && !o?.self, expect: o?.who || null, by: o?.by || null,
+    tokenKind: saved || (o?.self && o.kind === "GitLab" ? "gitlab" : null), probe: o?.self ? (saved || (o.probe ? "asking" : "gitlab")) : null, lost: null });
+  const cli = s.gl ? [{ login: "vatsarishabh22", via: "From your glab sign-in" }] : [{ login: "vatsarishabh22", via: "From your gh sign-in" }, { login: "v4tsa", via: "From your gh sign-in" }];
+  s.tokens = !o ? [] : s.signed === "cli" && !o.self ? cli : s.signed === "other" && !o.self && !s.gl ? [{ login: "v4tsa", via: "From your gh sign-in" }]
+    : s.signed === "rl" ? [{ login: o.who || (o.self ? "rishabh" : "vatsarishabh22"), via: "Signed in with Review Lens" }] : [];
+  decide(s, dry);
+  // an HTTPS company server is asked, signed out, what it runs (the last resort: SSH's greeting already says)
+  if (!dry && o?.probe && !saved) setTimeout(() => { if (S.probe !== "asking" || S.origin !== s.origin) return; S.probe = o.probe; S.tokenKind = o.probe === "unknown" ? null : o.probe; render(); renderTable(); }, 1200);
+  return s;
+}
+// The rule itself, over the tokens you have now: the scenario, a sign-in, a pasted token, a pick or a sign-out all end here
+function decide(s, dry) {
+  if (!ORIGINS[s.origin]) { s.auth = "out"; return s; }
+  Object.assign(s, { gitBlind: false, choices: null, lost: null });
+  const sees = s.tokens.filter(t => access(s, t.login) !== "none"), pushes = sees.filter(t => access(s, t.login) === "push");
+  const kept = REMEMBERED[s.origin] && s.tokens.find(t => t.login === REMEMBERED[s.origin]);
+  const mine = s.expect && sees.find(t => t.login === s.expect);
+  if (kept && sees.includes(kept)) Object.assign(s, { auth: "in", account: kept.login, why: "picked" });
+  else if (mine) Object.assign(s, { auth: "in", account: mine.login, why: "git" });
+  else if (!s.expect && sees.length === 1) Object.assign(s, { auth: "in", account: sees[0].login, why: "only" });
+  else if (!s.expect && pushes.length === 1) Object.assign(s, { auth: "in", account: pushes[0].login, why: "push" });
+  else if (!s.expect && sees.length > 1) Object.assign(s, { auth: "pick", account: sees[0].login, choices: sees });
+  else {
+    // git's account signed in but its token can't see the repository (an organisation's single sign-on not authorised, a missing scope)
+    s.gitBlind = !!(s.expect && s.tokens.some(t => t.login === s.expect));
+    s.auth = s.gitBlind || (s.tokens.length && !sees.length && !s.expect) ? "blind" : "out";
+  }
+  // a remembered pick that lost access is said, never dropped in silence
+  if (kept && !sees.includes(kept)) { s.lost = kept.login; if (!dry && s.auth === "in") s.toast = [`${kept.login} can't see acme/invoices any more`, `Reviewing as ${s.account}. ${whyOf(s)}.`]; }
+  return s;
+}
+const blank = fresh;
+// your pick per repository (here: per sample origin), kept across Reset as Review Lens keeps it in the repository's state
+const REMEMBERED = {};
+// a company server's kind, saved with its token (the token card's choice)
+const SERVER_KIND = {};
+let S = resolve(blank());
 
 // ---------- derived ----------
 const file = p => FILES.find(f => f.path === p);
@@ -844,13 +972,107 @@ function commentsList() {
   }).join("")).join("");
   return `<div class="cm-filters">${filters}</div>${rows || '<p class="fineprint" style="padding:8px 12px">Nothing here.</p>'}`;
 }
+// ---------- accounts ----------
+const withLook = t => ({ ...t, ...(LOOK[t.login] || { initials: t.login.slice(0, 2).toUpperCase(), color: "#888" }) });
+const acct = () => withLook(S.tokens.find(t => t.login === S.account) || { login: S.account || "?", via: "" });
+const hostName = () => S.self ? SELF : S.gl ? "gitlab.com" : "github.com";
+// a company server's kind: what it answered when asked signed out (spec/gitlab.md, "Picking the host"), or what you set on the token card
+const hostKind = () => S.self ? ({ gitlab: "GitLab", github: "GitHub Enterprise" }[S.tokenKind] || null) : S.gl ? "GitLab" : "GitHub";
+// a GitLab repository: gitlab.com, or a company server whose token says GitLab
+const gl = () => hostKind() === "GitLab";
+// GitLab's words for what the UI says in GitHub's (spec/gitlab.md, "What's the same, what differs"): applied to the whole window
+const GL_WORDS = [[/github\.com\/login\/device/g, "gitlab.com/oauth/device"], [/github\.com/g, "gitlab.com"], [/GitHub/g, "GitLab"], [/\bgh sign-in/g, "glab sign-in"],
+  [/Pull requests/g, "Merge requests"], [/pull requests/g, "merge requests"], [/Pull request/g, "Merge request"], [/pull request/g, "merge request"],
+  [/\bPRs\b/g, "MRs"], [/\bPR\b/g, "MR"], [/#(1[45]\d)\b/g, "!$1"]];
+// a name that must survive the swap (the token card's "GitHub Enterprise" choice) is written with an entity, Git&#72;ub
+const glWords = html => GL_WORDS.reduce((h, [re, to]) => h.replace(re, to), html);
+// always on top of the Review panel once signed in: who posts, and why that account
+function acctRow() {
+  const a = acct();
+  return `<div class="acct" style="position:relative"><button class="acct-btn" data-act="pop" data-pop="acct" title="${esc(whyOf(S))}">
+    <span class="avatar" style="background:${a.color}">${a.initials}</span>Reviewing as <b>${esc(a.login)}</b> ▾</button>${S.pop === "acct" ? acctPop() : ""}</div>`;
+}
+function acctPop() {
+  const inReview = S.mode === "review", list = S.tokens.map(withLook);
+  return `<div class="pop acct-pop"><div class="pop-label">${hostKind()} · ${hostName()}</div>
+    ${list.map(a => { const blind = access(S, a.login) === "none";
+      return `<button class="item" data-act="acct-use" data-login="${a.login}" ${(inReview || blind) && a.login !== S.account ? "disabled" : ""}>
+      <span class="tick">${a.login === S.account ? "✓" : ""}</span><span><b>${esc(a.login)}</b><div class="who">${blind ? "Can't see acme/invoices" : esc(a.via)}</div></span></button>`; }).join("")}
+    <div class="why fineprint">${inReview ? "Switch accounts after you exit the review: your drafts and Viewed ticks belong to this one" : esc(whyOf(S))}.</div><hr>
+    ${S.self ? "" : `<button class="item" data-act="add-account" ${inReview ? "disabled" : ""}>Add a ${hostKind()} account…</button>`}
+    <button class="item" data-act="token" ${inReview ? "disabled" : ""}>Use a token…</button>
+    <button class="item" data-act="signout" ${inReview ? "disabled" : ""}>Sign out of ${esc(acct().login)}</button></div>`;
+}
+// what the panel shows instead of the PR list until an account is picked
+function signIn() {
+  const cancel = `<button class="secondary" data-act="signin-cancel">Cancel</button>`;
+  if (S.auth === "code") return `<div class="detail signin"><div class="card"><b>Enter this code on GitHub</b>
+      <div class="devcode">4TSN-3TS0 <button class="secondary" data-act="copy-code">Copy</button></div>
+      <div class="btns"><button class="primary" data-act="open-browser">Open github.com/login/device</button>${cancel}</div>
+      <div class="wait fineprint">${S.approving ? '<span class="spin"></span> Waiting for you to approve in the browser…' : "The code is copied. It works for 15 minutes."}</div></div>
+    <p class="fineprint">Review Lens asks for the <b>${gl() ? "api" : "repo"}</b> scope: to list PRs and post your review${gl() ? "" : " and sync Viewed"}. The token is kept in your IDE's password store.</p></div>`;
+  if (S.auth === "token") {
+    const kind = S.self ? `<div class="opt"><span class="fineprint">${SELF} runs${S.tokenKind && S.tokenKind === S.probe ? (S.by ? " (its SSH greeting said so)" : " (it said so)") : ""}</span><span class="seg"><button class="${S.tokenKind === "github" ? "on" : ""}" data-act="token-kind" data-v="github">Git&#72;ub Enterprise</button><button class="${S.tokenKind === "gitlab" ? "on" : ""}" data-act="token-kind" data-v="gitlab">GitLab</button></span></div>` : "";
+    const scope = S.self && S.tokenKind === "gitlab" ? "<b>api</b>" : S.self && !S.tokenKind ? "<b>api</b> (GitLab) or <b>repo</b> (GitHub)" : "<b>repo</b>";
+    return `<div class="detail signin"><div class="card"><b>Use a personal access token</b>
+      <label class="f">Server<input id="tok-host" value="${hostName()}"></label>${kind}
+      <label class="f">Token<input id="tok" type="password" placeholder="${S.self && S.tokenKind === "gitlab" ? "glpat-…" : S.self && !S.tokenKind ? "Your personal access token" : "ghp_… or github_pat_…"}"></label>
+      ${S.tokenErr ? `<span class="err">${esc(S.tokenErr)}</span>` : ""}
+      <span class="fineprint">Needs the ${scope} scope. Kept in your IDE's password store, never in the project. <button class="link" data-act="noop">Create one on ${hostName()}</button></span>
+      <div class="btns"><button class="primary" data-act="token-save">Save</button>${cancel}</div></div></div>`;
+  }
+  if (S.auth === "mismatch") return `<div class="detail signin"><div class="card"><b>You signed in as ${S.got}, but git connects here as ${S.expect}</b>
+      <span class="fineprint">That sign-in belongs to ${S.got} (the browser was signed in to it, or the token is its). Reviews from Review Lens would come from ${S.got} while git connects as ${S.expect} (${S.by}). Sign in again as ${S.expect}, or review as ${S.got} on purpose.</span>
+      ${access(S, S.got) === "none" ? `<span class="fineprint">${S.got} can't see acme/invoices either.</span>` : ""}
+      <div class="btns"><button class="primary" data-act="signin">Sign in again</button>${access(S, S.got) === "none" ? "" : `<button class="secondary" data-act="anyway">Review as ${S.got} anyway</button>`}</div></div></div>`;
+  if (S.auth === "blind" && S.gitBlind) {
+    const ok = S.tokens.find(t => t.login !== S.expect && access(S, t.login) !== "none");
+    return `<div class="detail signin"><div class="card"><b>${S.expect} can't see acme/invoices</b>
+      <span class="fineprint">git connects here as ${S.expect} (${S.by}), but ${hostKind()} says that account's token can't see this repository. If an organisation owns it, it may need you to authorise the token for its single sign-on, or to approve Review Lens.</span>
+      <div class="btns"><button class="primary" data-act="signin">Sign in again as ${S.expect}</button>${ok ? `<button class="secondary" data-act="use-other" data-login="${ok.login}">Review as ${ok.login} instead</button>` : ""}</div></div></div>`;
+  }
+  if (S.auth === "blind") return `<div class="detail signin"><div class="card"><b>None of your accounts can see acme/invoices</b>
+      <span class="fineprint">${S.tokens.map(t => t.login).join(" and ")} ${S.tokens.length > 1 ? "are" : "is"} signed in, but ${hostKind()} says ${S.tokens.length > 1 ? "none of them can" : "that account can't"} see this repository. Sign in with the account you use for it.</span>
+      <div class="btns"><button class="primary" data-act="signin">Sign in with ${hostKind()}</button><button class="secondary" data-act="token">Use a token</button></div></div></div>`;
+  if (S.auth === "pick") return `<div class="detail signin"><div class="card"><b>Which account reviews this repository?</b>
+      <span class="fineprint">Both of your GitHub accounts can push to acme/invoices, and its HTTPS remote names no user, so git can't say which one you push as. Review Lens remembers your pick for this repository; change it any time from "Reviewing as".</span>
+      ${(S.choices || S.tokens).map(withLook).map(a => `<label class="opt"><input type="radio" name="acct" data-act="acct-pick" data-login="${a.login}" ${S.account === a.login ? "checked" : ""}><span class="avatar" style="width:18px;height:18px;font-size:8px;grid-row:auto;background:${a.color}">${a.initials}</span><span><b>${a.login}</b> <span class="fineprint">${esc(a.via)}</span></span></label>`).join("")}
+      <div class="btns"><button class="primary" data-act="pick-go">Review as ${esc(S.account)}</button></div></div></div>`;
+  // no remote: say what's missing in the user's words and offer the one step that fixes it (IntelliJ's Manage Remotes)
+  // not a Git repository: nothing to review, and nothing here would make one reviewable
+  if (S.notGit) return `<div class="detail signin"><div class="card"><b>This folder isn't a Git repository</b>
+      <span class="fineprint">Review Lens reviews pull requests from GitHub and merge requests from GitLab. Open a project cloned from one of them to review its changes here.</span></div></div>`;
+  if (S.noRemote) return `<div class="detail signin"><div class="card"><b>This project isn't on GitHub or GitLab yet</b>
+      <span class="fineprint">Pull requests show here once the project is linked to a repository on GitHub or GitLab. Right now it only lives on this computer.</span>
+      <div class="btns"><button class="primary" data-act="remotes">Link a repository…</button></div></div></div>`;
+  // signed out
+  const kind = hostKind(), units = kind === "GitLab" ? "merge requests" : kind ? "pull requests" : "pull or merge requests";
+  const as = S.expect ? ` as ${S.expect}` : "";
+  const known = S.expect ? `git connects to this repository as <b>${S.expect}</b> (${S.by}). ${ORIGINS[S.origin]?.ssh ? `An SSH key can't call ${kind || "the server"}'s API` : "Review Lens doesn't reuse git's saved password"}, so sign in once as the same account: ` : "";
+  const others = S.tokens.filter(t => t.login !== S.expect && access(S, t.login) !== "none");
+  const blindOnes = S.tokens.filter(t => access(S, t.login) === "none").map(t => t.login);
+  const other = S.expect && others.length ? `<button class="secondary" data-act="use-other" data-login="${others[0].login}">Review as ${others[0].login} instead</button>` : "";
+  return S.self ? `<div class="detail signin"><div class="card"><b>Sign in to ${SELF}${kind ? ` (${kind})` : ""}${as}</b>
+      ${S.probe === "asking" ? `<span class="wait fineprint"><span class="spin"></span> Asking ${SELF} whether it runs GitHub or GitLab…</span>`
+      : S.expect ? `<span class="fineprint">git connects to this repository as <b>${S.expect}</b> (${S.by}), and its greeting says the server runs ${kind}. An SSH key can't call its API: paste a personal access token for ${S.expect} once, and Review Lens lists the ${units} waiting on you and posts your review.</span>`
+      : `<span class="fineprint">This repository's origin is on ${SELF}, your company's own server${kind ? "" : `, and it didn't say whether it runs GitHub or GitLab: you'll pick on the next step`}. Review Lens can't sign in there for you: paste a personal access token once and it lists the ${units} waiting on you and posts your review${kind === "GitHub Enterprise" ? ", and syncs Viewed" : ""}.</span>`}
+      <div class="btns"><button class="primary" data-act="token" ${S.probe === "asking" ? "disabled" : ""}>Paste a token</button></div></div>
+    <p class="fineprint">Without signing in, the panel lists this repository's branches to review.</p></div>`
+    : `<div class="detail signin"><div class="card"><b>${S.expect ? `Sign in to GitHub${as}` : "Sign in to GitHub to see pull requests"}</b>
+      <span class="fineprint">${known || "This repository's origin is on github.com. Signed in, "}Review Lens lists the PRs waiting on you and posts your review as you${gl() ? "" : ", and syncs Viewed"}.</span>
+      ${blindOnes.length ? `<span class="fineprint">${blindOnes.join(", ")} ${blindOnes.length > 1 ? "are" : "is"} signed in but can't see acme/invoices.</span>` : ""}
+      <div class="btns"><button class="primary" data-act="signin">Sign in with GitHub</button><button class="secondary" data-act="token">Use a token</button>${other}</div></div>
+    <p class="fineprint">Without signing in, the panel lists this repository's branches to review.</p></div>`;
+}
 function tool() {
   if (S.tool === "commit") return `<aside class="tool"><div class="tool-head">Commit</div><div class="tool-body" style="padding:8px 12px" class="fineprint">
     ${S.mode === "review" ? '<p class="fineprint">Nothing to commit. Review mode is read-only; your parked changes come back when you exit.</p>' : S.dirty ? `<p class="fineprint">Changes on feat/my-work</p>${DIRTY.map(d => `<div class="row" style="padding-left:4px;font:12px var(--mono)">${esc(d)}</div>`).join("")}` : '<p class="fineprint">No changes.</p>'}</div></aside>`;
   if (S.tool === "project") return `<aside class="tool"><div class="tool-head">Project</div><div class="tool-body">${projectTree(S.mode === "review")}</div></aside>`;
   const title = S.mode === "review" ? "Review" : S.panel === "list" ? "Pull requests" : "Pull request";
-  const body = S.mode === "review" ? reviewFiles() : S.panel === "list" ? prList() : prDetail();
-  return `<aside class="tool"><div class="tool-head">${title}</div><div class="tool-body">${body}</div></aside>`;
+  const out = S.mode !== "review" && S.auth !== "in";
+  const body = out ? signIn() : (S.mode === "review" ? reviewFiles() : S.panel === "list" ? prList() : prDetail());
+  const limit = S.limited ? '<div class="limit fineprint"><span class="spin"></span> GitLab is busy (too many calls this minute): trying again in 12 s</div>' : "";
+  return `<aside class="tool"><div class="tool-head">${out ? "Pull requests" : title}</div><div class="tool-body">${out ? "" : acctRow()}${limit}${body}</div></aside>`;
 }
 // Finish review and Exit, as the review bar and the Review panel both show them
 function endButtons(at) {
@@ -879,7 +1101,19 @@ function scopePop() {
     ${S.resume ? `<button class="item" data-act="set-scope" data-i="since"><span class="tick">${S.scope === "since" ? "✓" : ""}</span><b>Since your last review</b><span class="sha">2 commits</span></button>` : ""}
     ${shownCommits().map(({ c, i }) => `<button class="item" data-act="set-scope" data-i="${i}"><span class="tick">${S.scope === "pick" && S.picked.has(i) && S.picked.size === 1 ? "✓" : ""}</span><span class="sha">${c.sha}</span>${esc(c.msg)}</button>`).join("")}</div>`;
 }
+// The latest push's commit is the last one: GitLab places new comments and approves only there (spec/gitlab.md, step 3)
+const olderScope = () => gl() && S.scope === "pick" && !S.picked.has(COMMITS.length - 1);
+// A Finish that couldn't tell what reached GitLab holds the next one (#19): drafts still on the MR, or a summary not yet seen
+function heldPop(where) {
+  const drafts = S.held === "drafts";
+  return `<div class="pop submit-pop" style="${where}"><h3>Finish your review</h3>
+    <span class="keep">${drafts ? "Your last Finish couldn't tell what reached GitLab, so 3 of your comments are still drafts on !148. Open the merge request on GitLab and publish or delete them there; Review Lens then works out which ones posted and keeps the rest for your next Finish."
+      : "Your last Finish couldn't tell whether your summary reached GitLab. It shows as posted once GitLab has it; check the merge request if it doesn't."}</span>
+    <div style="display:flex;gap:8px;justify-content:flex-end;flex-wrap:wrap"><button class="secondary" data-act="held-open">Open !148 on GitLab</button>
+    ${drafts ? '<button class="primary" disabled title="Waiting for your drafts on GitLab">Submit to GitLab</button>' : '<button class="primary" data-act="held-resend">Not posted, send again</button>'}</div></div>`;
+}
 function submitPop(where) {
+  if (S.held) return heldPop(where);
   const pend = pendingCount(), v = S.vPick, mark = v === 3, keepText = pend ? `Your ${drafts()} won't be posted; ${pend > 1 ? "they're" : "it's"} kept for next time.` : "";
   const radio = (i, label, hint) => `<label><input type="radio" name="v" ${v === i ? "checked" : ""}> <span>${label}<small>${hint}</small></span></label>`;
   const waiting = S.checking && !mark; // Submit needs GitHub's latest threads; Mark as reviewed posts nothing, so it never waits
@@ -887,13 +1121,15 @@ function submitPop(where) {
     : `<button class="primary" id="finish-go" data-act="submit" ${waiting ? 'disabled title="Waiting for GitHub\'s latest comments"' : ""}>${mark ? "Finish review" : "Submit to GitHub"}</button>`;
   return `<div class="pop submit-pop" style="${where}">
     <h3>Finish your review</h3>
-    <span class="fineprint">${mark && keepText ? "" : `<span id="posting">${pend ? `${drafts()} will be posted with it, as one review.` : "No inline comments yet."}</span> `}${viewedCount()} of ${scopedFiles().length} files viewed.</span>
+    <span class="fineprint">${mark && keepText ? "" : `<span id="posting">${olderScope() && pendingComments() ? (pendingReplies() ? `${plural(pendingReplies(), "reply", "replies")} will be posted with it, as one review.` : "Only your summary and verdict post now.") : pend ? `${drafts()} will be posted with it, as one review.` : "No inline comments yet."}</span> `}${viewedCount()} of ${scopedFiles().length} files viewed.</span>
     ${S.checking ? '<span class="fineprint checking"><span class="spin"></span> Checking GitHub for new comments…</span>' : ""}
+    ${S.webDrafts ? '<span class="fineprint race">You have 2 unpublished comments from GitLab. They\'ll be posted too.</span>' : ""}
+    ${olderScope() && pendingComments() ? `<span class="fineprint race">Your ${plural(pendingComments(), "comment", "comments")} ${pendingComments() > 1 ? "wait" : "waits"} for its commits: GitLab places new comments only on the latest push. Replies still post.</span>` : ""}
     ${racedThreads().map(t => `<span class="fineprint race">${person(t.resolvedBy).name} resolved a thread you replied to since the review loaded. Your reply still posts; the thread stays resolved.</span>`).join("")}
     <textarea id="summary" placeholder="Leave a summary (optional)" ${mark ? "disabled" : ""}>${esc(S.sumText)}</textarea>
     <div class="verdicts" onchange="verdictChanged()">
       ${radio(0, "Comment", "Feedback without a verdict")}
-      ${radio(1, "Approve", "Ready to merge")}
+      ${olderScope() ? '<label class="off" title="GitLab approves only the latest push"><input type="radio" name="v" disabled> <span>Approve<small>GitLab approves only the latest push: review all commits to approve</small></span></label>' : radio(1, "Approve", "Ready to merge")}
       ${radio(2, "Request changes", "Must be addressed before merging")}
       <div class="sep"></div>
       ${(left => `<label ${left ? 'class="off" title="Mark as reviewed records the files you viewed; there are none left to record yet"' : ""}><input type="radio" name="v" ${left ? "disabled" : ""} ${mark ? "checked" : ""}> <span>Mark as reviewed<small>${left ? `View every file first: ${viewedCount()} of ${scopedFiles().length} viewed` : "Nothing is posted to GitHub"}</small></span></label>`)(viewedCount() < scopedFiles().length)}</div>
@@ -1074,7 +1310,8 @@ function statusbar() {
 function toast() {
   if (!S.toast) return "";
   const acts = (S.toast[2] || []).map(([label, act, pop, n]) => `<button data-act="${act}" ${pop ? `data-pop="${pop}"` : ""} ${n ? `data-n="${n}"` : ""}>${label}</button>`).join("");
-  return `<div class="toast" role="status"><span class="ic">${I.ok}</span><b>${esc(S.toast[0])}</b><span class="sub">${esc(S.toast[1])}</span>${acts ? `<div class="acts">${acts}</div>` : ""}</div>`;
+  const err = S.toast[3] === "err";
+  return `<div class="toast ${err ? "err" : ""}" role="${err ? "alert" : "status"}"><span class="ic">${err ? "!" : I.ok}</span><b>${esc(S.toast[0])}</b><span class="sub">${esc(S.toast[1])}</span>${acts ? `<div class="acts">${acts}</div>` : ""}</div>`;
 }
 // Mark as reviewed posts nothing: the summary has nowhere to go, and the button stops promising GitHub
 function verdictChanged() {
@@ -1085,7 +1322,8 @@ function render() {
   const ed = document.getElementById("ed"), scroll = ed ? ed.scrollTop : 0;
   const rows = document.querySelector(".stack-rows"), rowsAt = rows && !stackFresh ? rows.scrollTop : null;
   stackFresh = false;
-  document.getElementById("ide").innerHTML = titlebar() + `<div class="body">${stripe()}${tool()}<main class="editor-area">${tabs()}${reviewbar()}${editor()}</main></div>` + statusbar() + toast();
+  const html = titlebar() + `<div class="body">${stripe()}${tool()}<main class="editor-area">${tabs()}${reviewbar()}${editor()}</main></div>` + statusbar() + toast();
+  document.getElementById("ide").innerHTML = gl() ? glWords(html) : html;
   const ed2 = document.getElementById("ed"); if (ed2 && keepScroll) ed2.scrollTop = scroll;
   // the stack card keeps where the reviewer scrolled it; shown afresh, it opens at the next PR to review
   const rows2 = document.querySelector(".stack-rows");
@@ -1107,9 +1345,11 @@ function render() {
   const anchor = S.pop === "submit" && S.popAt === "panel" && document.querySelector('.rv-actions [data-pop="submit"]');
   if (anchor) {
     const ide = document.getElementById("ide"), a = anchor.getBoundingClientRect(), r = ide.getBoundingClientRect();
-    ide.insertAdjacentHTML("beforeend", submitPop(`left:${a.left - r.left}px;top:${a.bottom - r.top + 6}px`));
+    const pop = submitPop(`left:${a.left - r.left}px;top:${a.bottom - r.top + 6}px`);
+    ide.insertAdjacentHTML("beforeend", gl() ? glWords(pop) : pop);
   }
   keepScroll = false;
+  if (typeof SIGNED !== "undefined") renderTable(); // the table marks the case on screen and follows remembered picks
   const d = document.getElementById("draft"); if (d) { grow(d); d.focus(); d.setSelectionRange(d.value.length, d.value.length); }
   if (scrollTo) document.querySelector(`.ln[data-line="${scrollTo}"]`)?.scrollIntoView({ block: "center" });
   scrollTo = null;
@@ -1119,7 +1359,7 @@ const grow = t => { t.style.height = "auto"; t.style.height = Math.min(t.scrollH
 
 // ---------- behaviour ----------
 let toastTimer, flashTimer;
-function say(title, sub, acts) { S.toast = [title, sub, acts]; clearTimeout(toastTimer); toastTimer = setTimeout(() => { S.toast = null; render(); }, acts ? 9000 : 4200); }
+function say(title, sub, acts, kind) { S.toast = [title, sub, acts, kind]; clearTimeout(toastTimer); toastTimer = setTimeout(() => { S.toast = null; render(); }, acts ? 9000 : 4200); }
 function openPath(p) { S.open = p; if (!S.tabs.includes(p)) S.tabs = [...S.tabs.slice(-3), p]; S.caret = null; S.hunk = null; S.draft = null; if (file(p) && file(p).status === "D") S.diff = true; }
 function nextUnviewed(dir = 1) {
   const files = scopedFiles(); if (!files.length) return;
@@ -1148,6 +1388,8 @@ function sendTicks(paths) {
   });
 }
 function syncLine() {
+  // GitLab keeps its Viewed checkboxes in the browser, with no API: ticks stay on this laptop (spec/gitlab.md)
+  if (gl()) return '<span title="GitLab has no API for its Viewed checkboxes">Viewed kept on this laptop</span>';
   const n = new Set(SENDING.calls.flatMap(c => c.paths)).size;
   return SENDING.shown && n ? `<span class="sending"><span class="spin"></span> Sending ${n} to GitHub…</span>` : "<span>Synced with GitHub</span>";
 }
@@ -1156,7 +1398,7 @@ function syncLine() {
 function toggleViewed(p, fromFile) {
   const was = S.viewed[p] && !S.since[p];
   if (was) delete S.viewed[p]; else { S.viewed[p] = true; delete S.since[p]; }
-  sendTicks([p]);
+  if (!gl()) sendTicks([p]);
   const unsent = (S.draft || S.replyTo) && S.draftText.trim();
   if (!was && fromFile && p === S.open && !unsent) {
     S.tabs = S.tabs.filter(x => x !== p); S.open = S.tabs.at(-1) ?? null; S.draft = null; S.replyTo = null;
@@ -1222,7 +1464,7 @@ document.getElementById("ide").addEventListener("click", e => {
       e.stopPropagation();
       const paths = scopedFiles().filter(f => f.path.slice(0, f.path.lastIndexOf("/")) === p).map(f => f.path);
       const all = paths.every(x => badge(x) === "check");
-      sendTicks(all ? paths : paths.filter(x => badge(x) !== "check"));
+      if (!gl()) sendTicks(all ? paths : paths.filter(x => badge(x) !== "check"));
       paths.forEach(x => { if (all) delete S.viewed[x]; else { S.viewed[x] = true; delete S.since[x]; } });
       if (!all && allViewed()) say(`All ${scopedFiles().length} files viewed`, "Finish the review to post a verdict, or mark it reviewed without posting.", [["Finish Review…", "pop", "submit"]]);
       break;
@@ -1257,6 +1499,52 @@ document.getElementById("ide").addEventListener("click", e => {
     case "unfold": e.stopPropagation(); S.unfold[t.dataset.id] = !S.unfold[t.dataset.id]; keepScroll = true; break;
     case "diff": S.diff = t.dataset.v === "1"; S.hunk = null; break;
     case "viewer": S.unified = !S.unified; break;
+    case "add-account": S.pop = null; S.adding = true; S.authFrom = S.auth; S.auth = "code"; S.approving = false; break;
+    case "use-other": S.got = t.dataset.login; // falls through: reviewing as another account on purpose
+    case "anyway": if (S.pending?.login === S.got && !S.tokens.some(t => t.login === S.got)) S.tokens.push(S.pending); S.pending = null; REMEMBERED[S.origin] = S.got; decide(S); if (S.account !== S.got) break; say(`Reviewing as ${S.got}`, "Remembered for this repository. Change it any time from \"Reviewing as\"."); break;
+    case "signin": S.pop = null; S.pending = null; S.authFrom = S.auth; S.auth = "code"; S.approving = false; break;
+    case "token": S.pop = null; S.authFrom = S.auth; S.auth = "token"; S.tokenErr = null; break;
+    case "token-kind": S.tokenKind = t.dataset.v; break;
+    case "signin-cancel": S.pending = null; S.auth = ["in", "pick", "blind"].includes(S.authFrom) ? S.authFrom : "out"; S.approving = false; S.adding = false; break;
+    case "copy-code": say("Code copied", "Paste it on github.com/login/device."); break;
+    case "open-browser": S.approving = true; render();
+      // the browser approves; Review Lens polls GitHub and picks up the token
+      // then checks who approved: the browser may be signed in to the other account
+      setTimeout(() => { if (S.auth !== "code") return; S.approving = false;
+        const got = document.getElementById("opt-wrongbrowser").checked ? "v4tsa" : S.expect || "vatsarishabh22";
+        const token = { login: got, via: "Signed in with Review Lens" };
+        if (S.adding) { // a second account: added to the menu, the one you review as stays
+          if (!S.tokens.some(t => t.login === got)) S.tokens.push(token);
+          S.adding = false; S.auth = S.authFrom === "code" ? "in" : S.authFrom;
+          say(`Added ${got}`, `You still review as ${S.account}. Switch from "Reviewing as".`); render(); renderTable(); return;
+        }
+        if (S.expect && got !== S.expect) { S.pending = token; S.auth = "mismatch"; S.got = got; render(); return; }
+        if (!S.tokens.some(t => t.login === got)) S.tokens.push(token);
+        decide(S); if (S.auth === "in" && S.account === got && !S.expect) S.why = "new";
+        if (S.auth === "in") say(`Signed in to GitHub as ${got}`, "Kept in your IDE's password store. Review Lens uses it for this repository.");
+        render(); renderTable(); }, 2200);
+      return;
+    case "token-save": {
+      const v = document.getElementById("tok")?.value.trim() || "";
+      if (S.self && !S.tokenKind) { S.tokenErr = `Pick what ${SELF} runs: GitHub Enterprise or GitLab.`; break; }
+      if (!v) { S.tokenErr = "Paste a token first."; break; }
+      if (v.length < 8) { S.tokenErr = `${hostName()} refused that token (401). Check it hasn't expired and has the right scope.`; break; }
+      const login = document.getElementById("opt-wrongbrowser").checked && !S.self ? "v4tsa" : S.expect || (S.self ? "rishabh" : "vatsarishabh22");
+      if (S.self) SERVER_KIND[SELF] = S.tokenKind;
+      if (S.expect && login !== S.expect) { S.pending = { login, via: "Token you pasted" }; S.auth = "mismatch"; S.got = login; break; }
+      if (!S.tokens.some(t => t.login === login)) S.tokens.push({ login, via: "Token you pasted" });
+      decide(S); if (S.auth === "in" && S.account === login && !S.expect) S.why = "new";
+      if (S.auth === "in") say(`Signed in to ${hostName()} as ${acct().login}`, "Kept in your IDE's password store."); break;
+    }
+    case "acct-pick": S.account = t.dataset.login; break;
+    case "pick-go": REMEMBERED[S.origin] = S.account; decide(S); say(`Reviewing acme/invoices as ${S.account}`, "Remembered for this repository."); break;
+    case "acct-use": S.pop = null; if (t.disabled) break; if (access(S, t.dataset.login) === "none") { say(`${t.dataset.login} can't see acme/invoices`, "Pick an account that can, or sign in with one."); break; }
+      if (t.dataset.login !== S.account) { REMEMBERED[S.origin] = t.dataset.login; decide(S); say(`Reviewing as ${S.account}`, "Remembered for this repository. The list now shows what's waiting on this account."); } break;
+    case "signout": S.pop = null; say(`Signed out of ${acct().login}`, "Its token is removed from your IDE's password store."); S.tokens = S.tokens.filter(t => t.login !== S.account); decide(S); S.panel = "list"; break;
+    case "noop": break;
+    case "remotes": say("Opens Git › Manage Remotes", "Paste the repository's URL from GitHub or GitLab; Review Lens picks it up at once."); break;
+    case "held-open": say("Opens !148 on GitLab in your browser", "Publish or delete your drafts there, then open Finish review again."); break;
+    case "held-resend": S.held = null; S.pop = null; say("Summary sent again", "Posted on !148."); break;
     case "caret": if (e.target.closest(".blame,.plus,.bar button")) return;
       // shift-click selects lines from the caret, as in the IDE; a "+" inside the selection comments on all of them
       S.sel = e.shiftKey && S.caret ? { from: Math.min(S.caret, +t.dataset.line), to: Math.max(S.caret, +t.dataset.line) } : null;
@@ -1337,6 +1625,11 @@ document.getElementById("ide").addEventListener("click", e => {
   render();
 });
 function submitReview() {
+  if (gl() && S.vPick === 1 && S.refuseApprove) {
+    S.pop = null;
+    say("GitLab refused the approval (401)", `Nothing was posted${pendingCount() ? `: your ${drafts()} ${pendingCount() > 1 ? "are" : "is"} kept here as drafts` : ""}. Your project may not let the author approve.`, null, "err");
+    return;
+  }
   {
       const pend = pendingCount(), posting = drafts();
       const picked = S.vPick;
@@ -1367,8 +1660,51 @@ document.addEventListener("keydown", e => {
   }
 });
 document.getElementById("opt-dirty").addEventListener("change", e => { S.dirty = e.target.checked; render(); });
-document.getElementById("opt-reset").addEventListener("click", () => { S = fresh(); render(); });
+document.getElementById("opt-reset").addEventListener("click", () => { for (const k in REMEMBERED) delete REMEMBERED[k]; for (const k in SERVER_KIND) delete SERVER_KIND[k]; S = resolve(blank()); render(); });
 document.querySelectorAll('input[name="stack"]').forEach(r => r.addEventListener("change", () => { S.stack = stackMode(); stackFresh = true; if (S.scope !== "since") { S.scope = "all"; S.picked = new Set(); } render(); }));
+// the GitLab chips turn the GitLab repository on, as they only happen there
+// One cell per case, worked out by resolve() itself, so the table can't disagree with the screens
+const SIGNED = [["cli", "gh / glab, both accounts"], ["other", "gh, v4tsa only"], ["rl", "Review Lens, git's account"], ["none", "nothing"]];
+function cellOf(origin, signed) {
+  const s = resolve(Object.assign(blank(), { origin, signed }), true), kind = s.self ? ({ gitlab: "GitLab", github: "GitHub Enterprise" }[s.tokenKind] || null) : s.gl ? "GitLab" : "GitHub";
+  if (s.notGit) return ["none", "Not a Git repository", "Nothing to review"];
+  if (s.noRemote) return ["none", "Link a repository…", "No remote"];
+  if (s.auth === "in") return ["in", `Reviewing as ${s.account}`, whyOf(s) + (s.lost ? ` · ${s.lost} lost access` : "")];
+  if (s.auth === "pick") return ["pick", `Asks: ${s.choices.map(t => t.login).join(" or ")}`, "git can't say, and more than one can push"];
+  if (s.auth === "blind" && s.gitBlind) { const ok = s.tokens.find(t => t.login !== s.expect && access(s, t.login) !== "none");
+    return ["blind", `${s.expect} can't see the repo${ok ? ` · or review as ${ok.login}` : ""}`, "git's account is signed in, but its token can't see it"]; }
+  if (s.auth === "blind") return ["blind", "None can see the repo", `${s.tokens.map(t => t.login).join(", ")} signed in without access`];
+  const other = s.tokens.find(t => t.login !== s.expect && access(s, t.login) !== "none");
+  const o = ORIGINS[origin], host = s.self ? SELF : s.gl ? "gitlab.com" : "github.com";
+  const asking = s.self && !s.tokenKind ? (o.probe === "unknown" ? "the server doesn't say what it runs: you pick" : "asks the server what it runs") : kind ? `${kind}, ${o.ssh ? "from the SSH greeting" : s.self ? "as the server said" : "by its name"}` : "";
+  return ["out", `Sign in${s.expect ? ` as ${s.expect}` : ""}${other ? ` · or review as ${other.login}` : ""}`, [s.expect ? `no token for git's account` : `no account for ${host}`, asking].filter(Boolean).join(" · ")];
+}
+function renderTable() {
+  const opts = [...document.getElementById("opt-origin").options];
+  document.getElementById("rules").innerHTML = `<h2>Who reviews as whom</h2>
+    <p class="lead">Every origin × what's signed in, worked out by the same rule the screens use, with v4tsa ${document.getElementById("opt-v4").selectedOptions[0].text} on acme/invoices. Click a case to load it above.</p>
+    <p class="legend"><span class="in">Reviews right away</span><span class="out">You sign in first</span><span class="pick">Asks you which account, once</span><span class="blind">Signed in, but no account can see the repo</span><span class="none">Nothing to review here</span></p>
+    <table><tr><th class="o">Origin</th>${SIGNED.map(([, l]) => `<th>${l}</th>`).join("")}</tr>
+    ${opts.map(o => `<tr><th class="o">${esc(o.text)}</th>${SIGNED.map(([g]) => { const [k, t, why] = cellOf(o.value, g);
+      return `<td class="${k} ${S.origin === o.value && S.signed === g ? "cur" : ""}" data-o="${o.value}" data-g="${g}"><b>${esc(t)}</b><span>${esc(why)}</span></td>`; }).join("")}</tr>`).join("")}</table>`;
+}
+document.getElementById("rules").addEventListener("click", e => {
+  const td = e.target.closest("td[data-o]"); if (!td) return;
+  document.getElementById("opt-origin").value = td.dataset.o; document.getElementById("opt-signed").value = td.dataset.g; pickOrigin();
+  document.getElementById("ide").scrollIntoView({ behavior: "smooth", block: "start" });
+});
+// the GitLab chips switch the origin to gitlab.com, as they only happen there
+const glOn = () => { if (S.gl) return; document.getElementById("opt-origin").value = "gitlab"; S.origin = "gitlab"; resolve(S); };
+const pickOrigin = () => { S = resolve(blank()); S.tool = "review"; render(); renderTable(); };
+document.getElementById("opt-origin").addEventListener("change", pickOrigin);
+document.getElementById("opt-signed").addEventListener("change", pickOrigin);
+document.getElementById("opt-v4").addEventListener("change", pickOrigin);
+document.getElementById("opt-limited").addEventListener("click", () => { glOn(); S.limited = true; if (S.mode !== "review") S.tool = "review"; render(); setTimeout(() => { S.limited = false; render(); }, 3500); });
+const toFinish = () => { if (S.mode === "review") { S.pop = "submit"; S.popAt = S.tabs.length ? "bar" : "panel"; if (S.popAt === "panel") S.tool = "review"; } else say("Start the review of !148 first", "Then open Finish review."); };
+document.getElementById("opt-webdrafts").addEventListener("click", () => { glOn(); S.webDrafts = true; toFinish(); render(); });
+document.getElementById("opt-held").addEventListener("click", () => { glOn(); S.held = "drafts"; toFinish(); render(); });
+document.getElementById("opt-heldsum").addEventListener("click", () => { glOn(); S.held = "summary"; toFinish(); render(); });
+document.getElementById("opt-refuse").addEventListener("click", () => { glOn(); S.refuseApprove = true; toFinish(); render(); });
 document.getElementById("opt-wide").addEventListener("click", () => { S.impactWide = !S.impactWide; render(); });
 document.getElementById("opt-slow").addEventListener("click", () => { S.impactSlow = !S.impactSlow; render(); });
 document.getElementById("opt-noimpact").addEventListener("click", () => { S.noImpact = !S.noImpact; render(); });
@@ -1379,21 +1715,21 @@ document.getElementById("opt-moved").addEventListener("click", () => {
   render();
 });
 document.getElementById("opt-pushed").addEventListener("click", () => {
-  S = fresh(); FILES.forEach(f => S.viewed[f.path] = true); S.verdict = "approved"; S.submitted = true; S.pushed = true;
+  S = resolve(blank()); FILES.forEach(f => S.viewed[f.path] = true); S.verdict = "approved"; S.submitted = true; S.pushed = true;
   S.tool = "review"; S.panel = "list"; S.scope = "since"; S.picked = new Set([3, 4]); // the detail offers what's new, chosen
   S.counted = false; setTimeout(() => { S.counted = true; render(); }, document.getElementById("opt-slownet").checked ? 3000 : 900);
   render();
 });
 document.getElementById("opt-early").addEventListener("click", () => {
-  S = fresh(); S.verdict = "commented"; S.submitted = true; S.tool = "review"; S.panel = "list";
+  S = resolve(blank()); S.verdict = "commented"; S.submitted = true; S.tool = "review"; S.panel = "list";
   S.comments = { "src/app/platform/bucket/keys.py": { 14: [{ text: "Should v1 sit before the dataset name?", pending: false }] } };
   render();
 });
 document.getElementById("opt-race").addEventListener("click", () => { S.remote = true; say("Bob resolved his thread on GitHub", "Review Lens notices when you open Finish review, before anything posts."); render(); });
 document.getElementById("opt-resume").addEventListener("click", () => {
-  S = fresh(); S.resume = true; S.tool = "review"; S.panel = "detail";
+  S = resolve(blank()); S.resume = true; S.tool = "review"; S.panel = "detail";
   S.comments = { "src/app/platform/bucket/keys.py": { 14: [{ text: "Should v1 sit before the dataset name, so a layout change doesn't split one dataset across two prefixes?", pending: true }] } };
   render();
 });
-render();
+render(); renderTable();
 </script>
