@@ -7,6 +7,9 @@ import com.intellij.openapi.project.Project
 
 const val TITLE = "Review Lens"
 
+/** The Finish review action (plugin.xml): how a service offers Finish without importing the popup. */
+const val FINISH_REVIEW = "ReviewLens.FinishReview"
+
 /**
  * Refuses [step] while a start, a re-scope, Finish, Exit or the load on opening is under way, and says so: a greyed control never gets here,
  * but a balloon's link or a shortcut can, and a click must never vanish without a word. True when refused.

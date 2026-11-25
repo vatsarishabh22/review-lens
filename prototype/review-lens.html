@@ -1161,7 +1161,7 @@ function toggleViewed(p, fromFile) {
   if (!was && fromFile && p === S.open && !unsent) {
     S.tabs = S.tabs.filter(x => x !== p); S.open = S.tabs.at(-1) ?? null; S.draft = null; S.replyTo = null;
   }
-  if (!was && allViewed()) { say(`All ${scopedFiles().length} files viewed`, "Finish the review to post a verdict, or mark it reviewed without posting.", [["Finish review…", "pop", "submit"]]); return; }
+  if (!was && allViewed()) { say(`All ${scopedFiles().length} files viewed`, "Finish the review to post a verdict, or mark it reviewed without posting.", [["Finish Review…", "pop", "submit"]]); return; }
   if (!was && (p === S.open || fromFile)) nextUnviewed();
 }
 function startReview() {
@@ -1224,7 +1224,7 @@ document.getElementById("ide").addEventListener("click", e => {
       const all = paths.every(x => badge(x) === "check");
       sendTicks(all ? paths : paths.filter(x => badge(x) !== "check"));
       paths.forEach(x => { if (all) delete S.viewed[x]; else { S.viewed[x] = true; delete S.since[x]; } });
-      if (!all && allViewed()) say(`All ${scopedFiles().length} files viewed`, "Finish the review to post a verdict, or mark it reviewed without posting.", [["Finish review…", "pop", "submit"]]);
+      if (!all && allViewed()) say(`All ${scopedFiles().length} files viewed`, "Finish the review to post a verdict, or mark it reviewed without posting.", [["Finish Review…", "pop", "submit"]]);
       break;
     }
     case "files-view": S.filesView = t.dataset.v; break;

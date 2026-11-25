@@ -199,7 +199,7 @@ summary's text, newer than the saved id, is seen; until then the held popup says
 
 On gitlab.com with no approval rules (Free, 0 approvals required, `merge_requests_author_approval` false), `…/approvals`
 said `user_can_approve: false` and the author's approve still **succeeded** (measured). So no verdict is greyed in
-advance on GitLab. An Approve GitLab refuses fails at step 3: the drafts are deleted and Review Lens says GitLab refused it, with its status.
+advance for permissions on GitLab (Approve is still greyed for a scope ending before the latest push, step 3). An Approve GitLab refuses fails at step 3: the drafts are deleted and Review Lens says GitLab refused it, with its status.
 Request changes on your own MR, as the author with no reviewers, only adds GitLab's "requested changes" note: the MR's
 state doesn't change (`detailedMergeStatus` stayed `MERGEABLE`, the author's `reviewState` null). It isn't greyed:
 GitLab takes it. As a reviewer of the MR, it sets your state to `REQUESTED_CHANGES` (measured). On Premium and Ultimate,

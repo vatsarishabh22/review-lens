@@ -147,6 +147,8 @@
                 text="Next Place to Check" description="Unfold the next place outside the PR that uses a changed function">
             <keyboard-shortcut keymap="$default" first-keystroke="alt I"/>
         </action>
+        <action id="ReviewLens.FinishReview" class="io.github.vatsarishabh22.reviewlens.ui.FinishReviewAction"
+                text="Finish Review…" description="Post your verdict and comments as one review, or mark the PR reviewed"/>
         <action id="ReviewLens.Exit" class="io.github.vatsarishabh22.reviewlens.ui.ExitReviewAction"
                 text="Exit Review" description="Go back to your branch and restore your parked changes" icon="AllIcons.Actions.Exit"/>
     </actions>

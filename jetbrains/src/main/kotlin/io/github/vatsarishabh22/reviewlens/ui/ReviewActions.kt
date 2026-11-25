@@ -1,11 +1,13 @@
 package io.github.vatsarishabh22.reviewlens.ui
 
+import com.intellij.notification.Notification
 import com.intellij.openapi.actionSystem.ActionUpdateThread
 import com.intellij.openapi.actionSystem.AnActionEvent
 import com.intellij.openapi.actionSystem.CommonDataKeys
 import com.intellij.openapi.fileEditor.FileEditorManager
 import com.intellij.openapi.vfs.VirtualFile
 import com.intellij.openapi.project.DumbAwareAction
+import com.intellij.openapi.project.Project
 import io.github.vatsarishabh22.reviewlens.core.*
 import io.github.vatsarishabh22.reviewlens.services.*
 
@@ -60,6 +62,25 @@ class NextPlaceAction : ReviewAction() {
         val project = e.project ?: return
         e.getData(CommonDataKeys.EDITOR)?.let(ImpactInlays.of(project)::nextPlace)
     }
+}
+
+/**
+ * Opens Finish review, only for a PR under review (a branch has nowhere to post, as on the Finish button). A balloon
+ * link runs this without [update], so the "All files viewed" balloon is closed first and the check is repeated here.
+ */
+class FinishReviewAction : ReviewAction() {
+    override fun update(e: AnActionEvent) {
+        e.presentation.isEnabledAndVisible = e.project?.let(::finishable) == true
+    }
+
+    override fun actionPerformed(e: AnActionEvent) {
+        e.getData(Notification.KEY)?.expire()
+        val project = e.project ?: return
+        if (finishable(project)) showFinishReview(project, null)
+        else notify(project, "Nothing to finish", "Finish review posts to a pull request, and no PR review is in progress.")
+    }
+
+    private fun finishable(project: Project) = ReviewService.of(project).let { it.isActive && it.meta?.target?.reviewable == true }
 }
 
 class ExitReviewAction : ReviewAction() {

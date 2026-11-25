@@ -1,9 +1,9 @@
 package io.github.vatsarishabh22.reviewlens.services
 
 import com.intellij.ide.projectView.ProjectView
-import com.intellij.notification.NotificationAction
 import com.intellij.notification.NotificationType
 import com.intellij.openapi.Disposable
+import com.intellij.openapi.actionSystem.ActionManager
 import com.intellij.openapi.application.ApplicationManager
 import com.intellij.openapi.components.Service
 import com.intellij.openapi.components.service
@@ -15,7 +15,6 @@ import com.intellij.ui.EditorNotifications
 import com.intellij.util.concurrency.AppExecutorUtil
 import io.github.vatsarishabh22.reviewlens.core.*
 import io.github.vatsarishabh22.reviewlens.host.*
-import io.github.vatsarishabh22.reviewlens.ui.showFinishReview
 import java.util.concurrent.CopyOnWriteArrayList
 import java.util.concurrent.TimeUnit
 
@@ -123,7 +122,7 @@ class ReviewService(private val project: Project) : Disposable {
         // the last tick is the moment to finish: say so once, with the way to do it
         if (viewed && current.target.reviewable && reviewedCount() == changes.size) notify(project, "All ${changes.size} files viewed",
             "Finish the review to post a verdict, or mark it reviewed without posting.", NotificationType.INFORMATION,
-            NotificationAction.createSimpleExpiring("Finish review…") { showFinishReview(project, null) })
+            ActionManager.getInstance().getAction(FINISH_REVIEW))
         if (sent.isNotEmpty()) send(sent)
     }
 

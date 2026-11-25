@@ -29,37 +29,46 @@ Try reviews on a throwaway clone, never on a working copy you care about.
 
 ## Code
 
-`src/main/kotlin/io/github/vatsarishabh22/reviewlens/`
+`src/main/kotlin/io/github/vatsarishabh22/reviewlens/`, one package per layer. A layer uses only the ones below it:
 
-| Layer | Files | Owns |
+```
+ui ─▶ services ─▶ host ─▶ core        host/github ─▶ core   (only host/ imports host/<name>/)
+          └─────▶ impact ─▶ core       core uses no IntelliJ but its process runner, logger and the platform's Gson
+```
+
+| Layer (package) | Files | Owns |
 |---|---|---|
-| **Core** (mirrors `spec/`) | `ReviewLifecycle` | Park → check out `review/<key>` → exit and restore. `active.json` |
+| **Core** `core/` (mirrors `spec/`) | `ReviewHost` | The code host contract every host implements (list, head ref, threads, slot, one-call Finish, checks, optional Viewed sync) and its neutral types (`PullRequest`, `ViewedState`, `Checks`) |
+| | `ReviewLifecycle` | Park → check out `review/<key>` → exit and restore. `active.json` |
 | | `ReviewMeta` | One PR's state, `<key>.json`: range, scope label, viewed blobs, unsent ticks, drafts, impact ticks; the viewed merge |
 | | `ReviewScope` | Commit pick → `ScopeRange(from, to)` and its label; state keys |
 | | `ReviewComments`, `Remarks` | Drafts, the outbox Finish posts, suggestion blocks; the Comments tab's rows and filters |
 | | `GitClient`, `Cli`, `GitParsers` | Thin `git` wrapper and its output parsers |
-| **Host** | `ReviewHost` | The code host contract (list, head ref, threads, slot, one-call Finish, checks, optional Viewed sync) and `ReviewHosts`, which picks `origin`'s host ([spec/gitlab.md](../spec/gitlab.md)) |
-| | `github/GhClient`, `github/GitHubWire` | GitHub's host: the `gh` calls, its Finish rules (`GitHubSlot`), and its GraphQL, jq and parsers. Only `ReviewHost` imports this package |
-| **Services** | `ReviewSession` | Fetch a target (a PR via the host's head ref, or a branch), start or re-scope a review |
+| | `ReviewThreads`, `Stacks`, `StackStore` | Threads as the host gives them; a PR's stack and where it is kept |
+| **Host** `host/` | `ReviewHosts` | Picks `origin`'s host ([spec/gitlab.md](../spec/gitlab.md)): the only file that imports a host's package |
+| | `github/GhClient`, `github/GitHubWire` | GitHub's host: the `gh` calls, its Finish rules (`GitHubSlot`), and its GraphQL, jq and parsers |
+| **Services** `services/` | `ReviewSession` | Fetch a target (a PR via the host's head ref, or a branch), start or re-scope a review |
 | | `ReviewService` | Project service: the review in progress, its changed files, ticks and badges |
 | | `HostViewed` | The host's Viewed checkboxes: folded in at load, each tick sent, failures queued |
 | | `HostThreads` | The host's threads and slot, and the writes that can't wait for Finish: edit, delete, resolve |
 | | `ReviewDrafts` | Draft comments and the summary, posted as one review |
 | | `ReviewBlame` | Which in-scope commit last changed the caret's line, cached per scope range |
 | | `ReviewTargets` | What the panel lists: open PRs from the host, or remote branches without one |
-| **Impact map** ([spec/impact.md](../spec/impact.md)) | `ImpactLanguage`, `PythonImpact`, `JavaImpact`, `KotlinImpact` | One extension per language: what a function is, its header, its name |
+| | `ImpactService` | Project service: the impact map for the review in progress, and its ticks |
+| | `Balloons` | `notify` and `refusedBusy`: the plugin's balloons |
+| **Impact map** `impact/` ([spec/impact.md](../spec/impact.md)) | `ImpactLanguage`, `PythonImpact`, `JavaImpact`, `KotlinImpact` | One extension per language: what a function is, its header, its name |
 | | `FunctionScanner`, `ChangedFunctions`, `ImpactSearch`, `CodeFiles` | Changed functions in the scope, the places that use them, which files are code |
-| | `ImpactService` | Project service: the map for the review in progress, and its ticks |
-| **UI** | `ReviewFlow` | Glue: background tasks, notifications, begin and exit, open file, diff |
+| **UI** `ui/` | `ReviewFlow` | Glue: background tasks, begin and exit, open file, diff (balloons are `Balloons`, in Services) |
 | | `ReviewPanel`, `PrListView`, `PrDetailView`, `ChangedFilesView` | The Review tool window |
-| | `ReviewBanner`, `FinishReviewPopup`, `CommentInlays`, `ImpactChip`, `ImpactInlays`, `ReviewGutter`, `PrDescription` | The review bar, Finish popup, inline comments, impact chips and peeks, gutter marks, PR description |
+| | `ReviewBanner`, `FinishReviewPopup`, `CommentInlays`, `ImpactChip`, `ImpactInlays`, `ReviewGutter`, `PrDescription`, `StackCard`, `ReviewDiffEditor` | The review bar, Finish popup, inline comments, impact chips and peeks, gutter marks, PR description |
 | | `TreeBadges`, `InlineBlame`, `ReviewStatusWidget`, `ReadOnlyGuard`, `ReviewActions`, `ReviewPrAction`, `ReviewStartup` | Other platform surfaces |
 | | `ReviewUi` | `ReviewColors`, the **single colour source** (lazy `JBColor`s, so theme switches need no code), and shared widgets |
 
 Principles the code follows:
 - **One owner per concern.** A rule lives in one place, and everything else asks that owner.
 - **An interface only where a second implementation is planned:** `ReviewHost` (GitLab, 0.2.0) and `ImpactLanguage`
-  (one per language). Shared code never imports a host's package; `HostBoundaryTest` fails if it does.
+  (one per language). Each layer imports only the layers below it, and only `host/` imports a host's package;
+  `LayersTest` fails otherwise. A service never opens UI: it calls an action by its id (`ReviewLens.FinishReview`).
 - **Views only draw.** What a list shows and what a popup says are plain functions with tests (`remarks`, `finishWords`).
 - **Stable platform APIs only.** The JetBrains review toolkit (`collaboration-tools`) is experimental, so it isn't
   used.
