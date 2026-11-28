@@ -46,7 +46,7 @@ ui ─▶ services ─▶ host ─▶ core        host/github ─▶ core   (onl
 | | `GitClient`, `Cli`, `GitParsers` | Thin `git` wrapper and its output parsers |
 | | `ReviewThreads`, `Stacks`, `StackStore` | Threads as the host gives them; a PR's stack and where it is kept |
 | **Host** `host/` | `ReviewHosts` | Picks `origin`'s host ([spec/gitlab.md](../spec/gitlab.md)): the only file that imports a host's package |
-| | `github/GhClient`, `github/GitHubWire` | GitHub's host: the `gh` calls, its Finish rules (`GitHubSlot`), and its GraphQL, jq and parsers |
+| | `github/GitHubClient`, `github/GitHubApi`, `github/GitHubWire` | GitHub's host: its calls, the HTTPS transport (one bounded `send`; the JDK client, which never re-sends a write), its Finish rules (`GitHubSlot`), and its GraphQL and parsers |
 | **Services** `services/` | `ReviewSession` | Fetch a target (a PR via the host's head ref, or a branch), start or re-scope a review |
 | | `ReviewService` | Project service: the review in progress, its changed files, ticks and badges |
 | | `HostViewed` | The host's Viewed checkboxes: folded in at load, each tick sent, failures queued |
