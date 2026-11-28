@@ -6,8 +6,10 @@ import com.intellij.openapi.diagnostic.logger
 import java.nio.file.Path
 import java.util.concurrent.Executors
 
-/** A command that exited non-zero; [stdout] keeps what it printed (`gh api` prints GitHub's refusal there). */
-/** A command that failed; [timedOut] when it was stopped unanswered, so what it did on the other side is unknown. */
+/**
+ * A command or host call that failed; [stdout] keeps what it printed or the host's answer. [timedOut] when it was
+ * stopped unanswered, so what it did on the other side is unknown.
+ */
 class CliException(message: String, val stdout: String = "", val stderr: String = "", val timedOut: Boolean = false) : RuntimeException(message)
 
 /** The first line of [stderr] without git's `fatal:` / `error:` prefix, e.g. "Could not read from remote repository." */

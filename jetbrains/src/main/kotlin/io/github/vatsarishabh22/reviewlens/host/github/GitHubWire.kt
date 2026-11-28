@@ -2,87 +2,102 @@ package io.github.vatsarishabh22.reviewlens.host.github
 
 import com.google.gson.Gson
 import com.google.gson.JsonArray
+import com.google.gson.JsonElement
 import com.google.gson.JsonObject
 import io.github.vatsarishabh22.reviewlens.core.*
 
-// GitHub's wire: what GhClient sends (GraphQL text, payloads, jq filters) and how it reads the answers into the
+// GitHub's wire: what GitHubClient sends (GraphQL text and payloads) and how it reads GitHub's answers into the
 // host-neutral types. Nothing outside this package calls it.
 
-/** `gh pr list --json` as GitHub spells it; only [parsePullRequests] reads it. A team review request has no login. */
+/** A PR node of [PULL_REQUESTS_QUERY] as GitHub spells it; only [parsePullRequests] reads it. A team review request has no login. */
 private data class GhUser(val login: String, val name: String?)
-private data class GhRequest(val login: String?)
+private data class GhLogin(val login: String?)
+private data class GhRequest(val requestedReviewer: GhLogin?)
+private data class GhRequests(val nodes: List<GhRequest>?)
 private data class GhPullRequest(
-    val number: Int, val title: String, val headRefName: String, val headRefOid: String, val baseRefName: String, val author: GhUser,
-    val body: String?, val additions: Int, val deletions: Int, val changedFiles: Int, val updatedAt: String, val reviewRequests: List<GhRequest>?,
+    val number: Int, val title: String, val headRefName: String, val headRefOid: String, val baseRefName: String, val author: GhUser?,
+    val body: String?, val additions: Int, val deletions: Int, val changedFiles: Int, val updatedAt: String, val reviewRequests: GhRequests?,
     val isCrossRepository: Boolean = false,
 )
 
+/** The open PRs, as `gh pr list` asked for them (its query, captured with `GH_DEBUG=api`, gh 2.103.3), and who is asking. */
+internal const val PULL_REQUESTS_QUERY = "query(\$owner:String!,\$name:String!){viewer{login} repository(owner:\$owner,name:\$name)" +
+    "{pullRequests(states:OPEN,first:100,orderBy:{field:CREATED_AT,direction:DESC}){nodes{number title headRefName headRefOid baseRefName " +
+    "author{login ...on User{name}} body additions deletions changedFiles updatedAt reviewRequests(first:100){nodes{requestedReviewer{...on User{login} ...on Bot{login}}}} isCrossRepository}}}}"
+
 /**
- * `gh pr list --json` as [PullRequest]s. A PR waits on [viewer] when a review request names them.
+ * [PULL_REQUESTS_QUERY]'s answer as [PullRequest]s. A PR waits on the viewer when a review request names them.
  * ponytail: user requests only; a request to one of the viewer's teams lists under "Other open".
  */
-fun parsePullRequests(json: String, viewer: String?): List<PullRequest> = Gson().fromJson(json, Array<GhPullRequest>::class.java).map {
-    PullRequest(it.number, it.title, it.headRefName, it.headRefOid, it.baseRefName, Person(it.author.login, it.author.name?.ifBlank { null } ?: it.author.login),
-        it.body.orEmpty(), it.additions, it.deletions, it.changedFiles, it.updatedAt, viewer != null && it.reviewRequests.orEmpty().any { r -> r.login == viewer },
-        fromFork = it.isCrossRepository)
+fun parsePullRequests(data: JsonObject): List<PullRequest> {
+    val viewer = data.at("viewer")?.get("login")?.asString
+    val nodes = data.at("repository.pullRequests")?.getAsJsonArray("nodes") ?: throw IllegalArgumentException("GitHub did not return this repository")
+    return Gson().fromJson(nodes, Array<GhPullRequest>::class.java).map {
+        val author = it.author?.login ?: "ghost" // a deleted account
+        PullRequest(it.number, it.title, it.headRefName, it.headRefOid, it.baseRefName, Person(author, it.author?.name?.ifBlank { null } ?: author),
+            it.body.orEmpty(), it.additions, it.deletions, it.changedFiles, it.updatedAt,
+            viewer != null && it.reviewRequests?.nodes.orEmpty().any { r -> r.requestedReviewer?.login == viewer }, fromFork = it.isCrossRepository)
+    }
 }
 
 /**
- * Each open PR's commits (newest last), the stack rule's input (spec/README.md, Stacks). Its own call: `gh pr list --json
- * commits` asks for every commit's authors too, which GitHub refuses past 500,000 nodes (100 PRs did, measured).
+ * Each open PR's commits (newest last), the stack rule's input (spec/README.md, Stacks). Its own call: asking for the
+ * commits in the PR list asks for every commit's authors too, which GitHub refuses past 500,000 nodes (100 PRs did, measured).
  * ponytail: the last 100 commits of the newest 100 PRs; a parent further back is missed and the PR compares with its base.
  */
 internal const val COMMIT_IDS_QUERY = "query(\$owner:String!,\$name:String!){repository(owner:\$owner,name:\$name){pullRequests(states:OPEN,first:100,orderBy:{field:CREATED_AT,direction:DESC})" +
     "{nodes{number commits(last:100){nodes{commit{oid}}}}}}}"
-internal const val COMMIT_IDS_JQ = ".data.repository.pullRequests.nodes[] | \"\\(.number)\\t\\([.commits.nodes[].commit.oid] | join(\",\"))\""
 
-/** Reads `number<TAB>oid,oid,…` lines into each PR's commits. */
-fun parseCommitIds(text: String): Map<Int, List<String>> = text.lines().filter { '\t' in it }.associate { line ->
-    val (number, oids) = line.split('\t', limit = 2)
-    number.toInt() to oids.split(',').filter { it.isNotEmpty() }
+/** [COMMIT_IDS_QUERY]'s answer: each PR's commit ids. */
+fun parseCommitIds(data: JsonObject): Map<Int, List<String>> = data.at("repository.pullRequests")?.getAsJsonArray("nodes").orEmpty().associate { pr ->
+    pr.asJsonObject["number"].asInt to pr.asJsonObject.at("commits")?.getAsJsonArray("nodes").orEmpty().mapNotNull { it.asJsonObject.at("commit")?.get("oid")?.asString }
 }
 
-/** Reads `PR_id<TAB>head<TAB>pendingId<TAB>comments<TAB>own`; pendingId is empty and comments 0 when there is no pending review. */
-fun parseReviewSlot(text: String): GitHubSlot {
-    val (pr, head, pending, comments, own) = text.trim().split('\t').let { it + List(5 - it.size) { "" } }
-    require(pr.isNotEmpty() && head.isNotEmpty()) { "GitHub did not return this pull request" }
-    return GitHubSlot(pr, head, pending.ifEmpty { null }?.let { PendingReview(it, comments.toIntOrNull() ?: 0) }, own == "true")
+/** [REVIEW_SLOT_QUERY]'s answer: the PR's id, its latest push, your pending review if any, and whether you opened it. */
+fun parseReviewSlot(data: JsonObject): GitHubSlot {
+    val pr = data.at("repository.pullRequest")
+    val id = pr?.string("id"); val head = pr?.string("headRefOid")
+    require(!id.isNullOrEmpty() && !head.isNullOrEmpty()) { "GitHub did not return this pull request" }
+    val pending = pr.at("reviews")?.getAsJsonArray("nodes")?.firstOrNull()?.asJsonObject
+    val pendingId = pending?.string("id")
+    require(pending == null || !pendingId.isNullOrEmpty()) { "GitHub did not return your pending review's id" }
+    return GitHubSlot(id, head, pendingId?.let { PendingReview(it, pending.at("comments")?.get("totalCount")?.asInt ?: 0) }, pr["viewerDidAuthor"]?.asBoolean == true)
 }
 
-/** Reads `STATE<TAB>count` of one review. */
-fun parseReviewRead(text: String): ReviewRead {
-    val (state, comments) = text.trim().split('\t').let { it + List(2 - it.size) { "" } }
-    require(state.isNotEmpty()) { "GitHub did not return this review" }
-    return ReviewRead(state == "PENDING", comments.toIntOrNull() ?: 0)
+/** [REVIEW_READ_QUERY]'s answer: one review's state and its comment count. */
+fun parseReviewRead(data: JsonObject): ReviewRead {
+    val review = data.at("node")
+    val state = review?.string("state")
+    require(!state.isNullOrEmpty()) { "GitHub did not return this review" }
+    return ReviewRead(state == "PENDING", review.at("comments")?.get("totalCount")?.asInt ?: 0)
 }
 
 internal const val REVIEW_READ_QUERY = "query(\$id:ID!){node(id:\$id){... on PullRequestReview{state comments{totalCount}}}}"
-internal const val REVIEW_READ_JQ = ".data.node | [.state, (.comments.totalCount | tostring)] | @tsv"
 
 // reviews(states: PENDING) lists only the viewer's own: nobody else's pending review is visible
 internal const val REVIEW_SLOT_QUERY = "query(\$owner:String!,\$name:String!,\$number:Int!){repository(owner:\$owner,name:\$name){pullRequest(number:\$number)" +
     "{id headRefOid viewerDidAuthor reviews(states:PENDING,first:1){nodes{id comments{totalCount}}}}}}"
-internal const val REVIEW_SLOT_JQ = ".data.repository.pullRequest | [.id, .headRefOid, (.reviews.nodes[0].id // \"\"), (.reviews.nodes[0].comments.totalCount // 0 | tostring), (.viewerDidAuthor | tostring)] | @tsv"
 
 internal const val VIEWED_QUERY = "query(\$owner:String!,\$name:String!,\$number:Int!,\$endCursor:String){repository(owner:\$owner,name:\$name)" +
     "{pullRequest(number:\$number){id files(first:100,after:\$endCursor){pageInfo{hasNextPage endCursor} nodes{path viewerViewedState}}}}}"
-internal const val VIEWED_JQ = ".data as \$d | \$d.repository.pullRequest as \$p | (\"#id\\t\" + \$p.id), " +
-    "(\$p.files.nodes[] | \"\\(.path)\\t\\(.viewerViewedState)\")"
 
-/** Reads `#id<TAB>PR_…`, then `path<TAB>STATE` lines (the `#` lines repeat per page). */
-fun parseViewedStates(text: String): ViewedStates {
-    var id = ""
+/** Every page of [VIEWED_QUERY]'s answer joined; states it does not know are skipped. */
+fun parseViewedStates(pages: List<JsonObject>): ViewedStates {
+    val prs = pages.mapNotNull { it.at("repository.pullRequest") }
+    val id = prs.firstNotNullOfOrNull { it.string("id") }
+    require(!id.isNullOrEmpty()) { "GitHub did not return this pull request" }
     val files = LinkedHashMap<String, ViewedState>()
-    text.lines().filter { '\t' in it }.forEach { line ->
-        val (key, value) = line.split('\t', limit = 2)
-        when (key) {
-            "#id" -> id = value
-            else -> runCatching { ViewedState.valueOf(value) }.getOrNull()?.let { files[key] = it }
-        }
+    prs.flatMap { it.at("files")?.getAsJsonArray("nodes").orEmpty() }.map { it.asJsonObject }.forEach { file ->
+        val path = file.string("path") ?: return@forEach // no path, nothing to tick
+        runCatching { ViewedState.valueOf(file.string("viewerViewedState")!!) }.getOrNull()?.let { files[path] = it }
     }
-    require(id.isNotEmpty()) { "GitHub did not return this pull request" }
     return ViewedStates(id, files)
 }
+
+/** A string field, null when GitHub answered null or left it out. */
+internal fun JsonObject.string(name: String): String? = get(name)?.takeUnless { it.isJsonNull }?.asString
+
+private fun JsonArray?.orEmpty(): List<JsonElement> = this?.toList().orEmpty()
 
 /** GitHub's reason from an error body (`{"message":"Unprocessable Entity","errors":["Path could not be resolved"]}`), or null. */
 fun githubRefusal(body: String): String? {
@@ -95,18 +110,21 @@ fun githubRefusal(body: String): String? {
 private val FAILED = setOf("FAILURE", "ERROR", "TIMED_OUT", "CANCELLED", "ACTION_REQUIRED", "STARTUP_FAILURE")
 private val RUNNING = setOf("PENDING", "EXPECTED", "QUEUED", "IN_PROGRESS", "WAITING", "REQUESTED")
 
+/** The latest push's checks, as `gh pr view --json statusCheckRollup` asked for them (captured with `GH_DEBUG=api`). ponytail: the first 100. */
+internal const val CHECKS_QUERY = "query(\$owner:String!,\$name:String!,\$number:Int!){repository(owner:\$owner,name:\$name){pullRequest(number:\$number)" +
+    "{commits(last:1){nodes{commit{statusCheckRollup{contexts(first:100){nodes{__typename ...on StatusContext{state} ...on CheckRun{status conclusion}}}}}}}}}}"
+
 /**
- * One line for a PR's checks from `gh pr view --json statusCheckRollup`. GitHub mixes two kinds: check runs carry
- * `status` + `conclusion`, commit statuses carry `state`. Any failure wins over running, running over passed.
+ * One line for a PR's checks, the rollup's [contexts] in [CHECKS_QUERY]'s answer (none when GitHub has no rollup). GitHub
+ * mixes two kinds: check runs carry `status` + `conclusion`, commit statuses carry `state`. Any failure wins over
+ * running, running over passed.
  */
-fun summarizeChecks(json: String): Checks {
-    val rollup = Gson().fromJson(json, JsonObject::class.java).get("statusCheckRollup") as? JsonArray ?: return Checks(ChecksState.NONE)
-    val outcomes = rollup.map { it.asJsonObject }.map { check ->
-        fun field(name: String) = check.get(name)?.takeUnless { it.isJsonNull }?.asString.orEmpty()
-        val status = field("status")
+fun summarizeChecks(contexts: JsonArray?): Checks {
+    val outcomes = contexts.orEmpty().map { it.asJsonObject }.map { check ->
+        val status = check.string("status").orEmpty()
         when {
             status.isNotEmpty() && status != "COMPLETED" -> "PENDING"
-            else -> field("conclusion").ifEmpty { field("state") }
+            else -> check.string("conclusion").orEmpty().ifEmpty { check.string("state").orEmpty() }
         }
     }
     val failing = outcomes.count { it in FAILED }
@@ -118,7 +136,7 @@ fun summarizeChecks(json: String): Checks {
     }
 }
 
-/** One GraphQL call as `gh api graphql --input` takes it. */
+/** One GraphQL call's body: its query and variables. */
 fun graphqlBody(query: String, variables: Map<String, Any?>): String = Gson().toJson(mapOf("query" to query, "variables" to variables))
 
 /** Starts the reviewer's pending review at [commit] with the new [comments]; GitHub answers with the review's id. */
@@ -159,25 +177,32 @@ private const val RESOLVE_THREAD = "mutation(\$thread:ID!){resolveReviewThread(i
 private const val UNRESOLVE_THREAD = "mutation(\$thread:ID!){unresolveReviewThread(input:{threadId:\$thread}){thread{id}}}"
 private const val DELETE_REVIEW = "mutation(\$review:ID!){deletePullRequestReview(input:{pullRequestReviewId:\$review}){pullRequestReview{id}}}"
 
-private class RawThread(
-    val id: String = "", val path: String = "", val line: Int? = null, val originalLine: Int? = null, val diffSide: String? = null, val isResolved: Boolean = false, val resolvedBy: String? = null,
-    val url: String? = null, val commit: String? = null, val mine: Boolean = false, val comments: List<ThreadComment>? = null,
-    val viewerCanResolve: Boolean = false, val viewerCanUnresolve: Boolean = false, val resolvedByMe: Boolean = false, val startLine: Int? = null,
-)
-
-/** Reads the one-JSON-object-per-line output of [REVIEW_THREADS_JQ]; threads without comments are dropped. */
-fun parseReviewThreads(text: String): List<ReviewThread> = text.lines().filter { it.isNotBlank() }.mapNotNull { line ->
-    val raw = Gson().fromJson(line, RawThread::class.java)
-    raw.comments?.takeIf { it.isNotEmpty() }?.let {
-        ReviewThread(raw.id, raw.path, raw.line, raw.originalLine, raw.diffSide == "LEFT", raw.commit, raw.isResolved, raw.resolvedBy, raw.url.orEmpty(), raw.mine, it,
+/**
+ * Every page of [REVIEW_THREADS_QUERY]'s answer as [ReviewThread]s; threads without comments are dropped. [ReviewThread.mine]
+ * and a comment's `mine`: the viewer wrote it; a deleted account reads "ghost".
+ */
+fun parseReviewThreads(pages: List<JsonObject>): List<ReviewThread> = pages.flatMap { page ->
+    val me = page.at("viewer")?.string("login")
+    page.at("repository.pullRequest.reviewThreads")?.getAsJsonArray("nodes").orEmpty().map { it.asJsonObject }.mapNotNull { t ->
+        val nodes = t.at("comments")?.getAsJsonArray("nodes").orEmpty().map { it.asJsonObject }
+        val first = nodes.firstOrNull() ?: return@mapNotNull null
+        val comments = nodes.map { c ->
+            val author = c.at("author")?.string("login")
+            ThreadComment(author ?: "ghost", c.string("body").orEmpty(), c.string("id").orEmpty(), c.flag("viewerCanUpdate"), c.flag("viewerCanDelete"), author != null && author == me)
+        }
+        val line = t.int("line")
+        val resolver = t.at("resolvedBy")?.string("login")
+        val firstAuthor = first.at("author")?.string("login")
+        ReviewThread(t.string("id").orEmpty(), t.string("path").orEmpty(), line, t.int("originalLine"), t.string("diffSide") == "LEFT", first.at("commit")?.string("oid"),
+            t.flag("isResolved"), resolver, first.string("url").orEmpty(), firstAuthor != null && firstAuthor == me, comments,
             // GitHub answers startLine == line for a one-line thread (measured): only a real range keeps one
-            raw.viewerCanResolve, raw.viewerCanUnresolve, raw.resolvedByMe, raw.startLine?.takeIf { raw.line != null && it < raw.line })
+            t.flag("viewerCanResolve"), t.flag("viewerCanUnresolve"), resolver != null && resolver == me, t.int("startLine")?.takeIf { line != null && it < line })
     }
 }
+
+private fun JsonObject.int(name: String): Int? = get(name)?.takeUnless { it.isJsonNull }?.asInt
+private fun JsonObject.flag(name: String): Boolean = get(name)?.takeUnless { it.isJsonNull }?.asBoolean == true
 
 const val REVIEW_THREADS_QUERY = "query(\$owner:String!,\$name:String!,\$number:Int!,\$endCursor:String){viewer{login} repository(owner:\$owner,name:\$name)" +
     "{pullRequest(number:\$number){reviewThreads(first:100,after:\$endCursor){pageInfo{hasNextPage endCursor} nodes{id path line startLine originalLine diffSide isResolved resolvedBy{login} viewerCanResolve viewerCanUnresolve " +
     "comments(first:50){nodes{id author{login} body url commit{oid} viewerCanUpdate viewerCanDelete}}}}}}}"
-const val REVIEW_THREADS_JQ = ".data.viewer.login as \$me | .data.repository.pullRequest.reviewThreads.nodes[] | {id, path, line, startLine, originalLine, diffSide, isResolved, resolvedBy: .resolvedBy.login, resolvedByMe: (.resolvedBy.login == \$me), viewerCanResolve, viewerCanUnresolve, " +
-    "url: .comments.nodes[0].url, commit: .comments.nodes[0].commit.oid, mine: (.comments.nodes[0].author.login == \$me), " +
-    "comments: [.comments.nodes[] | {id, author: (.author.login // \"ghost\"), body, canEdit: .viewerCanUpdate, canDelete: .viewerCanDelete, mine: (.author.login == \$me)}]} | tojson"

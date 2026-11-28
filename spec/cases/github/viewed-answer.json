@@ -1,11 +1,58 @@
 {
   "rule": "github/viewed-answer",
-  "about": "GitHub's Viewed answer as GhClient's jq prints it (gh's real shape, PR #579): `#id` lines repeat per page; states it does not know are skipped.",
+  "about": "GitHub's Viewed answer, every page of VIEWED_QUERY (GitHub's real shape, PR #579): pages are joined, states it does not know are skipped.",
   "cases": [
     {
       "name": "pages joined, unknown states skipped",
       "given": {
-        "text": "#id\tPR_1\n.github/a.yml\tVIEWED\n.github/b.yml\tUNVIEWED\n#id\tPR_1\nsrc/c.kt\tDISMISSED\nsrc/d.kt\tSOMETHING_NEW\n"
+        "pages": [
+          {
+            "repository": {
+              "pullRequest": {
+                "id": "PR_1",
+                "files": {
+                  "pageInfo": {
+                    "hasNextPage": false,
+                    "endCursor": null
+                  },
+                  "nodes": [
+                    {
+                      "path": ".github/a.yml",
+                      "viewerViewedState": "VIEWED"
+                    },
+                    {
+                      "path": ".github/b.yml",
+                      "viewerViewedState": "UNVIEWED"
+                    }
+                  ]
+                }
+              }
+            }
+          },
+          {
+            "repository": {
+              "pullRequest": {
+                "id": "PR_1",
+                "files": {
+                  "pageInfo": {
+                    "hasNextPage": false,
+                    "endCursor": null
+                  },
+                  "nodes": [
+                    {
+                      "path": "src/c.kt",
+                      "viewerViewedState": "DISMISSED"
+                    },
+                    {
+                      "path": "src/d.kt",
+                      "viewerViewedState": "SOMETHING_NEW"
+                    }
+                  ]
+                }
+              }
+            }
+          }
+        ]
       },
       "expect": {
         "pullRequestId": "PR_1",
@@ -19,7 +66,13 @@
     {
       "name": "an answer without the pull request is refused",
       "given": {
-        "text": "a.yml\tVIEWED\n"
+        "pages": [
+          {
+            "repository": {
+              "pullRequest": null
+            }
+          }
+        ]
       },
       "expect": {
         "error": true

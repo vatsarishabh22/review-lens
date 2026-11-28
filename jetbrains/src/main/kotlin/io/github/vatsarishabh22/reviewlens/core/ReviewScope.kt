@@ -7,7 +7,7 @@ data class Commit(val sha: String, val subject: String, val author: String = "",
 /** The review shows changes from [from] to [to]; the checkout sits at the PR head. */
 data class ScopeRange(val from: String, val to: String)
 
-/** What is under review: a PR (listed via gh) or a plain remote branch (without gh). */
+/** What is under review: a PR (listed by the host) or a plain remote branch (no host account). */
 data class ReviewTarget(val key: String, val label: String, val prNumber: Int?, val head: String, val base: String) {
     /** How the host names this review in text (`#7`), or null for a branch. */
     val ref get() = prNumber?.let { refOf(it) }

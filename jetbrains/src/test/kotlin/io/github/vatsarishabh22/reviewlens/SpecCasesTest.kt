@@ -102,10 +102,10 @@ class SpecCasesTest(private val rule: String) {
                 tree(bodyParts(g.str("body")!!).map { part -> when (part) { is BodyPart.Text -> mapOf("text" to part.markdown); is BodyPart.Suggestion -> mapOf("suggestion" to part.lines) } })
             },
             "github/viewed-answer" to { g ->
-                parseViewedStates(g.str("text")!!).let { s -> JsonObject().apply { addProperty("pullRequestId", s.pullRequestId); add("files", tree(s.files.mapValues { it.value.name })) } }
+                parseViewedStates(g["pages"].asJsonArray.map { it.asJsonObject }).let { s -> JsonObject().apply { addProperty("pullRequestId", s.pullRequestId); add("files", tree(s.files.mapValues { it.value.name })) } }
             },
             "github/refusal" to { g -> tree(githubRefusal(g.str("body")!!)) },
-            "github/checks" to { g -> tree(summarizeChecks(GSON.toJson(g["json"])).text) },
+            "github/checks" to { g -> tree(summarizeChecks(g["contexts"].asJsonArray).text) },
         )
 
         private fun thread(id: String) = ReviewThread(id, "a.py", 7, 7, false, "h", false, null, "u", false, listOf(ThreadComment("lee", "why?")))

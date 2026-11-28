@@ -25,6 +25,12 @@ class GitClient(val root: Path) {
     /** `origin`'s URL, or null when there is no `origin`. */
     fun originUrl(): String? = runCatching { git("remote", "get-url", REMOTE) }.getOrNull()?.ifBlank { null }
 
+    /** Every remote's fetch URL as git uses it (`url.<base>.insteadOf` applied, as gh reads it), `git remote -v` lines; empty without remotes. */
+    fun remoteUrls(): String = runCatching { git("remote", "-v") }.getOrDefault("")
+
+    /** Every remote's `gh-resolved` marker as `remote.<name>.gh-resolved <value>` lines; empty without one. */
+    fun remoteMarkers(): String = runCatching { git("config", "--get-regexp", "^remote\\..*\\.gh-resolved$") }.getOrDefault("")
+
     fun fetchAll() = git("fetch", "--no-tags", REMOTE)
 
     fun remoteBranches(): List<String> =

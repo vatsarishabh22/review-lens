@@ -17,6 +17,13 @@
       "expect": "Line could not be resolved"
     },
     {
+      "name": "a GraphQL refusal, sent with a 200",
+      "given": {
+        "body": "{\"data\":{\"repository\":{\"pullRequest\":null}},\"errors\":[{\"type\":\"NOT_FOUND\",\"path\":[\"repository\",\"pullRequest\"],\"message\":\"Could not resolve to a PullRequest with the number of 999.\"}]}"
+      },
+      "expect": "Could not resolve to a PullRequest with the number of 999."
+    },
+    {
       "name": "no errors: the message",
       "given": {
         "body": "{\"message\":\"Not Found\",\"status\":\"404\"}"

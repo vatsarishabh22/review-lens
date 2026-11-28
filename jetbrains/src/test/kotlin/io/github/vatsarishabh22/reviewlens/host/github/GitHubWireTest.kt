@@ -2,6 +2,7 @@ package io.github.vatsarishabh22.reviewlens.host.github
 
 import com.google.gson.Gson
 import com.google.gson.JsonObject
+import com.google.gson.JsonParser
 import io.github.vatsarishabh22.reviewlens.core.*
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
@@ -10,33 +11,40 @@ import org.junit.Assert.assertThrows
 import org.junit.Assert.assertTrue
 import org.junit.Test
 
-/** What GhClient sends GitHub and how it reads the answers. Bodies below are GitHub's real shapes (PR #1 probe, PR #579, plugin-template #598). */
+/** What GitHubClient sends GitHub and how it reads the answers. Bodies below are GitHub's real shapes (PR #1 probe, PR #579, plugin-template #598). */
 class GitHubWireTest {
-    // gh pr list's real shape (JetBrains/intellij-platform-plugin-template #598); the second asks a user and a team (no login)
-    private val ghList = """[
-        {"additions":1,"author":{"id":"U1","is_bot":false,"login":"SimY4","name":"Alex"},"baseRefName":"main","body":"x","changedFiles":1,"deletions":0,
-         "headRefName":"fix/zip","headRefOid":"2f9d9ea","number":598,"reviewRequests":[],"title":"chore: zip","updatedAt":"2026-07-23T01:09:36Z"},
-        {"additions":186,"author":{"id":"U2","is_bot":false,"login":"nikitavilkov","name":""},"baseRefName":"main","body":"","changedFiles":12,"deletions":166,
+    private fun json(text: String) = JsonParser.parseString(text).asJsonObject
+
+    // PULL_REQUESTS_QUERY's shape on JetBrains/intellij-platform-plugin-template #598; the second asks a team (no login) and a user
+    private fun list(viewer: String?) = json("""{"viewer":${viewer?.let { "{\"login\":\"$it\"}" } ?: "null"},"repository":{"pullRequests":{"nodes":[
+        {"additions":1,"author":{"login":"SimY4","name":"Alex"},"baseRefName":"main","body":"x","changedFiles":1,"deletions":0,
+         "headRefName":"fix/zip","headRefOid":"2f9d9ea","number":598,"reviewRequests":{"nodes":[]},"title":"chore: zip","updatedAt":"2026-07-23T01:09:36Z","isCrossRepository":false},
+        {"additions":186,"author":{"login":"nikitavilkov","name":""},"baseRefName":"main","body":null,"changedFiles":12,"deletions":166,
          "headRefName":"feature/chat","headRefOid":"e9c9c9d","number":597,"title":"AI chat demo","updatedAt":"2026-07-20T10:00:00Z",
-         "reviewRequests":[{"__typename":"Team","name":"core","slug":"core"},{"__typename":"User","login":"me"}]}
-    ]"""
+         "reviewRequests":{"nodes":[{"requestedReviewer":{}},{"requestedReviewer":{"login":"me"}}]},"isCrossRepository":true},
+        {"additions":0,"author":null,"baseRefName":"main","body":"","changedFiles":1,"deletions":0,"headRefName":"old","headRefOid":"f1","number":5,
+         "title":"t","updatedAt":"2026-07-23T01:09:36Z","reviewRequests":{"nodes":[]},"isCrossRepository":false}
+    ]}}}""")
 
     @Test
     fun `each open PR's commits come oldest first, and a PR with none has an empty list`() =
-        // COMMIT_IDS_JQ's real output on this repo's open PR #14, then a PR GitHub lists with no commits
+        // COMMIT_IDS_QUERY's real answer on this repo's open PR #14, then a PR GitHub lists with no commits
         assertEquals(mapOf(14 to listOf("9b725a42e8f342cfb69b51c9ae6c1293a6559174", "5ffc2c56d5f8831df37967163b9ed904f92ebfc1"), 15 to emptyList()),
-            parseCommitIds("14\t9b725a42e8f342cfb69b51c9ae6c1293a6559174,5ffc2c56d5f8831df37967163b9ed904f92ebfc1\n15\t\n"))
+            parseCommitIds(json("""{"repository":{"pullRequests":{"nodes":[{"number":14,"commits":{"nodes":[{"commit":{"oid":"9b725a42e8f342cfb69b51c9ae6c1293a6559174"}},
+                {"commit":{"oid":"5ffc2c56d5f8831df37967163b9ed904f92ebfc1"}}]}},{"number":15,"commits":{"nodes":[]}}]}}}""")))
 
     @Test
     fun `GitHub's PR list becomes host-neutral rows, waiting on you only when a request names you`() {
-        val (a, b) = parsePullRequests(ghList, "me")
+        val (a, b, gone) = parsePullRequests(list("me"))
         assertEquals(PullRequest(598, "chore: zip", "fix/zip", "2f9d9ea", "main", Person("SimY4", "Alex"), "x", 1, 0, 1, "2026-07-23T01:09:36Z", false), a)
         assertEquals(Person("nikitavilkov", "nikitavilkov"), b.author) // a blank name shows the login
+        assertEquals("", b.body)
         assertEquals(true, b.requested)
-        assertEquals("a team request names nobody", false, parsePullRequests(ghList, "core")[1].requested)
-        assertEquals(false, a.fromFork) // not asked for, or not from a fork
-        assertEquals(true, parsePullRequests("""[{"number":5,"title":"t","headRefName":"main","headRefOid":"f1","baseRefName":"main","author":{"login":"x"},"additions":0,"deletions":0,"changedFiles":1,"updatedAt":"2026-07-23T01:09:36Z","isCrossRepository":true}]""", null)[0].fromFork)
-        assertEquals("viewer unknown: nothing waits", false, parsePullRequests(ghList, null)[1].requested)
+        assertEquals("a deleted account", Person("ghost", "ghost"), gone.author)
+        assertEquals("a team request names nobody", false, parsePullRequests(list("core"))[1].requested)
+        assertEquals(listOf(false, true), listOf(a.fromFork, b.fromFork))
+        assertEquals("viewer unknown: nothing waits", false, parsePullRequests(list(null))[1].requested)
+        assertThrows(IllegalArgumentException::class.java) { parsePullRequests(json("""{"repository":null}""")) }
     }
 
     private fun vars(body: String) = Gson().fromJson(body, JsonObject::class.java).also { assertTrue(it["query"].asString.startsWith("mutation")) }["variables"].asJsonObject
@@ -92,10 +100,11 @@ class GitHubWireTest {
 
     @Test
     fun `the review slot reads the PR, its latest push, your pending review or none, and whether you opened it`() {
-        assertEquals(GitHubSlot("PR_1", "h2", null, false), parseReviewSlot("PR_1\th2\t\t0\tfalse\n"))
-        assertEquals(GitHubSlot("PR_1", "h2", PendingReview("PRR_9", 2), true), parseReviewSlot("PR_1\th2\tPRR_9\t2\ttrue\n"))
-        assertEquals(2, parseReviewSlot("PR_1\th2\tPRR_9\t2\ttrue\n").started)
-        assertThrows(IllegalArgumentException::class.java) { parseReviewSlot("") }
+        fun slot(reviews: String, own: Boolean) = parseReviewSlot(json("""{"repository":{"pullRequest":{"id":"PR_1","headRefOid":"h2","viewerDidAuthor":$own,"reviews":{"nodes":[$reviews]}}}}"""))
+        assertEquals(GitHubSlot("PR_1", "h2", null, false), slot("", false))
+        assertEquals(GitHubSlot("PR_1", "h2", PendingReview("PRR_9", 2), true), slot("""{"id":"PRR_9","comments":{"totalCount":2}}""", true))
+        assertEquals(2, slot("""{"id":"PRR_9","comments":{"totalCount":2}}""", true).started)
+        assertThrows(IllegalArgumentException::class.java) { parseReviewSlot(json("""{"repository":{"pullRequest":null}}""")) }
     }
 
     @Test

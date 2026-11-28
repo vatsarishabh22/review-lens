@@ -38,7 +38,7 @@ class PrListView(private val onPick: (ListedTarget) -> Unit, onRefresh: () -> Un
     private var counts: Map<String, Int> = emptyMap()
     /** Each stack card's scroll, by its bottom PR, kept while the same listing is drawn again (search, counts arriving). */
     private var scrolled: Map<Int, Int> = emptyMap()
-    /** Branches stand in when `gh` could not list PRs (not installed, signed out, offline, not a GitHub repo): say so. */
+    /** Branches stand in when the host could not list PRs (no account for it, offline, not a GitHub repo): say so. */
     private val fallbackNote = mutedLabel("").apply {
         border = JBUI.Borders.empty(0, 12, 4, 12); isVisible = false
     }
@@ -77,7 +77,7 @@ class PrListView(private val onPick: (ListedTarget) -> Unit, onRefresh: () -> Un
         all = listing.targets; stacks = listing.stacks; stackKeys = listing.stackKeys; counts = emptyMap(); this.progress = progress
         scrolled = emptyMap() // a new listing opens each stack at its next PR
         fallbackNote.isVisible = listing.branchesOnly
-        fallbackNote.text = "Couldn't get pull requests from ${listing.hostName} · showing branches"
+        fallbackNote.text = "${listing.why ?: "Couldn't get pull requests from ${listing.hostName}"} · showing branches"
         empty.text = if (listing.branchesOnly) "No branches to review" else "No open pull requests"
         rebuild()
     }

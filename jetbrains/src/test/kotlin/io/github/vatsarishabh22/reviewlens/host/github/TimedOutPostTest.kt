@@ -1,7 +1,9 @@
 package io.github.vatsarishabh22.reviewlens.host.github
 
+import com.google.gson.JsonParser
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertNull
+import org.junit.Assert.assertThrows
 import org.junit.Test
 
 /**
@@ -39,8 +41,10 @@ class TimedOutPostTest {
 
     @Test
     fun `a review read is its state and comment count`() {
-        assertEquals(ReviewRead(pending = false, comments = 2), parseReviewRead("COMMENTED\t2\n"))
-        assertEquals(ReviewRead(pending = true, comments = 0), parseReviewRead("PENDING\t0\n"))
-        assertEquals("every submitted state is not pending", ReviewRead(pending = false, comments = 1), parseReviewRead("APPROVED\t1\n"))
+        fun read(state: String, comments: Int) = parseReviewRead(JsonParser.parseString("""{"node":{"state":"$state","comments":{"totalCount":$comments}}}""").asJsonObject)
+        assertEquals(ReviewRead(pending = false, comments = 2), read("COMMENTED", 2))
+        assertEquals(ReviewRead(pending = true, comments = 0), read("PENDING", 0))
+        assertEquals("every submitted state is not pending", ReviewRead(pending = false, comments = 1), read("APPROVED", 1))
+        assertThrows("a review that is gone", IllegalArgumentException::class.java) { parseReviewRead(JsonParser.parseString("""{"node":null}""").asJsonObject) }
     }
 }

@@ -2,8 +2,8 @@ package io.github.vatsarishabh22.reviewlens.core
 
 /**
  * The code host a review talks to: its open reviews, threads and one-call Finish (spec/README.md; GitLab's is
- * spec/gitlab.md). GitHub's is `host/github/GhClient`. Everything else in a review is plain git and never asks the host.
- * Calls run a CLI and block: call off EDT.
+ * spec/gitlab.md). GitHub's is `host/github/GitHubClient`. Everything else in a review is plain git and never asks the host.
+ * Calls go over the network and block: call off EDT.
  */
 interface ReviewHost {
     /** How the UI names the host: "Submit to GitHub". */
@@ -40,7 +40,7 @@ interface ReviewHost {
 
 /**
  * The host's answer to "what will you take on this review now": the rules, their data and their words are the host's
- * own (GitHub's: [GitHubSlot]). Pure, so the Finish popup can ask on every keystroke on EDT.
+ * own (GitHub's: `GitHubSlot`). Pure, so the Finish popup can ask on every keystroke on EDT.
  */
 interface ReviewSlot {
     /** Comments the viewer began on the host's website, which Finish posts with theirs. */

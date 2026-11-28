@@ -174,7 +174,7 @@ fun changedSince(viewedThen: Collection<String>, scope: Collection<String>, host
     return viewedThen.count { host[it] == ViewedState.DISMISSED }.takeIf { it > 0 || scope.containsAll(host.keys) }
 }
 
-/** True when the PR's [head] on GitHub is not the one this review last saw; unknown heads (no gh, a branch) never claim it. */
+/** True when the PR's [head] on GitHub is not the one this review last saw; unknown heads (no host account, a branch) never claim it. */
 fun ReviewMeta.headMoved(head: String?): Boolean = !head.isNullOrEmpty() && head != (seenHead ?: range.to)
 
 enum class Badge(val symbol: String) { TODO("⭐"), REVIEWED("✅"), CHANGED_SINCE("🔄") }

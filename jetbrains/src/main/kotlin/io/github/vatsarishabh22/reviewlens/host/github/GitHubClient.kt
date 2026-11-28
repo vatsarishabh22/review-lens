@@ -1,22 +1,21 @@
 package io.github.vatsarishabh22.reviewlens.host.github
 
+import com.google.gson.JsonObject
 import com.intellij.openapi.application.ApplicationManager
 import io.github.vatsarishabh22.reviewlens.core.*
-import java.nio.file.Files
-import java.nio.file.Path
 
-/** GitHub through the `gh` CLI, the host of a checkout whose `origin` is on a host `gh` is signed in to ([ReviewHosts]). */
-class GhClient(private val root: Path) : ReviewHost, ViewedSync {
+/** A repository on GitHub: `acme/shop` is [owner] `acme`, [name] `shop`. */
+data class GitHubRepo(val owner: String, val name: String)
+
+/** GitHub over its API ([api]), for [repo], the repository `gh` would pick in this checkout ([ReviewHosts]). */
+class GitHubClient(private val api: GitHubApi, private val repo: GitHubRepo) : ReviewHost, ViewedSync {
     override val name = "GitHub"
-
-    /** `gh` is signed in to [host] (github.com, or a GitHub Enterprise server). */
-    fun signedInTo(host: String): Boolean = runCatching { gh("auth", "status", "--hostname", host) }.isSuccess
 
     override val viewed: ViewedSync get() = this
 
     override fun headRef(number: Int) = "pull/$number/head"
 
-    private fun viewerLogin(): String = gh("api", "user", "--jq", ".login")
+    private val here = mapOf("owner" to repo.owner, "name" to repo.name)
 
     /**
      * Open PRs without their checks: checks double the call's time (2.65 s vs 5.43 s for 70 PRs) and only the detail shows
@@ -24,33 +23,31 @@ class GhClient(private val root: Path) : ReviewHost, ViewedSync {
      * list shows no stacks.
      */
     override fun openPullRequests(): List<PullRequest> {
-        val commits = ApplicationManager.getApplication().executeOnPooledThread<Map<Int, List<String>>> { runCatching { parseCommitIds(gh("api", "graphql",
-            "-F", "owner={owner}", "-F", "name={repo}", "-f", "query=$COMMIT_IDS_QUERY", "--jq", COMMIT_IDS_JQ)) }.getOrNull().orEmpty() }
-        val json = gh("pr", "list", "--state", "open", "--limit", "100", "--json",
-            "number,title,headRefName,headRefOid,baseRefName,author,body,additions,deletions,changedFiles,updatedAt,reviewRequests,isCrossRepository")
-        val prs = parsePullRequests(json, runCatching { viewerLogin() }.getOrNull())
+        val commits = ApplicationManager.getApplication().executeOnPooledThread<Map<Int, List<String>>> {
+            runCatching { parseCommitIds(read(COMMIT_IDS_QUERY, here)) }.getOrNull().orEmpty()
+        }
+        val prs = parsePullRequests(read(PULL_REQUESTS_QUERY, here))
         val ids = commits.get()
         // a failed lookup, or a PR it didn't list, leaves the commits unknown: never "no commits", which reads as "no parent"
         return prs.map { it.copy(commits = ids[it.number]) }
     }
 
-    /** This viewer's GitHub "Viewed" ticks for PR [number], every page; owner and repo come from the checkout's remote. */
-    override fun viewedStates(number: Int): ViewedStates = parseViewedStates(gh("api", "graphql", "--paginate",
-        "-F", "owner={owner}", "-F", "name={repo}", "-F", "number=$number", "-f", "query=$VIEWED_QUERY", "--jq", VIEWED_JQ, timeoutMs = VIEWED_TIMEOUT_MS))
+    /** This viewer's GitHub "Viewed" ticks for PR [number], every page. */
+    override fun viewedStates(number: Int): ViewedStates =
+        parseViewedStates(api.pages(VIEWED_QUERY, here + ("number" to number), "repository.pullRequest.files", VIEWED_TIMEOUT_MS))
 
     /** Everyone's review threads on PR [number], every page. */
-    override fun reviewThreads(number: Int): List<ReviewThread> = parseReviewThreads(gh("api", "graphql", "--paginate",
-        "-F", "owner={owner}", "-F", "name={repo}", "-F", "number=$number", "-f", "query=$REVIEW_THREADS_QUERY", "--jq", REVIEW_THREADS_JQ))
+    override fun reviewThreads(number: Int): List<ReviewThread> =
+        parseReviewThreads(api.pages(REVIEW_THREADS_QUERY, here + ("number" to number), "repository.pullRequest.reviewThreads", READ_TIMEOUT_MS))
 
     /** Ticks or unticks files on GitHub in one call (private to the viewer; nobody is notified). */
     override fun setViewed(reviewId: String, ticks: Map<String, Boolean>) {
         // ticks go one call at a time (HostViewed): a call that hangs must not hold back the ones after it
-        if (ticks.isNotEmpty()) graphql(viewedBody(reviewId, ticks), ".data | length", VIEWED_TIMEOUT_MS)
+        if (ticks.isNotEmpty()) write(viewedBody(reviewId, ticks), VIEWED_TIMEOUT_MS)
     }
 
     /** The PR's id and latest push, and your own pending review on it (started on github.com or anywhere else), if any. */
-    override fun reviewSlot(number: Int): GitHubSlot = parseReviewSlot(gh("api", "graphql", "-F", "owner={owner}", "-F", "name={repo}",
-        "-F", "number=$number", "-f", "query=$REVIEW_SLOT_QUERY", "--jq", REVIEW_SLOT_JQ))
+    override fun reviewSlot(number: Int): GitHubSlot = parseReviewSlot(read(REVIEW_SLOT_QUERY, here + ("number" to number)))
 
     /**
      * Posts one review: the new [comments] and the [replies] go into your pending review, which is then submitted with
@@ -66,12 +63,14 @@ class GhClient(private val root: Path) : ReviewHost, ViewedSync {
         val added = mutableListOf<String>()
         var submitting = false
         try {
-            review = review ?: graphql(startReviewBody(slot.id, commit, comments), ".data.addPullRequestReview.pullRequestReview.id")
-            if (adopted != null) comments.forEach { added += graphql(addThreadBody(review, it), ".data.addPullRequestReviewThread.thread.comments.nodes[0].id") }
-            replies.forEach { added += graphql(replyBody(review, it), ".data.addPullRequestReviewThreadReply.comment.id") }
+            review = review ?: id(write(startReviewBody(slot.id, commit, comments)).at("addPullRequestReview.pullRequestReview"))
+            if (adopted != null) comments.forEach { added += id(write(addThreadBody(review, it)).at("addPullRequestReviewThread.thread.comments")?.getAsJsonArray("nodes")?.firstOrNull()?.asJsonObject) }
+            replies.forEach { added += id(write(replyBody(review, it)).at("addPullRequestReviewThreadReply.comment")) }
             submitting = true
-            graphql(submitBody(review, verdict, summary), ".data.submitPullRequestReview.pullRequestReview.id")
-        } catch (e: CliException) {
+            id(write(submitBody(review, verdict, summary)).at("submitPullRequestReview.pullRequestReview"))
+        } catch (thrown: Exception) {
+            // anything but GitHub's refusal may have landed: read back before undoing, whatever the failure's kind
+            val e = thrown as? CliException ?: CliException("GitHub's answer couldn't be read", timedOut = true)
             // a call stopped unanswered may still land after any read: a read proves what landed, never what didn't
             val expected = (slot.pending?.comments ?: comments.size) + added.size
             val posted = when {
@@ -85,8 +84,8 @@ class GhClient(private val root: Path) : ReviewHost, ViewedSync {
                 false -> Unit
             }
             // undone up to the first delete that fails: what it leaves would be adopted by the next Finish and post twice
-            val undone = if (adopted == null) review?.let { delete(deleteReviewBody(it), ".data.deletePullRequestReview.pullRequestReview.id") } ?: true
-                else added.all { delete(deleteCommentBody(it), ".data.deletePullRequestReviewComment.pullRequestReview.id") }
+            val undone = if (adopted == null) review?.let { delete(deleteReviewBody(it), "deletePullRequestReview.pullRequestReview") } ?: true
+                else added.all { delete(deleteCommentBody(it), "deletePullRequestReviewComment.pullRequestReview") }
             throw when {
                 !undone -> CliException(CANT_TELL)
                 e.timedOut -> CliException("GitHub didn't answer in time. Nothing was posted")
@@ -96,47 +95,38 @@ class GhClient(private val root: Path) : ReviewHost, ViewedSync {
     }
 
     /** One review read by its id: its state and comment count, replies included; a review that is gone fails the read. */
-    private fun reviewRead(id: String): ReviewRead = parseReviewRead(gh("api", "graphql", "-F", "id=$id", "-f", "query=$REVIEW_READ_QUERY", "--jq", REVIEW_READ_JQ))
+    private fun reviewRead(id: String): ReviewRead = parseReviewRead(read(REVIEW_READ_QUERY, mapOf("id" to id)))
 
     override fun resolveThread(threadId: String, resolved: Boolean) {
-        val field = if (resolved) "resolveReviewThread" else "unresolveReviewThread"
-        graphql(resolveBody(threadId, resolved), ".data.$field.thread.id")
+        id(write(resolveBody(threadId, resolved)).at("${if (resolved) "resolveReviewThread" else "unresolveReviewThread"}.thread"))
     }
 
     override fun editComment(commentId: String, body: String) {
-        graphql(editCommentBody(commentId, body), ".data.updatePullRequestReviewComment.pullRequestReviewComment.id")
+        id(write(editCommentBody(commentId, body)).at("updatePullRequestReviewComment.pullRequestReviewComment"))
     }
 
     override fun deleteComment(commentId: String) {
-        graphql(deleteCommentBody(commentId), ".data.deletePullRequestReviewComment.pullRequestReview.id")
+        id(write(deleteCommentBody(commentId)).at("deletePullRequestReviewComment.pullRequestReview"))
     }
 
-    /** A read from GitHub through `gh`, stopped after [timeoutMs] so a hung call never holds a step waiting on it (spec rule 7). */
-    private fun gh(vararg args: String, timeoutMs: Int = READ_TIMEOUT_MS) = runCli(root, "gh", *args, timeoutMs = timeoutMs)
+    /** A GraphQL read, stopped after [READ_TIMEOUT_MS] so a hung call never holds a step waiting on it (spec rule 7). */
+    private fun read(query: String, variables: Map<String, Any?>) = api.graphql(graphqlBody(query, variables), READ_TIMEOUT_MS)
 
-    /** Whether a delete GraphQL [body] went through. */
-    private fun delete(body: String, jq: String) = runCatching { graphql(body, jq) }.isSuccess
+    /** One GraphQL write; a refusal throws GitHub's reason. */
+    private fun write(body: String, timeoutMs: Int = WRITE_TIMEOUT_MS) = api.graphql(body, timeoutMs)
 
-    /** Sends one GraphQL [body] and returns what [jq] picks from the answer; a refusal throws with GitHub's reason. */
-    private fun graphql(body: String, jq: String, timeoutMs: Int = WRITE_TIMEOUT_MS): String {
-        val file = Files.createTempFile("review-lens-graphql", ".json")
-        try {
-            Files.writeString(file, body)
-            return runCli(root, "gh", "api", "graphql", "--input", file.toString(), "--jq", jq, timeoutMs = timeoutMs).ifBlank { null }?.takeUnless { it == "null" }
-                ?: throw CliException("GitHub didn't answer")
-        } catch (e: CliException) {
-            throw CliException(githubRefusal(e.stdout) ?: e.stderr.ifBlank { "GitHub didn't answer" }, timedOut = e.timedOut)
-        } finally {
-            Files.deleteIfExists(file)
-        }
-    }
+    /** The id of what a write made or touched; an answer without one reached GitHub and can't be read, so what it did is unknown. */
+    private fun id(made: JsonObject?): String = made?.string("id")?.ifEmpty { null } ?: throw CliException("GitHub's answer couldn't be read", timedOut = true)
+
+    /** Whether a delete GraphQL [body] went through, its answer holding what it deleted from at [answer]. */
+    private fun delete(body: String, answer: String) = runCatching { id(write(body).at(answer)) }.isSuccess
 
     // ponytail: GitHub lists up to 300 files in a compare; a stacked PR adding more counts 300 in the list
     override fun changedFiles(from: String, to: String): Int =
-        gh("api", "repos/{owner}/{repo}/compare/$from...$to", "--jq", ".files | length").trim().toInt()
+        api.get("repos/${repo.owner}/${repo.name}/compare/$from...$to", READ_TIMEOUT_MS).asJsonObject.getAsJsonArray("files")?.size() ?: 0
 
-    override fun checks(number: Int): Checks =
-        summarizeChecks(gh("pr", "view", number.toString(), "--json", "statusCheckRollup"))
+    override fun checks(number: Int): Checks = summarizeChecks(read(CHECKS_QUERY, here + ("number" to number)).at("repository.pullRequest.commits")
+        ?.getAsJsonArray("nodes")?.firstOrNull()?.asJsonObject?.at("commit.statusCheckRollup.contexts")?.getAsJsonArray("nodes"))
 }
 
 /** One of your reviews as GitHub holds it: still [pending] or submitted, and its comments, replies included (measured on rl-thread-test#1). */

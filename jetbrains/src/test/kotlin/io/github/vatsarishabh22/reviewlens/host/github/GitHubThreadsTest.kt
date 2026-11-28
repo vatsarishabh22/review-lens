@@ -1,5 +1,6 @@
 package io.github.vatsarishabh22.reviewlens.host.github
 
+import com.google.gson.JsonParser
 import io.github.vatsarishabh22.reviewlens.core.*
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertNull
@@ -9,23 +10,36 @@ import org.junit.Test
 /** GitHub's review-threads answer read into [ReviewThread]s, and how those read. */
 class GitHubThreadsTest {
 
-    // Shaped like REVIEW_THREADS_JQ's output for a public PR (nessalabs/skills#26): GitHub moved the open thread from 192 to 194 at the head
+    // REVIEW_THREADS_QUERY's shape for a public PR (nessalabs/skills#26), over two pages: GitHub moved the open thread from 192 to 194 at the head
     private val head = "bfd851a0c0ffee"
-    private val text = """
-        {"path":"a.md","line":194,"startLine":191,"originalLine":192,"diffSide":"RIGHT","isResolved":false,"viewerCanResolve":true,"viewerCanUnresolve":false,"url":"u1","commit":"$head","mine":false,"comments":[{"author":"bot","body":"Fix this"},{"id":"PRRC_2","author":"me","body":"Done","canEdit":true,"canDelete":true,"mine":true}]}
-        {"path":"a.md","line":null,"originalLine":44,"diffSide":"RIGHT","isResolved":false,"url":"u2","commit":"e52631d","mine":true,"comments":[{"author":"me","body":"Old"}]}
-        {"path":"a.md","line":12,"startLine":12,"originalLine":12,"diffSide":"RIGHT","isResolved":true,"resolvedByMe":true,"viewerCanResolve":false,"viewerCanUnresolve":true,"url":"u3","commit":"$head","mine":false,"comments":[{"author":"bot","body":"Nit"}]}
-        {"path":"b.py","line":3,"originalLine":3,"diffSide":"LEFT","isResolved":false,"url":"u4","commit":"$head","mine":false,"comments":[{"author":"bot","body":"Removed line"}]}
-        {"path":"b.py","line":7,"originalLine":5,"diffSide":"RIGHT","isResolved":false,"url":"u5","commit":"newer01","mine":false,"comments":[{"author":"bot","body":"On a newer push"}]}
-        {"path":"c.py","line":1,"originalLine":1,"diffSide":"RIGHT","isResolved":false,"url":"u6","commit":"$head","mine":false,"comments":[]}
-    """.trimIndent()
+    private fun c(author: String?, body: String, extra: String = "") =
+        """{${extra}"author":${author?.let { "{\"login\":\"$it\"}" } ?: "null"},"body":"$body","url":"u","commit":{"oid":"$head"}}"""
+    private fun thread(fields: String, comments: String, url: String, commit: String = head) =
+        """{$fields,"comments":{"nodes":[${comments.replaceFirst("\"url\":\"u\"", "\"url\":\"$url\"").replaceFirst("\"oid\":\"$head\"", "\"oid\":\"$commit\"")}]}}"""
+    private fun page(vararg threads: String) = JsonParser.parseString("""{"viewer":{"login":"me"},"repository":{"pullRequest":{"reviewThreads":
+        {"pageInfo":{"hasNextPage":false,"endCursor":null},"nodes":[${threads.joinToString(",")}]}}}}""").asJsonObject
 
-    private val threads = parseReviewThreads(text)
+    private val threads = parseReviewThreads(listOf(
+        page(
+            thread(""""path":"a.md","line":194,"startLine":191,"originalLine":192,"diffSide":"RIGHT","isResolved":false,"viewerCanResolve":true,"viewerCanUnresolve":false""",
+                c("bot", "Fix this") + "," + c("me", "Done", "\"id\":\"PRRC_2\",\"viewerCanUpdate\":true,\"viewerCanDelete\":true,"), "u1"),
+            thread(""""path":"a.md","line":null,"originalLine":44,"diffSide":"RIGHT","isResolved":false""", c("me", "Old"), "u2", "e52631d"),
+            thread(""""path":"a.md","line":12,"startLine":12,"originalLine":12,"diffSide":"RIGHT","isResolved":true,"resolvedBy":{"login":"me"},"viewerCanResolve":false,"viewerCanUnresolve":true""",
+                c("bot", "Nit"), "u3"),
+        ),
+        page(
+            thread(""""path":"b.py","line":3,"originalLine":3,"diffSide":"LEFT","isResolved":false""", c("bot", "Removed line"), "u4"),
+            thread(""""path":"b.py","line":7,"originalLine":5,"diffSide":"RIGHT","isResolved":false""", c(null, "On a newer push"), "u5", "newer01"),
+            thread(""""path":"c.py","line":1,"originalLine":1,"diffSide":"RIGHT","isResolved":false""", "", "u6"),
+        ),
+    ))
 
-    @Test fun `reads every thread that has a comment, with its replies`() {
+    @Test fun `reads every thread that has a comment on every page, with its replies`() {
         assertEquals(listOf("u1", "u2", "u3", "u4", "u5"), threads.map { it.url })
         assertEquals(listOf("bot", "me"), threads[0].comments.map { it.author })
-        assertTrue(threads[1].mine)
+        assertEquals("only the thread the viewer started is theirs", listOf(false, true, false, false, false), threads.map { it.mine })
+        assertEquals("a deleted account", "ghost", threads[4].comments[0].author)
+        assertEquals(listOf(head, "e52631d", "newer01"), listOf(threads[0], threads[1], threads[4]).map { it.commit })
     }
 
     @Test fun `what GitHub lets this viewer do, and nothing when GitHub doesn't say`() {

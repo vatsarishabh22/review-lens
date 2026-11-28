@@ -3,18 +3,20 @@ package io.github.vatsarishabh22.reviewlens.services
 import io.github.vatsarishabh22.reviewlens.core.*
 import io.github.vatsarishabh22.reviewlens.host.*
 
-/** A row of the panel's list: a PR from `gh`, or a remote branch when `gh` can't list PRs ([pr] is null); [parent] in a stack. */
+/** A row of the panel's list: a PR from the host, or a remote branch when the host can't list PRs ([pr] is null); [parent] in a stack. */
 data class ListedTarget(val target: ReviewTarget, val title: String, val pr: PullRequest?, val parent: StackParent? = null) {
     val requested get() = pr?.requested == true
 }
 
 /**
- * The panel's rows; [branchesOnly] when `gh` could not list PRs, so the panel says why it shows branches (even none);
+ * The panel's rows; [branchesOnly] when the host could not list PRs, so the panel says why it shows branches (even none);
  * [stacks]: the rows built on one another, each bottom first; [stackKeys]: a stacked PR's key in [StackStore].
  */
 data class Listing(
     val targets: List<ListedTarget>, val branchesOnly: Boolean, val hostName: String,
     val stacks: List<List<ListedTarget>> = emptyList(), val stackKeys: Map<Int, String> = emptyMap(),
+    /** Why the host listed nothing, when the user can act on it ("Update gh …"). */
+    val why: String? = null,
 )
 
 /** What the Review panel lists: open PRs, or remote branches when this repo has no reachable GitHub. Runs CLIs: call off EDT. */
@@ -24,7 +26,7 @@ class ReviewTargets(private val git: GitClient) {
         // picked again on every load, so signing in or out shows; no host signed in for origin, or no answer: branches stand in
         val host = ReviewHosts.refresh(git)
         val prs = host?.let { runCatching { it.openPullRequests() }.getOrNull() }
-        if (prs == null) return Listing(branches(), branchesOnly = true, ReviewHosts.nameOf(git))
+        if (prs == null) return Listing(branches(), branchesOnly = true, ReviewHosts.nameOf(git), why = ReviewHosts.whyNot(git))
         // what this list sees is written down, so a parent pushed to before the next list is said to have moved, not guessed
         val parents = StackStore(git).observe(prs)
         val targets = prs.map { pr ->

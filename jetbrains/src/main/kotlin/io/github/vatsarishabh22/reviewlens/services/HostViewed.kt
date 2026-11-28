@@ -68,7 +68,7 @@ class HostViewed internal constructor(
         val keeps = host == null || host.viewed != null // unknown while no host answers: ticks queue for when one does
         val viewed = host?.viewed
         if (host != null && viewed == null) return meta to local.copy(keepsViewed = false) // a host with no Viewed checkboxes
-        return runCatching { (viewed ?: throw ReviewHosts.notSignedIn()).viewedStates(number) }.fold(
+        return runCatching { (viewed ?: throw ReviewHosts.notSignedIn(git)).viewedStates(number) }.fold(
             onSuccess = { states -> syncViewed(meta, states.files, changes) to View(states.pullRequestId, states.files.keys, keeps, Status.HOST) },
             onFailure = { meta to View(null, null, keeps, Status.FAILED, Failure(ReviewHosts.nameOf(git), it)) },
         )
@@ -102,7 +102,7 @@ class HostViewed internal constructor(
         val call = Call(id, ticks.keys, clock())
         synchronized(inFlight) { inFlight.addLast(call) }
         pool {
-            val sent = runCatching { ((hostOf(git) ?: throw ReviewHosts.notSignedIn()).viewed ?: throw CliException("This host keeps no Viewed checkboxes")).setViewed(id, ticks) }
+            val sent = runCatching { ((hostOf(git) ?: throw ReviewHosts.notSignedIn(git)).viewed ?: throw CliException("This host keeps no Viewed checkboxes")).setViewed(id, ticks) }
             val later = synchronized(inFlight) { inFlight.remove(call); current().flatMap { it.paths }.toSet() }
             // a call for a review since left only answers that review's next load: its ticks stay in its unsent queue,
             // and its failure is that review's, never the status of the one under way

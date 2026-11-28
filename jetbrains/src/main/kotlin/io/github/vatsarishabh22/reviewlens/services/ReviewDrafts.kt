@@ -46,7 +46,7 @@ class ReviewDrafts(private val project: Project) {
 
     /**
      * Posts the pending comments and replies with [summary] and [verdict] as one GitHub review, remembers [verdict], and
-     * returns what went ("1 comment and 1 reply"). Runs gh: call off EDT.
+     * returns what went ("1 comment and 1 reply"). Calls the host: call off EDT.
      */
     fun submit(summary: String, verdict: Verdict): String {
         val meta = review.meta ?: error("No review in progress")
