@@ -22,9 +22,12 @@ class LayersTest {
 
     private fun packageOf(file: Path) = root.relativize(file.parent).joinToString(".")
 
-    /** The packages of ours [file]'s code uses, by import or fully qualified name; comments and its own `package` line don't count. */
-    private fun uses(file: Path): List<String> = Files.readAllLines(file).map { it.trim() }
+    /** [file]'s code lines: comments and its own `package` line don't count. */
+    private fun code(file: Path) = Files.readAllLines(file).map { it.trim() }
         .filterNot { it.startsWith("package ") || it.startsWith("//") || it.startsWith("*") || it.startsWith("/*") }
+
+    /** The packages of ours [file]'s code uses, by import or fully qualified name. */
+    private fun uses(file: Path): List<String> = code(file)
         .flatMap { line -> Regex("""io\.github\.vatsarishabh22\.reviewlens\.([\w.]+)\.""").findAll(line).mapNotNull { m -> allowed.keys.sortedByDescending { it.length }.firstOrNull { (m.groupValues[1] + ".").startsWith("$it.") } }.toList() }
 
     /** Every use in [file] its layer may not make, as "File.kt → pkg". */
@@ -49,12 +52,13 @@ class LayersTest {
         assertEquals(true, Files.readString(Path.of("src/main/resources/META-INF/plugin.xml")).contains("id=\"$FINISH_REVIEW\""))
 
     /** IntelliJ's process runner and logger only (Cli runs git through them); nothing else of the IDE, no UI. */
-    private val coreMayUse = listOf("import com.intellij.execution.", "import com.intellij.openapi.diagnostic.")
+    private val coreMayUse = listOf("com.intellij.execution.", "com.intellij.openapi.diagnostic.")
 
+    /** By import or fully qualified name, as [uses] reads ours. */
     @Test
     fun `core uses no IntelliJ beyond its process runner and logger`() = assertEquals(emptyList<String>(),
         sources().filter { packageOf(it) == "core" }.flatMap { file ->
-            Files.readAllLines(file).filter { l -> (l.startsWith("import com.intellij.") && coreMayUse.none(l::startsWith)) || l.startsWith("import javax.swing.") || l.startsWith("import java.awt.") }
-                .map { "${file.fileName}: $it" }
+            code(file).flatMap { line -> Regex("""\b(?:com\.intellij|javax\.swing|java\.awt)\.[\w.]+""").findAll(line).map { it.value } }
+                .filter { name -> coreMayUse.none(name::startsWith) }.map { "${file.fileName}: $it" }
         })
 }

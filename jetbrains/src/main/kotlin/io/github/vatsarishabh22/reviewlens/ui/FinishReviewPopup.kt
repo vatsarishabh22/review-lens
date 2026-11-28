@@ -4,6 +4,9 @@ import com.intellij.ide.ui.laf.darcula.ui.DarculaButtonUI
 import com.intellij.openapi.project.Project
 import com.intellij.openapi.ui.popup.JBPopup
 import com.intellij.openapi.ui.popup.JBPopupFactory
+import com.intellij.openapi.util.Disposer
+import com.intellij.openapi.util.Key
+import com.intellij.openapi.wm.IdeFocusManager
 import com.intellij.ui.AnimatedIcon
 import com.intellij.ui.DocumentAdapter
 import com.intellij.ui.components.JBLabel
@@ -89,6 +92,11 @@ fun submitBlocker(verdict: Verdict?, markLocked: String?, slot: ReviewSlot?, che
     }
 
 private fun openFinishReview(project: Project, anchor: JComponent?) {
+    // one Finish popup a project: Find Action or the shortcut while it shows brings that one forward, never a second
+    project.getUserData(OPEN_FINISH)?.takeUnless { it.isDisposed }?.let { open ->
+        IdeFocusManager.getInstance(project).requestFocus(open.content, true)
+        return
+    }
     val service = ReviewService.of(project)
     val host = service.hostName
     val threads = HostThreads.of(project)
@@ -184,6 +192,8 @@ private fun openFinishReview(project: Project, anchor: JComponent?) {
         .setCancelOnWindowDeactivation(false) // switching to another app and back keeps it open
         .setCancelCallback { service.ending != ReviewService.Ending.POSTING } // while it posts, the popup stays: it is where the answer shows
         .createPopup()
+    project.putUserData(OPEN_FINISH, popup)
+    Disposer.register(popup) { if (project.getUserData(OPEN_FINISH) === popup) project.putUserData(OPEN_FINISH, null) }
     service.onChanged(popup) { if (!popup.isDisposed) update() } // posting, exiting, a refusal: the one ending state redraws it
     if (anchor != null && anchor.isShowing) popup.showUnderneathOf(anchor) else popup.showCenteredInCurrentWindow(project)
     if (checked == null) background(project, "Checking $host for new comments", { threads.reload() }, current = { !popup.isDisposed }) { read ->
@@ -191,6 +201,8 @@ private fun openFinishReview(project: Project, anchor: JComponent?) {
         update()
     }
 }
+
+private val OPEN_FINISH = Key.create<JBPopup>("review-lens.finishPopup")
 
 /** The popup's fixed width, its height whatever the visible parts need. */
 private fun fitWidth(content: JComponent) {
